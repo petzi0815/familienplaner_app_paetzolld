@@ -15,7 +15,9 @@ OpenAPI, API.md. **FTS5-Volltext live** (fts_index, ins CRUD integriert). **Bild
 (`/api/v1/media/upload` — JSON-Base64 **oder** multipart, optional `resource`+`id` → direkt an den Datensatz
 angehängt) + Upload-Button in der UI. **Reise-Doc-Download/Upload** (`/api/v1/files/reisen-docs`),
 **Schnellaktionen** (Geschenk „vergeben", Samu „aussortieren") in der UI. **graphify-Graph** generiert (`graphify-out/`, 221 Nodes/15 Communities, AST-only).
-**Offen/optional:** iOS-App bauen (API vorbereitet), Cloudflare-Cache-Regel „Bypass /api/*", elisbooks-Cover (nicht im Export).
+**Offen/optional:** **`SENTRY_DSN` in Coolify setzen** (Projekt `yagemi/familienplaner` angelegt, DSN verifiziert —
+App ist bereits verdrahtet, aktiviert sich mit der Env). iOS-App bauen (API vorbereitet), Cloudflare-Cache-Regel
+„Bypass /api/*", elisbooks-Cover (nicht im Export).
 
 <!-- Historie P0 -->
 **Stand (2026-07-11): Phase 0 — Fundament FERTIG & gepusht (commit `19247ad`).**
@@ -112,6 +114,20 @@ Geschenkplaner · Garten · Vorratskammer · Gypsi (Katzenfutter) · Reiniger ·
   committen; nach Push per `/version` verifizieren. Secrets nur via `.env`/Coolify.
 
 ## Dev-Log (jüngste zuerst)
+
+### Update 5 (2026-07-11) — Ole-Testfeedback-Fix + Sentry-Projekt
+- **Create-500-Bug gefixt (`f99ab4d`, live):** Ole-Abnahmetest — create bei `garten-duenger`,
+  `vorrat-lebensmittel`, `geschenk-anlaesse`, `geschenk-geschenke` endete mit **leerem HTTP 500**.
+  Ursache: **CHECK-Constraints** (enum-Spalten typ/kategorie/anlass/status); dry_run ging durch, echter
+  INSERT knallte unbehandelt. Fix: `server/db/constraints.ts` liest `CHECK(col IN (...))`; `crud.ts`
+  validiert Enums VOR dem Insert (auch im dry_run → konsistent) → 422 `{code:invalid_value, details:{column,allowed}}`;
+  alle DB-Writes in try/catch → saubere JSON-Fehler (check/not_null/foreign_key/unique/db_error), **nie leerer 500**;
+  `/schema` liefert jetzt `allowed`. Prod verifiziert (invalid→422, valid→201, Cleanup).
+  **Lesson:** generisches CRUD über echte Tabellen braucht Constraint-bewusstes Error-Mapping — sonst
+  werden legitime DB-Constraints zu undurchsichtigen 500ern.
+- **Sentry-Projekt angelegt:** Org `yagemi` (EU) → Projekt `familienplaner` (slug), Plattform `javascript-nextjs`,
+  via Sentry-API mit dem PAT aus dem Referenzprojekt. DSN per Test-Event verifiziert. App-Wiring
+  (instrumentation.ts + onRequestError) existiert schon → nur `SENTRY_DSN` in Coolify setzen. Details [[session-2026-07-11]].
 
 ### Update 4 (2026-07-11) — Nacharbeiten: FTS5, Uploads, graphify (LIVE)
 - **FTS5 (Migration 0003):** einheitlicher `fts_index`, ins generische CRUD integriert (Reindex bei
