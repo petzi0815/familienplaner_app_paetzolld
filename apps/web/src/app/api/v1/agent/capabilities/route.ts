@@ -44,7 +44,7 @@ export function GET(req: Request): Response {
       reminder_sent: "POST /api/v1/reminders/{id}/sent",
       jobs: "GET /api/v1/jobs",
       job_run: "POST /api/v1/jobs/{name}/run  (?dry_run=1)",
-      media_upload: "POST /api/v1/media/upload  (multipart: area, file) → storage_key",
+      media_upload: "POST /api/v1/media/upload — JSON { area, data_base64|data_url, filename?, mime?, resource?, id? } ODER multipart (area, file). Mit resource+id wird das Bild direkt am Datensatz gesetzt/ergänzt.",
       reisen_doc_download: "GET /api/v1/files/reisen-docs/{id}  (BLOB)",
       reisen_doc_upload: "POST /api/v1/files/reisen-docs  (multipart: trip_id, name, file)",
     },

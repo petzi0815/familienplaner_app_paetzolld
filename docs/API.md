@@ -54,6 +54,32 @@ curl -H "Authorization: Bearer $KEY" -H "content-type: application/json" \
 curl -H "Authorization: Bearer $KEY" -X POST "$B/jobs/termine-reminders/run?dry_run=1"
 ```
 
+## Bilder per API hochladen
+
+Zwei Wege — für Agenten ist **JSON + Base64** am einfachsten:
+
+```bash
+# 1) Base64-JSON, optional direkt an einen Datensatz anhängen (resource+id)
+curl -H "Authorization: Bearer $KEY" -H "content-type: application/json" -X POST "$B/media/upload" -d '{
+  "area": "samu",
+  "filename": "jacke.jpg",
+  "data_base64": "<BASE64>",
+  "resource": "samu-items",
+  "id": 42
+}'
+# → { "storage_key": "samu/up_...jpg", "url": "/api/v1/media/samu/up_...jpg",
+#     "attached": { "resource":"samu-items", "id":"42", "column":"bild_pfade" } }
+
+# data_url (data:image/png;base64,...) wird ebenfalls akzeptiert.
+
+# 2) Klassisch multipart/form-data
+curl -H "Authorization: Bearer $KEY" -F "area=garten" -F "file=@pflanze.jpg" "$B/media/upload"
+```
+
+- `resource`+`id` (optional): setzt bei Einzelbild-Ressourcen die Bild-Spalte, bei Mehrbild-Ressourcen (z.B. `samu-items`, `garten-pflanzen`) wird der neue Key an die Liste angehängt.
+- Ausgeliefert werden Bilder über die zurückgegebene `url` (`/api/v1/media/<key>`).
+- Bild-Ressourcen (mit Bild-Spalte): `samu-items`, `garten-pflanzen`, `garten-samen`, `garten-duenger`, `gypsi-futter`, `reiniger-produkte`, `vorrat-lebensmittel`, `reisen` (cover).
+
 ## Debug / Betrieb (admin)
 
 - `GET /api/v1/debug/logs?lines=&grep=` — In-Memory-Log-Ringpuffer.
