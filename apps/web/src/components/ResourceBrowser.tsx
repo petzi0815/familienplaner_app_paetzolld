@@ -21,7 +21,9 @@ function imgOf(r: Row, image?: ImageSpec): string | null {
   const v = r[image.col + "_url"]; return v ? String(v) : null;
 }
 
-export function ResourceBrowser({ resource, label, image, backHref }: { resource: string; label: string; image?: ImageSpec; backHref: string }) {
+interface QuickAction { label: string; patch: Record<string, unknown> }
+
+export function ResourceBrowser({ resource, label, image, backHref, download, actions }: { resource: string; label: string; image?: ImageSpec; backHref: string; download?: string; actions?: QuickAction[] }) {
   const [rows, setRows] = useState<Row[]>([]);
   const [total, setTotal] = useState(0);
   const [cols, setCols] = useState<Column[]>([]);
@@ -34,6 +36,7 @@ export function ResourceBrowser({ resource, label, image, backHref }: { resource
   const [form, setForm] = useState<Row | null>(null); // offenes Formular (create/edit)
   const [editingId, setEditingId] = useState<string | null>(null); // null=create
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   const load = useCallback(async (search: string) => {
     setLoading(true); setErr("");
@@ -81,6 +84,41 @@ export function ResourceBrowser({ resource, label, image, backHref }: { resource
     if (!confirm(`„${titleOf(r)}" wirklich löschen?`)) return;
     try { await apiSend(`/${resource}/${r[pk]}`, "DELETE"); setDetail(null); await load(q); }
     catch (e) { setErr(String((e as Error).message)); }
+  }
+
+  async function applyAction(r: Row, patch: Record<string, unknown>) {
+    try { await apiSend(`/${resource}/${r[pk]}`, "PATCH", patch); setDetail(null); await load(q); }
+    catch (e) { setErr(String((e as Error).message)); }
+  }
+
+  async function uploadImage(file: File) {
+    if (!image || !form) return;
+    setUploading(true); setErr("");
+    try {
+      const fd = new FormData(); fd.append("area", image.area); fd.append("file", file);
+      const r = await fetch("/api/v1/media/upload", { method: "POST", credentials: "include", body: fd });
+      if (!r.ok) throw new Error("Upload fehlgeschlagen");
+      const { storage_key } = (await r.json()) as { storage_key: string };
+      if (image.multi) {
+        let arr: string[] = [];
+        try { const p = JSON.parse(String(form[image.col] ?? "[]")); arr = Array.isArray(p) ? p : []; } catch { arr = []; }
+        arr.push(storage_key);
+        setForm({ ...form, [image.col]: JSON.stringify(arr) });
+      } else {
+        setForm({ ...form, [image.col]: storage_key });
+      }
+    } catch (e) { setErr(String((e as Error).message)); } finally { setUploading(false); }
+  }
+
+  function formImageUrls(): string[] {
+    if (!image || !form) return [];
+    const v = form[image.col];
+    if (!v) return [];
+    const toUrl = (k: string) => (/^https?:\/\//i.test(k) || k.startsWith("/") ? k : `/api/v1/media/${k}`);
+    if (image.multi) {
+      try { const a = JSON.parse(String(v)); return Array.isArray(a) ? a.map((k) => toUrl(String(k))) : []; } catch { return []; }
+    }
+    return [toUrl(String(v))];
   }
 
   return (
@@ -149,10 +187,24 @@ export function ResourceBrowser({ resource, label, image, backHref }: { resource
                 </div>
               ))}
             </div>
-            {!readonly && (
-              <div className="sticky bottom-0 bg-white/90 backdrop-blur p-4 flex gap-2 border-t border-black/5">
-                <button onClick={() => openEdit(detail)} className="flex-1 bg-[#007AFF] text-white font-bold rounded-2xl py-2.5 active:scale-[0.98]">Bearbeiten</button>
-                <button onClick={() => remove(detail)} className="px-4 bg-[#FF3B30]/10 text-[#FF3B30] font-bold rounded-2xl py-2.5">Löschen</button>
+            {(!readonly || download || (actions && actions.length > 0)) && (
+              <div className="sticky bottom-0 bg-white/90 backdrop-blur p-4 space-y-2 border-t border-black/5">
+                {download && (
+                  <a href={`${download}${detail[pk]}`} target="_blank" rel="noreferrer" className="block text-center bg-[#34C759]/10 text-[#248A3D] font-bold rounded-2xl py-2.5">⬇︎ Herunterladen</a>
+                )}
+                {actions && actions.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {actions.map((a) => (
+                      <button key={a.label} onClick={() => applyAction(detail, a.patch)} className="flex-1 min-w-[45%] bg-[#F2F2F7] text-[#1C1C1E] font-semibold rounded-2xl py-2 active:scale-[0.98]">{a.label}</button>
+                    ))}
+                  </div>
+                )}
+                {!readonly && (
+                  <div className="flex gap-2">
+                    <button onClick={() => openEdit(detail)} className="flex-1 bg-[#007AFF] text-white font-bold rounded-2xl py-2.5 active:scale-[0.98]">Bearbeiten</button>
+                    <button onClick={() => remove(detail)} className="px-4 bg-[#FF3B30]/10 text-[#FF3B30] font-bold rounded-2xl py-2.5">Löschen</button>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -168,6 +220,19 @@ export function ResourceBrowser({ resource, label, image, backHref }: { resource
               <button onClick={() => setForm(null)} className="text-[#8E8E93] text-xl">✕</button>
             </div>
             <div className="p-5 space-y-3">
+              {image && (
+                <div>
+                  <span className="text-[11px] text-[#8E8E93] font-semibold">Bilder</span>
+                  <div className="flex gap-1.5 flex-wrap mt-1">
+                    {formImageUrls().map((u, i) => <img key={i} src={u} alt="" className="w-14 h-14 rounded-lg object-cover border border-black/5" />)}
+                  </div>
+                  <label className="block mt-1.5 text-center text-[#007AFF] text-sm font-semibold bg-[#007AFF]/10 rounded-xl py-2 cursor-pointer active:scale-[0.98]">
+                    {uploading ? "Lädt hoch…" : "＋ Bild hochladen"}
+                    <input type="file" accept="image/*" className="hidden" disabled={uploading}
+                      onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadImage(f); e.target.value = ""; }} />
+                  </label>
+                </div>
+              )}
               {formCols.map((c) => {
                 const val = form[c.name];
                 const common = "w-full rounded-xl bg-[#F2F2F7] border border-black/5 px-3 py-2 text-[14px] outline-none focus:ring-2 focus:ring-[#007AFF]/30";

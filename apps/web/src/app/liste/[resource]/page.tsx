@@ -8,5 +8,5 @@ export default async function ResourcePage({ params }: { params: Promise<{ resou
   const { resource } = await params;
   const res = resourceByKey(resource);
   if (!res) notFound();
-  return <ResourceBrowser resource={res.key} label={res.label} image={res.image ?? undefined} backHref={`/bereich/${res.domain}`} />;
+  return <ResourceBrowser resource={res.key} label={res.label} image={res.image ?? undefined} download={res.download} actions={res.actions} backHref={`/bereich/${res.domain}`} />;
 }

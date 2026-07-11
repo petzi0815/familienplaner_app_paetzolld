@@ -2,6 +2,7 @@ import { getDb } from "@/server/db/connection";
 import { columnNames, textColumns, getColumns } from "@/server/db/introspect";
 import { type Resource, pkOf } from "./registry";
 import { expandImages } from "@/server/media/media";
+import { reindexRow, removeFromIndex } from "@/server/db/fts";
 import { listResponse, ok, created, fail, notFound } from "@/server/http/respond";
 import type { Auth } from "@/server/auth/auth";
 
@@ -95,6 +96,7 @@ export function createRow(res: Resource, body: Record<string, unknown>, auth: Au
   const info = stmt.run(...keys.map((k) => valid[k]));
   const newId = valid[pk] ?? info.lastInsertRowid;
   logEvent("create", res, newId as number, auth, valid);
+  reindexRow(db, res, newId as number);
   const row = db.prepare(`SELECT * FROM "${res.table}" WHERE "${pk}" = ?`).get(newId) as Record<string, unknown>;
   if (row) expandImages(row, res.image);
   return created(row ?? { [pk]: newId });
@@ -119,6 +121,7 @@ export function updateRow(res: Resource, id: string, body: Record<string, unknow
 
   db.prepare(`UPDATE "${res.table}" SET ${keys.map((k) => `"${k}" = ?`).join(", ")} WHERE "${pk}" = ?`).run(...keys.map((k) => valid[k]), id);
   logEvent("update", res, id, auth, valid);
+  reindexRow(db, res, id);
   const row = db.prepare(`SELECT * FROM "${res.table}" WHERE "${pk}" = ?`).get(id) as Record<string, unknown>;
   expandImages(row, res.image);
   return ok(row);
@@ -133,6 +136,7 @@ export function deleteRow(res: Resource, id: string, auth: Auth | null, dryRun: 
   if (dryRun) return ok({ dry_run: true, would: { action: "delete", resource: res.key, id } });
   db.prepare(`DELETE FROM "${res.table}" WHERE "${pk}" = ?`).run(id);
   logEvent("delete", res, id, auth, null);
+  removeFromIndex(db, res.key, id);
   return ok({ deleted: true, id });
 }
 

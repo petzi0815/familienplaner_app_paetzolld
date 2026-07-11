@@ -4,6 +4,7 @@ import { log } from "@/server/observability/logger";
 import { sha256 } from "@/server/util/hash";
 import { ensureSeeded } from "./seed";
 import { runMigrations } from "./migrate";
+import { ensureFtsPopulated } from "./fts";
 
 let _db: Database.Database | null = null;
 
@@ -20,6 +21,7 @@ export function getDb(): Database.Database {
   runMigrations(db);
   recordBoot(db);
   bootstrapAgentKey(db);
+  ensureFtsPopulated(db);
   _db = db;
   log.info("DB verbunden", { path: config.dbPath });
   return _db;

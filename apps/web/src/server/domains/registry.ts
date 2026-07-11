@@ -18,6 +18,8 @@ export interface Resource {
   searchable?: string[]; // überschreibt Auto-Erkennung (Text-Spalten)
   sort?: string;      // Default-ORDER-BY (z.B. "created_at DESC")
   readonly?: boolean; // nur lesen
+  download?: string;  // Download-URL-Präfix je {id} (z.B. Reise-Dokumente)
+  actions?: { label: string; patch: Record<string, unknown> }[]; // Schnellaktionen (Status-PATCH)
 }
 
 export const RESOURCES: Resource[] = [
@@ -29,7 +31,7 @@ export const RESOURCES: Resource[] = [
   { key: "reisen-activities", table: "reisen_trip_activities", domain: "reisen", label: "Reise-Aktivitäten", sort: "sort_order ASC" },
   { key: "reisen-dayplans", table: "reisen_trip_day_plans", domain: "reisen", label: "Reise-Tagespläne", sort: "day_number ASC, sort_order ASC" },
   { key: "reisen-diving", table: "reisen_trip_diving", domain: "reisen", label: "Reise-Tauchen" },
-  { key: "reisen-docs", table: "reisen_trip_docs", domain: "reisen", label: "Reise-Dokumente" },
+  { key: "reisen-docs", table: "reisen_trip_docs", domain: "reisen", label: "Reise-Dokumente", download: "/api/v1/files/reisen-docs/" },
   { key: "reisen-emails", table: "reisen_trip_emails", domain: "reisen", label: "Reise-E-Mails" },
   { key: "reisen-emergency", table: "reisen_trip_emergency", domain: "reisen", label: "Reise-Notfallinfos", sort: "sort_order ASC" },
   { key: "reisen-flights", table: "reisen_trip_flights", domain: "reisen", label: "Reise-Flüge", sort: "sort_order ASC" },
@@ -43,7 +45,7 @@ export const RESOURCES: Resource[] = [
   { key: "weekend-tips", table: "reisen_weekend_tips", domain: "reisen", label: "Wochenend-Tipps", sort: "year DESC, calendar_week DESC" },
 
   // ── Samu-Inventar ──
-  { key: "samu-items", table: "samu_items", domain: "samu", label: "Samu Kleidung/Spielzeug", image: { col: "bild_pfade", multi: true, area: "samu" }, sort: "erfasst_am DESC" },
+  { key: "samu-items", table: "samu_items", domain: "samu", label: "Samu Kleidung/Spielzeug", image: { col: "bild_pfade", multi: true, area: "samu" }, sort: "erfasst_am DESC", actions: [{ label: "Aussortieren", patch: { status: "aussortiert" } }, { label: "Aktiv", patch: { status: "aktiv" } }] },
   { key: "samu-marken", table: "samu_marken", domain: "samu", label: "Samu Marken", sort: "name ASC" },
   { key: "samu-bedarf", table: "samu_bedarfsliste", domain: "samu", label: "Samu Bedarfsliste" },
 
@@ -54,7 +56,7 @@ export const RESOURCES: Resource[] = [
   // ── Geschenkplaner ──
   { key: "geschenk-kinder", table: "geschenk_kinder", domain: "geschenkplaner", label: "Kinder", sort: "name ASC" },
   { key: "geschenk-ereignisse", table: "geschenk_ereignisse", domain: "geschenkplaner", label: "Ereignisse", sort: "datum ASC" },
-  { key: "geschenk-geschenke", table: "geschenk_geschenke", domain: "geschenkplaner", label: "Geschenke", sort: "erstellt_am DESC" },
+  { key: "geschenk-geschenke", table: "geschenk_geschenke", domain: "geschenkplaner", label: "Geschenke", sort: "erstellt_am DESC", actions: [{ label: "Vergeben", patch: { status: "vergeben" } }, { label: "Schon geschenkt", patch: { status: "geschenkt" } }] },
   { key: "geschenk-anlaesse", table: "geschenk_anlass_config", domain: "geschenkplaner", label: "Anlass-Konfig" },
   { key: "geschenk-vergangene", table: "geschenk_vergangene_geschenke", domain: "geschenkplaner", label: "Vergangene Geschenke" },
 

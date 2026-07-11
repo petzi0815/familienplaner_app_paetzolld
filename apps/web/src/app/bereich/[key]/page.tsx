@@ -21,7 +21,7 @@ export default async function BereichPage({ params }: { params: Promise<{ key: s
   // Einzel-Ressource → direkt der Browser.
   if (resources.length === 1) {
     const r = resources[0];
-    return <ResourceBrowser resource={r.key} label={r.label} image={r.image ?? undefined} backHref="/" />;
+    return <ResourceBrowser resource={r.key} label={r.label} image={r.image ?? undefined} download={r.download} actions={r.actions} backHref="/" />;
   }
 
   // Mehrere Ressourcen → Unterkacheln mit Zählern.
