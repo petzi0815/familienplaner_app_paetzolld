@@ -1,0 +1,51 @@
+# iOS Build-Check — kompiliert App + Widget OHNE Signing (keine Apple-Secrets noetig).
+# Zweck: verifizieren, dass der Swift-Code (iOS 26 / Xcode 26) baut. Der TestFlight-Workflow
+# (mit Signing) liegt separat unter workflows-disabled/ios.yml.
+name: iOS Build Check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "ios-app/**"
+      - ".github/workflows/ios-build.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ios-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15   # falls kein Xcode 26 im Image: auf macos-26 heben
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: ios-app
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Xcode auswählen (26 = iOS-26-SDK)
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "latest-stable"
+
+      - name: Versionen
+        run: |
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version || true
+
+      - name: XcodeGen installieren
+        run: brew install xcodegen
+
+      - name: Xcode-Projekt generieren
+        run: xcodegen generate
+
+      - name: App + Widget bauen (ohne Signing)
+        run: |
+          xcodebuild build \
+            -project Familienplaner.xcodeproj \
+            -scheme Familienplaner \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
