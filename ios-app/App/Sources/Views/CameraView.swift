@@ -15,6 +15,7 @@ struct CameraView: View {
     @State private var message = ""
     @State private var success = false
     @State private var successTick = 0
+    @State private var aiHint = ""
 
     var body: some View {
         NavigationStack {
@@ -23,6 +24,13 @@ struct CameraView: View {
                     hero
                     sourceButtons
                     if !app.lebensbereiche.isEmpty { bereichPicker }
+                    if !aiHint.isEmpty {
+                        Label(aiHint, systemImage: "sparkles")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(Palette.colors(for: bereich.isEmpty ? "foto" : bereich).first!)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .transition(.opacity)
+                    }
                     TextField("Notiz für Ole (optional)", text: $notiz, axis: .vertical)
                         .textFieldStyle(.plain)
                         .padding(12)
@@ -54,13 +62,13 @@ struct CameraView: View {
             .background(bgWash.ignoresSafeArea())
             .navigationTitle("Foto-Eingang")
             .sheet(item: $cameraSource) { src in
-                ImagePicker(sourceType: src.type) { img in picked = img; message = "" }
+                ImagePicker(sourceType: src.type) { img in onPicked(img) }
             }
             .onChange(of: pickerItem) { _, item in
                 guard let item else { return }
                 Task {
                     if let data = try? await item.loadTransferable(type: Data.self), let img = UIImage(data: data) {
-                        picked = img; message = ""
+                        onPicked(img)
                     }
                     pickerItem = nil
                 }
@@ -132,6 +140,23 @@ struct CameraView: View {
                     }
                 }
                 .padding(.horizontal, 4).padding(.vertical, 2)
+            }
+        }
+    }
+
+    /// Gemeinsamer Einstieg für Kamera & Mediathek: setzt das Bild und startet den KI-Vorschlag.
+    private func onPicked(_ img: UIImage) {
+        picked = img; message = ""; aiHint = ""
+        Task { await suggestBereich(img) }
+    }
+
+    /// On-Device-Vorschlag des Bereichs (nur wenn verfügbar und noch keiner gewählt).
+    private func suggestBereich(_ img: UIImage) async {
+        guard bereich.isEmpty, PhotoBereichSuggester.isAvailable else { return }
+        if let key = await PhotoBereichSuggester.suggest(image: img, note: notiz, bereiche: app.lebensbereiche) {
+            withAnimation(.snappy) {
+                bereich = key
+                aiHint = "Bereich von der KI vorgeschlagen – kurz prüfen."
             }
         }
     }
