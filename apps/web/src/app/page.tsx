@@ -24,6 +24,7 @@ const GRADIENTS: Record<string, string> = {
   vorratskammer: "from-[#F97316] via-[#FB923C] to-[#FBBF24]",
   reiniger: "from-[#0EA5E9] via-[#14B8A6] to-[#84CC16]",
   elisbooks: "from-[#92400E] via-[#B45309] to-[#D97706]",
+  foto: "from-[#5AC8FA] via-[#007AFF] to-[#5856D6]",
 };
 const DEFAULT_GRADIENT = "from-[#8E8E93] via-[#AEAEB2] to-[#C7C7CC]";
 

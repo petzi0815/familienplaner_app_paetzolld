@@ -47,6 +47,8 @@ export function GET(req: Request): Response {
       media_upload: "POST /api/v1/media/upload — JSON { area, data_base64|data_url, filename?, mime?, resource?, id? } ODER multipart (area, file). Mit resource+id wird das Bild direkt am Datensatz gesetzt/ergänzt.",
       reisen_doc_download: "GET /api/v1/files/reisen-docs/{id}  (BLOB)",
       reisen_doc_upload: "POST /api/v1/files/reisen-docs  (multipart: trip_id, name, file)",
+      foto_upload: "POST /api/v1/foto/upload — multipart (bereich, notiz?, file) ODER JSON (bereich?, data_base64). Legt foto_inbox-Eintrag status='neu' an.",
+      foto_inbox_workflow: "Agent: GET /api/v1/foto-inbox?status=neu&sort=id:asc → Bild via url/media laden + analysieren → PATCH /api/v1/foto-inbox/{id} { status:'zugeordnet', analyse, zugeordnet_resource, zugeordnet_id } (Bild via /api/v1/media/upload {resource,id} an den Zieldatensatz hängen).",
     },
     domains: [...new Set(RESOURCES.map((r) => r.domain))],
     resources,

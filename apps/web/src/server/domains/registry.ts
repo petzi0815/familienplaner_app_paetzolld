@@ -94,6 +94,9 @@ export const RESOURCES: Resource[] = [
   // ── Verträge ──
   { key: "vertraege", table: "vertraege", domain: "vertraege", label: "Verträge", sort: "kategorie ASC" },
 
+  // ── Foto-Eingang (Upload → Agent kategorisiert) ──
+  { key: "foto-inbox", table: "foto_inbox", domain: "foto", label: "Foto-Eingang", image: { col: "storage_key", multi: false, area: "foto-inbox" }, sort: "id DESC", searchable: ["bereich", "notiz", "status", "zugeordnet_resource"] },
+
   // ── System: Lebensbereiche-Registry (Dashboard-Steuerung) ──
   { key: "lebensbereiche", table: "lebensbereiche", domain: "system", label: "Lebensbereiche", sort: "sort ASC" },
 ];
