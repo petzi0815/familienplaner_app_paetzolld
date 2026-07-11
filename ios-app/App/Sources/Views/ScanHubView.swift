@@ -222,7 +222,7 @@ struct VorratScanSheet: View {
                     }
             } else {
                 ContentUnavailableView("Scanner nicht verfügbar", systemImage: "barcode.viewfinder",
-                                       description: Text("Tippe oben auf „Manuell"."))
+                                       description: Text("Tippe oben auf \"Manuell\"."))
             }
         }
         .padding()
