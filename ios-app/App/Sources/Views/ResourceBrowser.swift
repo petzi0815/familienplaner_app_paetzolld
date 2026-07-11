@@ -22,7 +22,7 @@ let QUICK_ACTIONS: [String: [QuickAction]] = [
     ],
 ]
 
-/// Generische Liste einer Ressource — Bildraster für bildlastige Bereiche, sonst Liste. Mit Suche.
+/// Generische Liste einer Ressource — Bildraster für bildlastige Bereiche, sonst Liste. Spec-getrieben.
 struct ResourceListView: View {
     let resource: ResourceInfo
     @EnvironmentObject private var app: AppState
@@ -30,6 +30,7 @@ struct ResourceListView: View {
     @State private var query = ""
     @State private var loading = true
 
+    private var spec: DisplaySpec { specFor(resource) }
     private var isGrid: Bool { resource.image != nil }
     private let gcols = [GridItem(.adaptive(minimum: 110), spacing: 10)]
 
@@ -63,7 +64,9 @@ struct ResourceListView: View {
     }
 
     private func row(_ rec: GenericRecord) -> some View {
-        let title = recordTitle(rec.fields)
+        let title = titleText(rec.fields, spec)
+        let sub = formattedFieldText(rec.fields, spec.listSubtitle, spec)
+        let badge = badgeValue(rec.fields)
         return HStack(spacing: 12) {
             if let url = recordImageURL(rec.fields, resource.image) {
                 AuthImage(path: url).frame(width: 48, height: 48)
@@ -71,10 +74,10 @@ struct ResourceListView: View {
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.subheadline.weight(.semibold)).lineLimit(1)
-                if let sub = recordSubtitle(rec.fields, titleShown: title) {
-                    Text(sub).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                }
+                if let sub { Text(sub).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
             }
+            Spacer(minLength: 4)
+            if let badge { BadgeView(text: badge) }
         }
     }
 
@@ -96,10 +99,21 @@ struct ResourceListView: View {
             .frame(minHeight: 110)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay(alignment: .bottomLeading) {
-                Text(recordTitle(rec.fields)).font(.caption2.weight(.bold)).lineLimit(1)
+                Text(titleText(rec.fields, spec)).font(.caption2.weight(.bold)).lineLimit(1)
                     .padding(.horizontal, 6).padding(.vertical, 3)
                     .background(.ultraThinMaterial, in: Capsule()).padding(6)
             }
+            .overlay(alignment: .topTrailing) {
+                if let b = badgeValue(rec.fields) {
+                    Circle().fill(badgeColor(b)).frame(width: 12, height: 12)
+                        .overlay(Circle().strokeBorder(.white, lineWidth: 1.5)).padding(6)
+                }
+            }
+    }
+
+    private func badgeValue(_ fields: [String: Any]) -> String? {
+        guard let key = spec.badgeField else { return nil }
+        let v = fieldString(fields[key]); return v.isEmpty ? nil : v
     }
 
     private func load() async {
@@ -110,7 +124,7 @@ struct ResourceListView: View {
     }
 }
 
-/// Detail eines Datensatzes — Bild, Schnellaktionen, alle Felder.
+/// Detail eines Datensatzes — Kopf-Karte (Bild/Titel/Untertitel/Badge), Schnellaktionen, formatierte Felder.
 struct ResourceDetailView: View {
     let resource: ResourceInfo
     @EnvironmentObject private var app: AppState
@@ -123,21 +137,27 @@ struct ResourceDetailView: View {
         _fields = State(initialValue: record.fields)
     }
 
+    private var spec: DisplaySpec { specFor(resource) }
+    private var accent: Color { Palette.colors(for: resource.domain).first ?? .accentColor }
     private var actions: [QuickAction] { QUICK_ACTIONS[resource.key] ?? [] }
     private var recordId: String { fieldString(fields[resource.primaryKey]) }
-    private var displayColumns: [String] { resource.columns.filter { $0 != resource.image?.col } }
+    private var heroURLs: [String] { recordImageURLs(fields, resource.image) }
 
     var body: some View {
         List {
-            if let url = recordImageURL(fields, resource.image) {
-                Section {
-                    AuthImage(path: url)
-                        .aspectRatio(contentMode: .fit)
-                        .frame(maxWidth: .infinity, maxHeight: 280)
-                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            // ── Kopf-Karte ──
+            Section {
+                VStack(alignment: .leading, spacing: 10) {
+                    if !heroURLs.isEmpty { hero }
+                    Text(titleText(fields, spec)).font(.title3.weight(.bold))
+                    if let sub = formattedFieldText(fields, spec.subtitleField, spec) {
+                        Text(sub).font(.subheadline).foregroundStyle(.secondary)
+                    }
+                    if let b = badgeValue { BadgeView(text: b) }
                 }
-                .listRowInsets(EdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 8))
+                .padding(.vertical, 4)
             }
+
             if !actions.isEmpty {
                 Section("Aktionen") {
                     ForEach(actions) { a in
@@ -147,19 +167,57 @@ struct ResourceDetailView: View {
                     if !message.isEmpty { Text(message).font(.caption).foregroundStyle(.secondary) }
                 }
             }
+
+            // ── Felder ──
             Section("Details") {
-                ForEach(displayColumns, id: \.self) { col in
-                    let v = fieldString(fields[col])
-                    if !v.isEmpty {
-                        LabeledContent(prettyColumn(col)) {
-                            Text(v).multilineTextAlignment(.trailing).foregroundStyle(.secondary)
-                        }
+                ForEach(detailColumns(fields, resource, spec), id: \.self) { col in
+                    fieldRow(col)
+                }
+            }
+        }
+        .navigationTitle(resource.label)
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var badgeValue: String? {
+        guard let key = spec.badgeField else { return nil }
+        let v = fieldString(fields[key]); return v.isEmpty ? nil : v
+    }
+
+    @ViewBuilder private var hero: some View {
+        if heroURLs.count == 1 {
+            AuthImage(path: heroURLs[0])
+                .aspectRatio(contentMode: .fit)
+                .frame(maxWidth: .infinity, maxHeight: 260)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        } else {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    ForEach(Array(heroURLs.enumerated()), id: \.offset) { _, u in
+                        AuthImage(path: u).aspectRatio(contentMode: .fill)
+                            .frame(width: 190, height: 190)
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     }
                 }
             }
         }
-        .navigationTitle(recordTitle(fields))
-        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    @ViewBuilder private func fieldRow(_ col: String) -> some View {
+        let f = formatFor(fields, col, spec)
+        if f != .hidden {
+            if f.isBlock {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(prettyColumn(col)).font(.caption).foregroundStyle(.secondary)
+                    FieldValueView(value: fields[col], format: f, accent: accent)
+                }
+                .padding(.vertical, 2)
+            } else {
+                LabeledContent { FieldValueView(value: fields[col], format: f, accent: accent) } label: {
+                    Text(prettyColumn(col)).foregroundStyle(.secondary)
+                }
+            }
+        }
     }
 
     private func apply(_ a: QuickAction) async {

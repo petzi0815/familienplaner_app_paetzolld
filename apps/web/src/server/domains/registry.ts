@@ -79,9 +79,9 @@ export const RESOURCES: Resource[] = [
   { key: "reiniger-anwendungen", table: "reiniger_anwendungen", domain: "reiniger", label: "Reiniger-Anwendungen" },
 
   // ── Bücher ──
-  { key: "elisbooks-books", table: "elisbooks_books", domain: "elisbooks", label: "Bücher (physisch)", sort: "added_at DESC" },
+  { key: "elisbooks-books", table: "elisbooks_books", domain: "elisbooks", label: "Bücher (physisch)", image: { col: "thumbnail", multi: false, area: "elisbooks" }, sort: "added_at DESC" },
   { key: "elisbooks-bookshelves", table: "elisbooks_bookshelves", domain: "elisbooks", label: "Bücherregale", sort: "name ASC" },
-  { key: "elisbooks-wishlist", table: "elisbooks_wishlist", domain: "elisbooks", label: "Bücher-Wunschliste" },
+  { key: "elisbooks-wishlist", table: "elisbooks_wishlist", domain: "elisbooks", label: "Bücher-Wunschliste", image: { col: "thumbnail", multi: false, area: "elisbooks" } },
   { key: "elisbooks-settings", table: "elisbooks_user_settings", domain: "elisbooks", label: "Bücher-Einstellungen" },
   { key: "ebook-wishlist", table: "ebook_wishlist", domain: "ebooks", label: "E-Book-Wunschliste", sort: "created_at DESC" },
 

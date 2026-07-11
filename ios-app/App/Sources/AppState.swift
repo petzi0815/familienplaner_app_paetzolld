@@ -2,9 +2,14 @@ import SwiftUI
 
 @MainActor
 final class AppState: ObservableObject {
-    enum MainTab: Hashable { case heute, foto, inbox, scan, mehr, search }
+    enum MainTab: Hashable { case heute, bereiche, scan, inbox, search }
 
     @Published var selectedTab: MainTab = .heute
+    /// Hochzählen → der Erfassen-Tab öffnet die Kamera (aus Quick-Action/Siri).
+    @Published var openCameraTick: Int = 0
+
+    /// Kamera direkt öffnen (Home-Quick-Action „Foto aufnehmen" / Siri).
+    func requestCamera() { selectedTab = .scan; openCameraTick += 1 }
     @Published var lebensbereiche: [Lebensbereich] = []
     @Published var inbox: [FotoInboxItem] = []
     @Published var inboxNeu: Int = 0

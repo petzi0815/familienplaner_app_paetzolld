@@ -18,9 +18,8 @@ struct CameraView: View {
     @State private var aiHint = ""
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 18) {
+        ScrollView {
+            VStack(spacing: 18) {
                     hero
                     sourceButtons
                     if !app.lebensbereiche.isEmpty { bereichPicker }
@@ -61,6 +60,7 @@ struct CameraView: View {
             }
             .background(bgWash.ignoresSafeArea())
             .navigationTitle("Foto-Eingang")
+            .navigationBarTitleDisplayMode(.inline)
             .sheet(item: $cameraSource) { src in
                 ImagePicker(sourceType: src.type) { img in onPicked(img) }
             }
@@ -76,7 +76,6 @@ struct CameraView: View {
             .sensoryFeedback(.success, trigger: successTick)
             .sensoryFeedback(.selection, trigger: bereich)
             .task { if app.lebensbereiche.isEmpty { await app.loadLebensbereiche() } }
-        }
     }
 
     // Verlaufs-Schimmer im Hintergrund (dezent).

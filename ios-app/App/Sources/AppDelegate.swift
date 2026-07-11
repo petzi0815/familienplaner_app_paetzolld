@@ -37,7 +37,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
                      completionHandler: @escaping (Bool) -> Void) {
         let type = shortcutItem.type
         Task { @MainActor in
-            if type.hasSuffix("newphoto") { AppDelegate.appState?.selectedTab = .foto }
+            if type.hasSuffix("newphoto") { AppDelegate.appState?.requestCamera() }
             else if type.hasSuffix("scanbook") { AppDelegate.appState?.selectedTab = .scan }
             else if type.hasSuffix("today") { AppDelegate.appState?.selectedTab = .heute }
         }

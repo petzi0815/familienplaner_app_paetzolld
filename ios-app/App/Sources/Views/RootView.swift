@@ -24,20 +24,17 @@ struct MainTabView: View {
             Tab("Heute", systemImage: "house.fill", value: AppState.MainTab.heute) {
                 HeuteView()
             }
-            Tab("Foto", systemImage: "camera.fill", value: AppState.MainTab.foto) {
-                CameraView()
+            Tab("Bereiche", systemImage: "square.grid.2x2.fill", value: AppState.MainTab.bereiche) {
+                BereicheHubView()
+            }
+            Tab("Erfassen", systemImage: "camera.viewfinder", value: AppState.MainTab.scan) {
+                ScanHubView()
             }
             Tab("Inbox", systemImage: "tray.full.fill", value: AppState.MainTab.inbox) {
                 InboxView()
             }
             .badge(app.inboxNeu)
 
-            Tab("Scannen", systemImage: "barcode.viewfinder", value: AppState.MainTab.scan) {
-                ScanHubView()
-            }
-            Tab("Bereiche", systemImage: "square.grid.2x2.fill", value: AppState.MainTab.mehr) {
-                BereicheHubView()
-            }
             Tab("Suchen", systemImage: "magnifyingglass", value: AppState.MainTab.search, role: .search) {
                 SearchView()
             }

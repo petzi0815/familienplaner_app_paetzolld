@@ -5,6 +5,7 @@ import UIKit
 struct ScanHubView: View {
     @EnvironmentObject private var app: AppState
     @State private var sheet: ScanSheet?
+    @State private var showCamera = false
 
     enum ScanSheet: Identifiable { case book, food; var id: Int { hashValue } }
 
@@ -26,7 +27,7 @@ struct ScanHubView: View {
                     }
                     .buttonStyle(TileButtonStyle(gradientKey: "vorratskammer"))
 
-                    Button { app.selectedTab = .foto } label: {
+                    Button { showCamera = true } label: {
                         tileLabel("Foto aufnehmen", "In den Foto-Eingang", "camera.fill")
                     }
                     .buttonStyle(TileButtonStyle(gradientKey: "foto"))
@@ -34,7 +35,9 @@ struct ScanHubView: View {
                 .padding()
             }
             .background(Palette.gradient(for: "elisbooks").opacity(0.06).ignoresSafeArea())
-            .navigationTitle("Scannen")
+            .navigationTitle("Erfassen")
+            .navigationDestination(isPresented: $showCamera) { CameraView() }
+            .onChange(of: app.openCameraTick) { _, _ in showCamera = true }
             .sheet(item: $sheet) { which in
                 switch which {
                 case .book: BookScanSheet().environmentObject(app)

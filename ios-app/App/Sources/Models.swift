@@ -170,12 +170,81 @@ func recordSubtitle(_ fields: [String: Any], titleShown: String) -> String? {
     return nil
 }
 func recordImageURL(_ fields: [String: Any], _ spec: ResourceImageSpec?) -> String? {
-    guard let spec else { return nil }
-    if spec.multi { return (fields[spec.col + "_urls"] as? [Any])?.compactMap { $0 as? String }.first }
-    return fields[spec.col + "_url"] as? String
+    recordImageURLs(fields, spec).first
+}
+/// Alle Bild-URLs eines Datensatzes (mehrere bei `multi`).
+func recordImageURLs(_ fields: [String: Any], _ spec: ResourceImageSpec?) -> [String] {
+    guard let spec else { return [] }
+    if spec.multi { return (fields[spec.col + "_urls"] as? [Any])?.compactMap { $0 as? String } ?? [] }
+    if let u = fields[spec.col + "_url"] as? String { return [u] }
+    return []
 }
 /// snake_case → hübsches Label.
 func prettyColumn(_ name: String) -> String {
     name.replacingOccurrences(of: "_", with: " ")
         .split(separator: " ").map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(separator: " ")
+}
+
+// ── UI/UX-Feldformatierung (statt stumpfer Tabellen mit JSON-Rohwerten) ──
+enum FieldFormat: String {
+    case date, datetime, time, bool, badge, jsonList, url, number, price, multiline, plain, hidden
+}
+
+/// Pro-Ressource-Anzeige-Spec (aus dem UI-Spec-Workflow; sonst generisch geraten).
+struct DisplaySpec {
+    var layout: String = "generic"
+    var titleField: String?
+    var subtitleField: String?
+    var badgeField: String?
+    var heroImageField: String?
+    var primaryFields: [String] = []
+    var hidden: Set<String> = []
+    var formats: [String: FieldFormat] = [:]
+    var listSubtitle: String?
+}
+
+/// Technische/interne Felder immer ausblenden.
+private let ALWAYS_HIDDEN: Set<String> = [
+    "id", "created_at", "updated_at", "erstellt_am", "erfasst_am", "added_at", "aktualisiert_am",
+    "verbraucht_am", "sort_order", "cron_job_id", "reminder_sent", "source", "storage_key",
+    "lat", "lng", "google_maps_url",
+]
+func isTechnicalField(_ col: String) -> Bool {
+    if ALWAYS_HIDDEN.contains(col) { return true }
+    return col.hasSuffix("_id") || col.hasSuffix("_url") || col.hasSuffix("_urls")
+}
+
+func isDateString(_ s: String) -> Bool {
+    s.count >= 10 && s.range(of: "^[0-9]{4}-[0-9]{2}-[0-9]{2}", options: .regularExpression) != nil
+}
+
+/// JSON-Array-String (`["a","b"]`) → Werte; sonst der Rohwert als Ein-Element-Liste.
+func parseJSONList(_ s: String) -> [String] {
+    if let data = s.data(using: .utf8), let arr = try? JSONSerialization.jsonObject(with: data) as? [Any] {
+        return arr.map { fieldString($0) }.filter { !$0.isEmpty }
+    }
+    return s.isEmpty ? [] : [s]
+}
+
+/// Format raten, wenn die Spec keins vorgibt.
+func guessFormat(_ col: String, _ value: Any?) -> FieldFormat {
+    if isTechnicalField(col) { return .hidden }
+    let s = fieldString(value)
+    if s.isEmpty { return .hidden }
+    if s.hasPrefix("[") && s.hasSuffix("]") { return .jsonList }
+    if s.hasPrefix("http://") || s.hasPrefix("https://") { return .url }
+    if isDateString(s) { return .date }
+    if col.hasPrefix("is_") || col.hasPrefix("has_") || ["restock", "packed", "kid_friendly", "erledigt"].contains(col) { return .bool }
+    if ["status", "kategorie", "category", "anlass", "typ", "priorität", "prioritaet", "link_type", "doc_type"].contains(col) { return .badge }
+    if s.count > 90 { return .multiline }
+    return .plain
+}
+
+private let dateTimeIn: DateFormatter = { let f = DateFormatter(); f.locale = Locale(identifier: "de_DE"); f.dateFormat = "yyyy-MM-dd HH:mm:ss"; return f }()
+func prettyDateTime(_ s: String) -> String {
+    if let d = dateTimeIn.date(from: s) {
+        let out = DateFormatter(); out.locale = Locale(identifier: "de_DE"); out.dateStyle = .medium; out.timeStyle = .short
+        return out.string(from: d)
+    }
+    return DateText.pretty(s)
 }
