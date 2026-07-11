@@ -1,66 +1,122 @@
 import SwiftUI
 import UIKit
 
-struct InboxView: View {
-    @EnvironmentObject private var app: AppState
-
-    var body: some View {
-        NavigationStack {
-            List {
-                if app.inbox.isEmpty {
-                    ContentUnavailableView("Noch keine Fotos", systemImage: "tray",
-                        description: Text("Fotos, die du hochlädst, erscheinen hier."))
-                }
-                ForEach(app.inbox) { item in
-                    HStack(spacing: 12) {
-                        AuthImage(path: item.storageKeyUrl)
-                            .frame(width: 56, height: 56)
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(item.bereich?.isEmpty == false ? item.bereich! : "nicht zugeordnet")
-                                .font(.subheadline.weight(.semibold))
-                            if let notiz = item.notiz, !notiz.isEmpty {
-                                Text(notiz).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                            }
-                            StatusBadge(status: item.status)
-                        }
-                        Spacer()
-                    }
-                    .padding(.vertical, 2)
-                }
-            }
-            .navigationTitle("Inbox")
-            .refreshable { await app.loadInbox() }
-            .task { await app.loadInbox() }
-        }
+private func statusColor(_ s: String) -> Color {
+    switch s {
+    case "neu": return .blue
+    case "in_bearbeitung": return .orange
+    case "zugeordnet": return .green
+    default: return .gray
+    }
+}
+private func statusLabel(_ s: String) -> String {
+    switch s {
+    case "neu": return "neu"
+    case "in_bearbeitung": return "in Arbeit"
+    case "zugeordnet": return "zugeordnet"
+    case "verworfen": return "verworfen"
+    default: return s
     }
 }
 
-struct StatusBadge: View {
-    let status: String
-    private var color: Color {
-        switch status {
-        case "neu": return .blue
-        case "in_bearbeitung": return .orange
-        case "zugeordnet": return .green
-        default: return .gray
-        }
-    }
-    private var label: String {
-        switch status {
-        case "neu": return "neu"
-        case "in_bearbeitung": return "in Arbeit"
-        case "zugeordnet": return "zugeordnet"
-        case "verworfen": return "verworfen"
-        default: return status
-        }
-    }
+struct InboxView: View {
+    @EnvironmentObject private var app: AppState
+    @State private var detail: FotoInboxItem?
+
+    private let cols = [GridItem(.adaptive(minimum: 104), spacing: 10)]
+
     var body: some View {
-        Text(label)
-            .font(.caption2.weight(.bold))
-            .padding(.horizontal, 8).padding(.vertical, 2)
-            .background(color.opacity(0.15), in: Capsule())
-            .foregroundStyle(color)
+        NavigationStack {
+            ScrollView {
+                if app.inbox.isEmpty {
+                    ContentUnavailableView {
+                        Label("Noch keine Fotos", systemImage: "tray.full")
+                    } description: {
+                        Text("Fotos, die du hochlädst, erscheinen hier — mit Status, sobald Ole sie zuordnet.")
+                    }
+                    .padding(.top, 60)
+                } else {
+                    LazyVGrid(columns: cols, spacing: 10) {
+                        ForEach(app.inbox) { item in
+                            Button { detail = item } label: { cell(item) }.buttonStyle(.plain)
+                        }
+                    }
+                    .padding(12)
+                }
+            }
+            .background(Palette.gradient(for: "foto").opacity(0.07).ignoresSafeArea())
+            .navigationTitle("Inbox")
+            .refreshable { await app.loadInbox() }
+            .task { await app.loadInbox() }
+            .sheet(item: $detail) { FotoDetailSheet(item: $0) }
+        }
+    }
+
+    private func cell(_ item: FotoInboxItem) -> some View {
+        AuthImage(path: item.storageKeyUrl)
+            .aspectRatio(1, contentMode: .fill)
+            .frame(minHeight: 104)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(alignment: .topTrailing) {
+                Circle().fill(statusColor(item.status))
+                    .frame(width: 14, height: 14)
+                    .overlay(Circle().strokeBorder(.white, lineWidth: 2))
+                    .padding(7)
+            }
+            .overlay(alignment: .bottomLeading) {
+                if let b = item.bereich, !b.isEmpty {
+                    Text(b).font(.caption2.weight(.bold))
+                        .padding(.horizontal, 7).padding(.vertical, 3)
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .padding(7)
+                }
+            }
+            .shadow(color: .black.opacity(0.1), radius: 6, y: 3)
+    }
+}
+
+struct FotoDetailSheet: View {
+    let item: FotoInboxItem
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    AuthImage(path: item.storageKeyUrl)
+                        .aspectRatio(contentMode: .fit)
+                        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        .shadow(color: .black.opacity(0.15), radius: 14, y: 8)
+
+                    HStack {
+                        Label(statusLabel(item.status), systemImage: "circle.fill")
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(statusColor(item.status))
+                        Spacer()
+                        if let b = item.bereich, !b.isEmpty {
+                            Text(b).font(.subheadline.weight(.semibold))
+                                .padding(.horizontal, 12).padding(.vertical, 6)
+                                .background(Color(.secondarySystemBackground), in: Capsule())
+                        }
+                    }
+
+                    if let n = item.notiz, !n.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Notiz").font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
+                            Text(n)
+                        }
+                    }
+                    if let r = item.zugeordnetResource, !r.isEmpty {
+                        Label("Zugeordnet: \(r)", systemImage: "checkmark.seal.fill")
+                            .font(.subheadline).foregroundStyle(.green)
+                    }
+                }
+                .padding()
+            }
+            .navigationTitle("Foto #\(item.id)")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Fertig") { dismiss() } } }
+        }
     }
 }
 
@@ -75,8 +131,8 @@ struct AuthImage: View {
             if let image {
                 Image(uiImage: image).resizable().scaledToFill()
             } else {
-                Rectangle().fill(Color(.secondarySystemBackground))
-                    .overlay(Image(systemName: "photo").foregroundStyle(.secondary))
+                Palette.gradient(for: "foto").opacity(0.25)
+                    .overlay(Image(systemName: "photo").font(.title3).foregroundStyle(.white.opacity(0.8)))
             }
         }
         .task(id: path) {

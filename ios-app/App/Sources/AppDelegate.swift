@@ -30,6 +30,16 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         // Best-effort — ohne Push läuft die App normal weiter.
     }
 
+    /// Home-Screen-Quick-Action (Icon-Longpress) → Foto-Tab.
+    func application(_ application: UIApplication,
+                     performActionFor shortcutItem: UIApplicationShortcutItem,
+                     completionHandler: @escaping (Bool) -> Void) {
+        if shortcutItem.type.hasSuffix("newphoto") {
+            Task { @MainActor in AppDelegate.appState?.selectedTab = .camera }
+        }
+        completionHandler(true)
+    }
+
     /// Notifications auch im Vordergrund als Banner/Ton zeigen.
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 willPresent notification: UNNotification,

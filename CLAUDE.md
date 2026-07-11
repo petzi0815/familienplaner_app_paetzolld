@@ -117,6 +117,20 @@ Geschenkplaner · Garten · Vorratskammer · Gypsi (Katzenfutter) · Reiniger ·
 
 ## Dev-Log (jüngste zuerst)
 
+### Update 8 (2026-07-11) — iOS UI/UX-Ausbau (frohe Farben + native Funktionen)
+- **Design-System (`Theme.swift`):** `Color(hex:)`, `Palette` mit frohen Verläufen je Lebensbereich
+  (1:1 zur Web-App), `BereichChip` (ausgewählt = Verlauf), `GradientButtonStyle`, farbiges `BrandMark`.
+- **CameraView neu:** buntes Hero (Symbol-`.pulse`), Kamera + **PhotosPicker**, horizontale bunte
+  **Bereichs-Chips**, Verlaufs-Upload-Button, **Haptik** (`.sensoryFeedback`) + Symbol-Effekte
+  (`.bounce` bei Erfolg), Verlaufs-Hintergrund je Bereich.
+- **InboxView neu:** **Foto-Grid** (LazyVGrid) mit Status-Punkten + Bereichs-Chips (ultraThinMaterial),
+  Detail-Sheet mit großem Bild; farbige Leerzustände.
+- **iOS-native Extras:** **Siri/Kurzbefehl** („Foto zum Familienplaner hinzufügen", `AppIntents.swift`
+  + `AppShortcutsProvider`), **Home-Screen-Quick-Action** („Foto aufnehmen", Info.plist + AppDelegate),
+  PhotosPicker, Haptik, SF-Symbol-Effekte.
+- **Review (Subagent): 0 Blocker/baubar** (iOS-17-APIs: AnyShapeStyle, sensoryFeedback, symbolEffect,
+  PhotosPicker, .onChange 2-Param, AppShortcuts alle korrekt). Kompilierung im CI.
+
 ### Update 7 (2026-07-11) — APNs-Push (Backend + iOS) + App-Icon + TestFlight-Prep
 - **APNs-Push-Backend:** `server/push/apns.ts` — token-basiert (ES256-JWT via `crypto.sign` dsaEncoding
   ieee-p1363 = 64-Byte-Sig, verifiziert; Provider-Token ~40 min gecacht) + **HTTP/2** (`node:http2`) an

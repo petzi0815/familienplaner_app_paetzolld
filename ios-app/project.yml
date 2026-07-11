@@ -47,6 +47,10 @@ targets:
         NSPhotoLibraryUsageDescription: "Zum Auswählen von Fotos aus der Mediathek."
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+        UIApplicationShortcutItems:
+          - UIApplicationShortcutItemType: app.yagemi.familienplaner.newphoto
+            UIApplicationShortcutItemTitle: Foto aufnehmen
+            UIApplicationShortcutItemIconType: UIApplicationShortcutIconTypeCompose
 
 schemes:
   Familienplaner:
