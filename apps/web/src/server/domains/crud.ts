@@ -1,10 +1,29 @@
 import { getDb } from "@/server/db/connection";
 import { columnNames, textColumns, getColumns } from "@/server/db/introspect";
+import { enumConstraints, checkEnums } from "@/server/db/constraints";
 import { type Resource, pkOf } from "./registry";
 import { expandImages } from "@/server/media/media";
 import { reindexRow, removeFromIndex } from "@/server/db/fts";
 import { listResponse, ok, created, fail, notFound } from "@/server/http/respond";
+import { log } from "@/server/observability/logger";
 import type { Auth } from "@/server/auth/auth";
+
+// Mappt SQLite-Fehler auf saubere JSON-Antworten (nie leerer 500).
+function dbError(e: unknown, res: Resource): Response {
+  const msg = String((e as Error)?.message ?? e);
+  if (/CHECK constraint/i.test(msg)) return fail("check_violation", "Ungültiger Wert für ein Feld mit fester Werteliste. Erlaubte Werte via GET /api/v1/" + res.key + "/schema.", 422, { sqlite: msg });
+  if (/NOT NULL constraint/i.test(msg)) return fail("not_null", "Ein Pflichtfeld fehlt: " + msg, 422, { sqlite: msg });
+  if (/FOREIGN KEY constraint/i.test(msg)) return fail("foreign_key", "Verknüpfter Datensatz existiert nicht (z.B. kind_id/ereignis_id).", 409, { sqlite: msg });
+  if (/UNIQUE constraint/i.test(msg)) return fail("unique", "Datensatz existiert bereits (Eindeutigkeit verletzt).", 409, { sqlite: msg });
+  log.error("DB-Schreibfehler", { resource: res.key, error: msg });
+  return fail("db_error", "Datenbankfehler beim Schreiben.", 500, { sqlite: msg });
+}
+
+function enumViolation(res: Resource, valid: Record<string, unknown>): Response | null {
+  const v = checkEnums(getDb(), res.table, valid);
+  if (!v) return null;
+  return fail("invalid_value", `Feld '${v.column}' erlaubt nur: ${v.allowed.join(", ")} (bekam '${String(v.value)}').`, 422, { column: v.column, allowed: v.allowed });
+}
 
 const RESERVED = new Set(["limit", "offset", "sort", "order", "search", "q", "dry_run", "view"]);
 const CREATED_COLS = ["created_at", "erstellt_am", "erfasst_am", "added_at"];
@@ -90,16 +109,23 @@ export function createRow(res: Resource, body: Record<string, unknown>, auth: Au
   const keys = Object.keys(valid);
   if (!keys.length) return fail("empty", "Keine gültigen Felder angegeben.", 400);
 
+  const enumErr = enumViolation(res, valid);
+  if (enumErr) return enumErr;
+
   if (dryRun) return ok({ dry_run: true, would: { action: "create", resource: res.key, data: valid } });
 
-  const stmt = db.prepare(`INSERT INTO "${res.table}" (${keys.map((k) => `"${k}"`).join(",")}) VALUES (${keys.map(() => "?").join(",")})`);
-  const info = stmt.run(...keys.map((k) => valid[k]));
-  const newId = valid[pk] ?? info.lastInsertRowid;
-  logEvent("create", res, newId as number, auth, valid);
-  reindexRow(db, res, newId as number);
-  const row = db.prepare(`SELECT * FROM "${res.table}" WHERE "${pk}" = ?`).get(newId) as Record<string, unknown>;
-  if (row) expandImages(row, res.image);
-  return created(row ?? { [pk]: newId });
+  try {
+    const stmt = db.prepare(`INSERT INTO "${res.table}" (${keys.map((k) => `"${k}"`).join(",")}) VALUES (${keys.map(() => "?").join(",")})`);
+    const info = stmt.run(...keys.map((k) => valid[k]));
+    const newId = valid[pk] ?? info.lastInsertRowid;
+    logEvent("create", res, newId as number, auth, valid);
+    reindexRow(db, res, newId as number);
+    const row = db.prepare(`SELECT * FROM "${res.table}" WHERE "${pk}" = ?`).get(newId) as Record<string, unknown>;
+    if (row) expandImages(row, res.image);
+    return created(row ?? { [pk]: newId });
+  } catch (e) {
+    return dbError(e, res);
+  }
 }
 
 export function updateRow(res: Resource, id: string, body: Record<string, unknown>, auth: Auth | null, dryRun: boolean): Response {
@@ -117,14 +143,21 @@ export function updateRow(res: Resource, id: string, body: Record<string, unknow
   const keys = Object.keys(valid);
   if (!keys.length) return fail("empty", "Keine gültigen Felder zum Aktualisieren.", 400);
 
+  const enumErr = enumViolation(res, valid);
+  if (enumErr) return enumErr;
+
   if (dryRun) return ok({ dry_run: true, would: { action: "update", resource: res.key, id, data: valid } });
 
-  db.prepare(`UPDATE "${res.table}" SET ${keys.map((k) => `"${k}" = ?`).join(", ")} WHERE "${pk}" = ?`).run(...keys.map((k) => valid[k]), id);
-  logEvent("update", res, id, auth, valid);
-  reindexRow(db, res, id);
-  const row = db.prepare(`SELECT * FROM "${res.table}" WHERE "${pk}" = ?`).get(id) as Record<string, unknown>;
-  expandImages(row, res.image);
-  return ok(row);
+  try {
+    db.prepare(`UPDATE "${res.table}" SET ${keys.map((k) => `"${k}" = ?`).join(", ")} WHERE "${pk}" = ?`).run(...keys.map((k) => valid[k]), id);
+    logEvent("update", res, id, auth, valid);
+    reindexRow(db, res, id);
+    const row = db.prepare(`SELECT * FROM "${res.table}" WHERE "${pk}" = ?`).get(id) as Record<string, unknown>;
+    expandImages(row, res.image);
+    return ok(row);
+  } catch (e) {
+    return dbError(e, res);
+  }
 }
 
 export function deleteRow(res: Resource, id: string, auth: Auth | null, dryRun: boolean): Response {
@@ -134,17 +167,26 @@ export function deleteRow(res: Resource, id: string, auth: Auth | null, dryRun: 
   const existing = db.prepare(`SELECT * FROM "${res.table}" WHERE "${pk}" = ?`).get(id);
   if (!existing) return notFound(res.label);
   if (dryRun) return ok({ dry_run: true, would: { action: "delete", resource: res.key, id } });
-  db.prepare(`DELETE FROM "${res.table}" WHERE "${pk}" = ?`).run(id);
-  logEvent("delete", res, id, auth, null);
-  removeFromIndex(db, res.key, id);
-  return ok({ deleted: true, id });
+  try {
+    db.prepare(`DELETE FROM "${res.table}" WHERE "${pk}" = ?`).run(id);
+    logEvent("delete", res, id, auth, null);
+    removeFromIndex(db, res.key, id);
+    return ok({ deleted: true, id });
+  } catch (e) {
+    return dbError(e, res);
+  }
 }
 
 /** JSON-Schema-artige Beschreibung der Ressource (Spalten + Typen). */
 export function schemaOf(res: Resource): Response {
   const db = getDb();
+  const enums = enumConstraints(db, res.table);
   const cols = getColumns(db, res.table).map((c) => ({
-    name: c.name, type: c.type || "TEXT", required: !!c.notnull && !c.pk && c.dflt == null, primary_key: !!c.pk,
+    name: c.name,
+    type: c.type || "TEXT",
+    required: !!c.notnull && !c.pk && c.dflt == null,
+    primary_key: !!c.pk,
+    ...(enums[c.name] ? { allowed: enums[c.name] } : {}),
   }));
   return ok({ resource: res.key, table: res.table, domain: res.domain, label: res.label, primary_key: pkOf(res), image: res.image ?? null, readonly: !!res.readonly, columns: cols });
 }
