@@ -6,12 +6,19 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export function GET(): Response {
-  let db: { ok: boolean; tables?: number; migrations?: string[]; error?: string };
+  let db: {
+    ok: boolean; tables?: number; migrations?: string[];
+    seeded_at?: string | null; boot_count?: string | null; last_boot_at?: string | null;
+    error?: string;
+  };
   try {
     const conn = getDb();
     const tables = (conn.prepare("SELECT COUNT(*) AS c FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").get() as { c: number }).c;
     const migrations = (conn.prepare("SELECT version FROM schema_migrations ORDER BY version").all() as { version: string }[]).map((r) => r.version);
-    db = { ok: true, tables, migrations };
+    const setting = (k: string) => (conn.prepare("SELECT value FROM app_settings WHERE key=?").get(k) as { value: string } | undefined)?.value ?? null;
+    // seeded_at + boot_count belegen Persistenz: bleibt seeded_at über Redeploys gleich und
+    // wächst boot_count, ist das /data-Volume persistent.
+    db = { ok: true, tables, migrations, seeded_at: setting("seeded_at"), boot_count: setting("boot_count"), last_boot_at: setting("last_boot_at") };
   } catch (e) {
     db = { ok: false, error: String(e) };
   }
