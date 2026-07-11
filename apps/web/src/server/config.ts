@@ -10,7 +10,8 @@ function env(key: string, fallback = ""): string {
  */
 export const config = {
   nodeEnv: env("NODE_ENV", "development"),
-  publicBaseUrl: env("PUBLIC_BASE_URL", "http://localhost:3000"),
+  // Trailing-Slashes entfernen (sonst doppelte Slashes in zusammengesetzten URLs).
+  publicBaseUrl: env("PUBLIC_BASE_URL", "http://localhost:3000").replace(/\/+$/, ""),
   /** Persistentes Datenverzeichnis (Coolify-Volume). Lokal: apps/web/data. */
   dataDir: env("DATA_DIR", path.join(process.cwd(), "data")),
   gitSha: env("APP_GIT_SHA", "dev"),

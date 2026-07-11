@@ -2,7 +2,6 @@ import { config } from "@/server/config";
 import { getDb } from "@/server/db/connection";
 
 // API-Wurzel: kurzer, maschinenlesbarer Einstieg + DB-Liveness. Offen.
-// (Persistenz-Test 2026-07-11: Re-Deploy #1 zur Volume-Validierung.)
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -28,7 +27,7 @@ export function GET(): Response {
     {
       name: "Familienplaner API",
       version: "v1",
-      status: "phase-1",
+      status: "phase-2",
       db,
       docs: `${config.publicBaseUrl}/api/v1/docs`,
       openapi: `${config.publicBaseUrl}/api/v1/openapi.json`,

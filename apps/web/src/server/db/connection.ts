@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import { config } from "@/server/config";
 import { log } from "@/server/observability/logger";
+import { sha256 } from "@/server/util/hash";
 import { ensureSeeded } from "./seed";
 import { runMigrations } from "./migrate";
 
@@ -18,9 +19,22 @@ export function getDb(): Database.Database {
   db.pragma("foreign_keys = ON");
   runMigrations(db);
   recordBoot(db);
+  bootstrapAgentKey(db);
   _db = db;
   log.info("DB verbunden", { path: config.dbPath });
   return _db;
+}
+
+/** Legt beim Boot den Bootstrap-Agent-API-Key an (gehasht), falls gesetzt & noch nicht vorhanden. */
+function bootstrapAgentKey(db: Database.Database): void {
+  const key = config.bootstrapAgentApiKey;
+  if (!key) return;
+  const hash = sha256(key);
+  const exists = db.prepare("SELECT 1 FROM api_keys WHERE key_hash=?").get(hash);
+  if (!exists) {
+    db.prepare("INSERT INTO api_keys (label, key_hash, role) VALUES ('bootstrap-agent', ?, 'agent')").run(hash);
+    log.info("Bootstrap-Agent-API-Key angelegt (Rolle agent)");
+  }
 }
 
 /**

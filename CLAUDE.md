@@ -6,14 +6,16 @@
 
 ## ▶️ WIEDERAUFNAHME (nächste Session) — START HIER
 
-**Stand (2026-07-11): Phase 1 — DB-Konsolidierung & Datenmigration FERTIG & LIVE.**
-P0 (Fundament) + P1 (Datenmigration) sind gepusht und auf Coolify deployt
-(`https://familienplaner.yagemi.app`, Domain bestätigt). Alle 12 Legacy-SQLite + `vertraege.json`
-sind ID-erhaltend in EINE `familienplaner.db` konsolidiert (46 Domänen-Tabellen präfixiert,
-FK umgeschrieben, BLOBs erhalten), Media (406 Assets) auf Storage-Keys umgezogen. Die App
-**seedet das `/data`-Volume beim ersten Boot selbst** aus `seed/` (verifiziert: frischer
-DATA_DIR → 56 Tabellen, 6801 Zeilen). Debug: `/api/v1/debug/db-stats` (admin),
-DB-Liveness am `/api/v1`-Index. Nächster Schritt: **P2 — API-Framework + Auth + OpenAPI + Agent**.
+**Stand (2026-07-11): Phase 2 — API-Framework + Auth + Agent FERTIG (lokal verifiziert).**
+P0+P1 live auf Coolify (`https://familienplaner.yagemi.app`). Persistenz des `/data`-Volumes
+bestätigt (seeded_at konstant, boot_count wächst über Redeploys). Env in Coolify gesetzt.
+**P2 fügt hinzu:** rollenbasierte Auth (API-Keys `api_keys` + Familien-Passwort-Session, Bootstrap-
+Agent-Key beim Boot), generisches **registry-getriebenes CRUD** für ~48 Ressourcen (`/api/v1/<key>`),
+Agent-Endpunkte (`agent/capabilities|query|action` mit Dry-Run), `search`, `dashboard/today`,
+`reminders/due` + `/{id}/sent`, `config` (GET/PUT), Media-Serving (`/api/v1/media/<key>`),
+Middleware-Login-Gate, Login-Seite, **datengetriebenes Portal** (Kacheln + Tagesübersicht aus DB),
+OpenAPI aus Registry. Lokal end-to-end getestet (Login, Auth-Rollen, CRUD, Dry-Run, Media, Audit).
+Nächster Schritt: **P3 — Domänen-UIs** (Seiten je Bereich, die die v1-API konsumieren) + bereichsspezifische Sonderlogik.
 
 <!-- Historie P0 -->
 **Stand (2026-07-11): Phase 0 — Fundament FERTIG & gepusht (commit `19247ad`).**
@@ -110,6 +112,27 @@ Geschenkplaner · Garten · Vorratskammer · Gypsi (Katzenfutter) · Reiniger ·
   committen; nach Push per `/version` verifizieren. Secrets nur via `.env`/Coolify.
 
 ## Dev-Log (jüngste zuerst)
+
+### Update 2 (2026-07-11) — Phase 2: API-Framework + Auth + Agent (lokal verifiziert)
+- **Auth:** `server/auth/{auth,session,server}.ts` — Bearer (Admin-Passwort ODER `api_keys`-Hash mit
+  Rolle) + signierte Session-Cookies (HMAC/`SESSION_SECRET`). Rollen readonly<agent<admin. Bootstrap-
+  Agent-Key beim Boot aus `BOOTSTRAP_AGENT_API_KEY`. Middleware (`middleware.ts`, edge-safe, nur Cookie-
+  Präsenz) gated die UI → `/login`.
+- **Generisches CRUD:** `server/domains/{registry,crud}.ts` + `db/introspect.ts` — 48 Ressourcen aus
+  einer Registry, Spalten zur Laufzeit aus DB. Routen `/api/v1/[domain]` + `/[id]` (+`/schema`,`/import`).
+  Filter `?col=val`, `?search=`, `?sort=col:asc`, `?limit/offset`, Bild-URL-Expansion, Auto-Zeitstempel,
+  `event_log`-Audit, `?dry_run=1`.
+- **Agent:** `agent/capabilities` (maschinenlesbarer Index), `agent/query` (strukturierte Suche),
+  `agent/action` (create/update/delete + Dry-Run). Plus `search`, `dashboard/today`, `reminders/due`,
+  `config`, `media/[...key]`, `auth/{login,logout,me}`.
+- **UI:** Login-Seite + datengetriebenes Portal (Kacheln aus `lebensbereiche`, Tagesübersicht aus DB).
+- **Lessons:** (1) Tailwind-JIT generiert KEINE Klassen aus DB-Werten → Gradient-Map im Quelltext.
+  (2) React-19-Lint „impure function during render" → Zeit via SQLite `date('now')`/`julianday` statt JS-Date.
+  (3) Middleware läuft edge → keine node-Imports (Cookie-Name als Literal); `/healthz`,`/version` aus Matcher
+  ausschließen, sonst Redirect-Loop auf den Healthcheck.
+- **Verifiziert lokal:** Middleware-Redirect, 401 ohne Auth, CRUD (list/get/create id 37/delete),
+  Media 401→200 (181 KB JPEG), Agent-Capabilities (14 Domänen/48 Ressourcen), Query, Dry-Run, Suche
+  (korfu→21 Treffer), Dashboard, event_log. build+typecheck+lint grün.
 
 ### Update 1 (2026-07-11) — Phase 1: DB-Konsolidierung & Datenmigration (LIVE)
 - Alle 12 Legacy-SQLite exakt introspiziert (`scripts/introspect-legacy.mjs` → `_legacy/schemas.json`).

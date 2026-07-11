@@ -1,13 +1,14 @@
 import { getDb } from "@/server/db/connection";
 import { config } from "@/server/config";
-import { isAdminRequest, unauthorized } from "@/server/auth/admin";
+import { getAuth, hasRole } from "@/server/auth/auth";
+import { unauthorized } from "@/server/http/respond";
 
 // DB-Statistik (admin) — Row-Counts aller Tabellen + Migrationsstand. Debug-Hilfe.
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export function GET(req: Request): Response {
-  if (!isAdminRequest(req)) return unauthorized();
+  if (!hasRole(getAuth(req), "admin")) return unauthorized();
   const db = getDb();
   const tables = (
     db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all() as { name: string }[]
