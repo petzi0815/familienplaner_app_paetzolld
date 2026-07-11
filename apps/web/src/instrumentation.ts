@@ -1,14 +1,26 @@
 /**
- * Next.js Instrumentation-Hook. Initialisiert Sentry so früh wie möglich —
- * aber NUR, wenn SENTRY_DSN gesetzt ist (sonst komplett deaktiviert).
- * Release = APP_GIT_SHA, kein Performance-Tracing, keine PII (Referenzmuster).
+ * Next.js Instrumentation-Hook — läuft einmalig beim Serverstart.
+ * 1. DB seeden + migrieren (nodejs-Runtime, fail-soft).
+ * 2. Sentry initialisieren, wenn SENTRY_DSN gesetzt ist (Release = APP_GIT_SHA,
+ *    kein Perf-Tracing, keine PII). Ohne DSN komplett deaktiviert.
  */
 export async function register(): Promise<void> {
-  const dsn = process.env.SENTRY_DSN;
-  if (!dsn) return;
-
   const runtime = process.env.NEXT_RUNTIME;
-  if (runtime === "nodejs" || runtime === "edge") {
+
+  // DB initialisieren (Seed ins DATA_DIR + Migrationen) beim Start.
+  if (runtime === "nodejs") {
+    try {
+      const { getDb } = await import("@/server/db/connection");
+      getDb();
+    } catch (e) {
+      const { log } = await import("@/server/observability/logger");
+      log.error("DB-Init beim Start fehlgeschlagen", { error: String(e) });
+    }
+  }
+
+  // Sentry (nur wenn DSN gesetzt).
+  const dsn = process.env.SENTRY_DSN;
+  if (dsn && (runtime === "nodejs" || runtime === "edge")) {
     const Sentry = await import("@sentry/nextjs");
     Sentry.init({
       dsn,
@@ -20,15 +32,9 @@ export async function register(): Promise<void> {
   }
 }
 
-/**
- * Meldet Server-Fehler aus Route-Handlern/Server-Components an Sentry (wenn aktiv).
- */
+/** Meldet Server-Fehler aus Route-Handlern/Server-Components an Sentry (wenn aktiv). */
 export async function onRequestError(
-  ...args: Parameters<
-    NonNullable<
-      Awaited<typeof import("@sentry/nextjs")>["captureRequestError"]
-    >
-  >
+  ...args: Parameters<NonNullable<Awaited<typeof import("@sentry/nextjs")>["captureRequestError"]>>
 ): Promise<void> {
   if (!process.env.SENTRY_DSN) return;
   const Sentry = await import("@sentry/nextjs");

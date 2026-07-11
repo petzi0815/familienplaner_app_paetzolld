@@ -39,3 +39,9 @@ graphify-out/cache/
 
 # migration source (lokale Arbeitskopie der Legacy-Daten)
 _legacy/
+# lokale Test-Datenverzeichnisse
+_datatest/
+
+# SQLite WAL/SHM (transient)
+*.db-wal
+*.db-shm

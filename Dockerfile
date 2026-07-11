@@ -35,12 +35,17 @@ ENV NODE_ENV=production \
     PORT=3000 \
     HOSTNAME=0.0.0.0 \
     NEXT_TELEMETRY_DISABLED=1 \
-    DATA_DIR=/data
+    DATA_DIR=/data \
+    DB_MIGRATIONS_DIR=/app/db/migrations \
+    DB_SEED_DIR=/app/seed
 
 # Next-standalone spiegelt das Monorepo-Layout ab dem Tracing-Root wider.
 COPY --from=builder /app/apps/web/.next/standalone ./
 COPY --from=builder /app/apps/web/.next/static ./apps/web/.next/static
 COPY --from=builder /app/apps/web/public ./apps/web/public
+# Migrationen + Seed (DB + Media) für Seed-on-Boot ins Image.
+COPY --from=builder /app/db ./db
+COPY --from=builder /app/seed ./seed
 
 # Non-Root-User (uid/gid 1001) + persistentes Datenverzeichnis.
 RUN addgroup --system --gid 1001 app \
