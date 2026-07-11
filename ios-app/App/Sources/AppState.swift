@@ -2,12 +2,14 @@ import SwiftUI
 
 @MainActor
 final class AppState: ObservableObject {
-    enum MainTab: Hashable { case camera, inbox, settings }
+    enum MainTab: Hashable { case heute, foto, inbox, scan, mehr, search }
 
-    @Published var selectedTab: MainTab = .camera
+    @Published var selectedTab: MainTab = .heute
     @Published var lebensbereiche: [Lebensbereich] = []
     @Published var inbox: [FotoInboxItem] = []
     @Published var inboxNeu: Int = 0
+    @Published var dashboard: DashboardToday?
+    @Published var dashboardError: String?
 
     let settings: Settings
     let api: APIClient
@@ -20,6 +22,7 @@ final class AppState: ObservableObject {
     func start() {
         Task { await loadLebensbereiche() }
         Task { await loadInbox() }
+        Task { await loadDashboard() }
     }
 
     func loadLebensbereiche() async {
@@ -30,6 +33,15 @@ final class AppState: ObservableObject {
         if let list = try? await api.inbox() {
             inbox = list
             inboxNeu = list.filter { $0.status == "neu" }.count
+        }
+    }
+
+    func loadDashboard() async {
+        do {
+            dashboard = try await api.dashboard()
+            dashboardError = nil
+        } catch {
+            dashboardError = (error as? APIError)?.errorDescription ?? "Konnte Heute-Übersicht nicht laden."
         }
     }
 

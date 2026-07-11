@@ -95,6 +95,49 @@ struct GradientButtonStyle: ButtonStyle {
     }
 }
 
+/// Inhaltskarte (Material-Fläche, abgerundet, weicher Schatten). Glas bleibt der
+/// Navigations-/Steuerebene vorbehalten (iOS-26-HIG: „Glass cannot sample other glass").
+struct CardSurface: ViewModifier {
+    var cornerRadius: CGFloat = 20
+    func body(content: Content) -> some View {
+        content
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous).strokeBorder(.white.opacity(0.08)))
+            .shadow(color: .black.opacity(0.08), radius: 12, y: 6)
+    }
+}
+extension View {
+    func cardSurface(cornerRadius: CGFloat = 20) -> some View { modifier(CardSurface(cornerRadius: cornerRadius)) }
+}
+
+/// Große Verlaufs-Kachel (Scan-Hub / Schnellaktionen).
+struct TileButtonStyle: ButtonStyle {
+    var gradientKey: String
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .frame(maxWidth: .infinity, minHeight: 120)
+            .background(Palette.gradient(for: gradientKey), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .foregroundStyle(.white)
+            .shadow(color: Palette.colors(for: gradientKey).first!.opacity(0.4), radius: 12, y: 6)
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .animation(.snappy(duration: 0.15), value: configuration.isPressed)
+    }
+}
+
+/// Rundes Verlaufs-Icon (Karten-Header, Listen-Akzent).
+struct GradientIcon: View {
+    let systemName: String
+    let gradientKey: String?
+    var size: CGFloat = 40
+    var body: some View {
+        Image(systemName: systemName)
+            .font(.system(size: size * 0.46, weight: .semibold))
+            .foregroundStyle(.white)
+            .frame(width: size, height: size)
+            .background(Palette.gradient(for: gradientKey), in: RoundedRectangle(cornerRadius: size * 0.28, style: .continuous))
+    }
+}
+
 /// Markenzeichen für den Login-Header — Haus mit hartem Offset-Schatten.
 struct BrandMark: View {
     var size: CGFloat = 84

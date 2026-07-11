@@ -15,24 +15,34 @@ struct RootView: View {
     }
 }
 
+/// iOS-26-Tab-Bar mit Liquid Glass: minimiert beim Scrollen, eigene Such-Rolle (schwebender Button).
 struct MainTabView: View {
     @EnvironmentObject private var app: AppState
 
     var body: some View {
         TabView(selection: $app.selectedTab) {
-            CameraView()
-                .tabItem { Label("Foto", systemImage: "camera.fill") }
-                .tag(AppState.MainTab.camera)
+            Tab("Heute", systemImage: "square.grid.2x2.fill", value: AppState.MainTab.heute) {
+                HeuteView()
+            }
+            Tab("Foto", systemImage: "camera.fill", value: AppState.MainTab.foto) {
+                CameraView()
+            }
+            Tab("Inbox", systemImage: "tray.full.fill", value: AppState.MainTab.inbox) {
+                InboxView()
+            }
+            .badge(app.inboxNeu)
 
-            InboxView()
-                .tabItem { Label("Inbox", systemImage: "tray.full.fill") }
-                .badge(app.inboxNeu)
-                .tag(AppState.MainTab.inbox)
-
-            SettingsView()
-                .tabItem { Label("Einstellungen", systemImage: "gearshape.fill") }
-                .tag(AppState.MainTab.settings)
+            Tab("Scannen", systemImage: "barcode.viewfinder", value: AppState.MainTab.scan) {
+                ScanHubView()
+            }
+            Tab("Einstellungen", systemImage: "gearshape.fill", value: AppState.MainTab.mehr) {
+                SettingsView()
+            }
+            Tab("Suchen", systemImage: "magnifyingglass", value: AppState.MainTab.search, role: .search) {
+                SearchView()
+            }
         }
+        .tabBarMinimizeBehavior(.onScrollDown)
         .task {
             app.start()
             AppDelegate.requestPushAuthorization()

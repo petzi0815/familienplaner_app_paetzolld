@@ -8,7 +8,7 @@ struct FotoHinzufuegenIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        AppDelegate.appState?.selectedTab = .camera
+        AppDelegate.appState?.selectedTab = .foto
         return .result()
     }
 }

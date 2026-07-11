@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import UserNotifications
 
 /// Registriert das APNs-Device-Token und meldet es ans Backend (POST /api/v1/push/register).
@@ -30,12 +31,15 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         // Best-effort — ohne Push läuft die App normal weiter.
     }
 
-    /// Home-Screen-Quick-Action (Icon-Longpress) → Foto-Tab.
+    /// Home-Screen-Quick-Actions (Icon-Longpress) → passender Tab.
     func application(_ application: UIApplication,
                      performActionFor shortcutItem: UIApplicationShortcutItem,
                      completionHandler: @escaping (Bool) -> Void) {
-        if shortcutItem.type.hasSuffix("newphoto") {
-            Task { @MainActor in AppDelegate.appState?.selectedTab = .camera }
+        let type = shortcutItem.type
+        Task { @MainActor in
+            if type.hasSuffix("newphoto") { AppDelegate.appState?.selectedTab = .foto }
+            else if type.hasSuffix("scanbook") { AppDelegate.appState?.selectedTab = .scan }
+            else if type.hasSuffix("today") { AppDelegate.appState?.selectedTab = .heute }
         }
         completionHandler(true)
     }

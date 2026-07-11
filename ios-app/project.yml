@@ -4,7 +4,7 @@ name: Familienplaner
 options:
   bundleIdPrefix: app.yagemi
   deploymentTarget:
-    iOS: "17.0"
+    iOS: "26.0"                     # nur neueste iPhones — Liquid Glass, Foundation Models
   createIntermediateGroups: true
   minimumXcodeGenVersion: "2.38.0"
 
@@ -43,14 +43,21 @@ targets:
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         UILaunchScreen: {}
         ITSAppUsesNonExemptEncryption: false
-        NSCameraUsageDescription: "Zum Aufnehmen von Fotos für den Familienplaner."
+        NSCameraUsageDescription: "Zum Aufnehmen von Fotos und Scannen von Barcodes (Bücher-ISBN, Lebensmittel)."
         NSPhotoLibraryUsageDescription: "Zum Auswählen von Fotos aus der Mediathek."
+        NSCalendarsWriteOnlyAccessUsageDescription: "Zum Eintragen von Terminen und Ereignissen in deinen iOS-Kalender."
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         UIApplicationShortcutItems:
           - UIApplicationShortcutItemType: app.yagemi.familienplaner.newphoto
             UIApplicationShortcutItemTitle: Foto aufnehmen
             UIApplicationShortcutItemIconType: UIApplicationShortcutIconTypeCompose
+          - UIApplicationShortcutItemType: app.yagemi.familienplaner.scanbook
+            UIApplicationShortcutItemTitle: Buch scannen
+            UIApplicationShortcutItemIconType: UIApplicationShortcutIconTypeBookmark
+          - UIApplicationShortcutItemType: app.yagemi.familienplaner.today
+            UIApplicationShortcutItemTitle: Was steht heute an
+            UIApplicationShortcutItemIconType: UIApplicationShortcutIconTypeDate
 
 schemes:
   Familienplaner:

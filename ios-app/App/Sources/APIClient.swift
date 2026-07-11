@@ -145,6 +145,36 @@ final class APIClient {
         _ = try await send("/push/register", method: "POST", body: body)
     }
 
+    /// Kompakter Tageszustand fürs „Heute"-Dashboard.
+    func dashboard() async throws -> DashboardToday {
+        try await get("/dashboard/today", as: DashboardToday.self)
+    }
+
+    /// Ressourcenübergreifende Volltextsuche.
+    func search(_ q: String) async throws -> SearchResponse {
+        try await get("/search", query: [URLQueryItem(name: "q", value: q)], as: SearchResponse.self)
+    }
+
+    func trips(limit: Int = 50) async throws -> [Trip] {
+        try await get("/reisen",
+                      query: [URLQueryItem(name: "limit", value: String(limit)), URLQueryItem(name: "sort", value: "start_date:desc")],
+                      as: TripList.self).data
+    }
+
+    func tripActivities(tripId: Int) async throws -> [TripActivity] {
+        try await get("/reisen-activities",
+                      query: [URLQueryItem(name: "trip_id", value: String(tripId)), URLQueryItem(name: "limit", value: "200")],
+                      as: TripActivityList.self).data
+    }
+
+    /// Generischer Insert (POST /api/v1/<resource>) — Felder müssen echte Spalten sein.
+    @discardableResult
+    func createRecord(_ resource: String, fields: [String: Any]) async throws -> [String: Any] {
+        let body = try JSONSerialization.data(withJSONObject: fields)
+        let data = try await send("/\(resource)", method: "POST", body: body)
+        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+    }
+
     /// Media (Thumbnails) auth-bewusst laden — /api/v1/media/… braucht den Bearer-Header.
     func loadMedia(pathOrUrl: String) async throws -> Data {
         let full = pathOrUrl.hasPrefix("http") ? pathOrUrl : base + pathOrUrl
