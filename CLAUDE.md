@@ -6,17 +6,22 @@
 
 ## ▶️ WIEDERAUFNAHME (nächste Session) — START HIER
 
-**Stand (2026-07-11): Phase 0 — Fundament im Aufbau.**
+**Stand (2026-07-11): Phase 0 — Fundament FERTIG & gepusht (commit `19247ad`).**
 Migration des lokal (Synology) laufenden Familienplaners in ein API-first Monorepo mit
 Autodeploy via GitHub → Coolify. Bestätigte Entscheidungen (siehe Tabelle unten):
 Next.js-Fullstack behalten & zu Monorepo ausbauen · EINE konsolidierte SQLite auf `/data` ·
 API-Key (Agent „Ole") + Familien-Passwort-Login (UI) · vollständige Migration in Phasen.
-Zielrepo: `https://github.com/petzi0815/familienplaner_app_paetzolld`.
-Vollständiger Plan: `docs/MIGRATION_PLAN.md`.
+Zielrepo: `https://github.com/petzi0815/familienplaner_app_paetzolld` (main gepusht).
+Monorepo-Skelett steht: `apps/web` (Next 16), Dockerfile (standalone via `NEXT_OUTPUT_STANDALONE=1`),
+compose, Observability (Logger + Ring-Buffer + Sentry env-gated), `/healthz` `/version` `/api/v1`
+`/api/v1/debug/logs` `/api/v1/docs`. Lokal verifiziert: build+typecheck+lint grün, Endpunkte live.
 
-**Nächste Schritte:** P0 fertigstellen (Skelett bauen + lokal `next build` grün + Repo pushen +
-Coolify-App anlegen → live Shell, `/version`+`/healthz` prüfen), dann P1 (DB-Konsolidierung +
-Datenmigration). Offene Punkte: Coolify-Domain (env `PUBLIC_BASE_URL`), Verträge-Zielschema.
+**Offen (Lars, manuell):** Coolify-App anlegen (Build Pack Dockerfile, Port 3000, Volume `/data`,
+Env `PUBLIC_BASE_URL`+`ADMIN_PASSWORD`+`SESSION_SECRET`) → live Shell; dann `/version`+`/healthz`
+prüfen. Anleitung: `docs/DEPLOYMENT.md`.
+**Nächste Schritte (Claude):** P1 — DB-Konsolidierungsschema + Migrations-Runner + Import der 12
+Legacy-SQLite + `vertraege.json` (ID-erhaltend) + Media-Move/Rewrite + `verify-import.ts`
+(Row-Counts vs. `docs/DATABASES.md`) + Backup/Restore. Offene Punkte: Coolify-Domain, Verträge-Zielschema.
 
 ## Grundsatz-Entscheidungen
 
@@ -104,9 +109,14 @@ Geschenkplaner · Garten · Vorratskammer · Gypsi (Katzenfutter) · Reiniger ·
 - Grundsatz-Entscheidungen via AskUserQuestion bestätigt (Tabelle oben).
 - Vollständiger Plan geschrieben: `docs/MIGRATION_PLAN.md`. Memory angelegt
   ([[projekt-familienplaner]], [[familienplaner-referenzmuster]]).
-- **P0 begonnen:** Monorepo-Skelett (npm workspaces, apps/web), Dockerfile (multi-stage
-  standalone, /data-Volume), docker-compose, .env.example, CI (disabled), Observability
-  (Logger + Ring-Buffer + Sentry-Hook), `/healthz`+`/version`+`/api/v1/debug/logs`.
+- **P0 FERTIG (commit `19247ad`, gepusht):** Monorepo-Skelett (npm workspaces, apps/web),
+  Dockerfile (multi-stage standalone, /data-Volume), docker-compose, .env.example, CI (disabled),
+  Observability (Logger + Ring-Buffer + Sentry-Hook), `/healthz`+`/version`+`/api/v1`+`/api/v1/debug/logs`+`/api/v1/docs`.
+  - **Lesson (Windows):** Next 16/Turbopack + `output:'standalone'` scheitert lokal auf Windows am
+    `:` in Chunknamen (`node:inspector`) beim Standalone-Copy → `EINVAL copyfile`. Gelöst: Standalone
+    nur im Docker-Build (`NEXT_OUTPUT_STANDALONE=1` im Dockerfile), lokal/CI ohne. Der Compile/Typecheck
+    lief davor bereits grün — reines OS-Copy-Problem, auf Linux (Coolify) irrelevant.
+  - **Lesson:** eigener Mini-Logger statt pino (vermeidet Worker/Transport-Probleme im standalone-Bundle).
 
 ## graphify
 
