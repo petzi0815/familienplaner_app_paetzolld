@@ -24,6 +24,9 @@ targets:
     sources:
       - path: App/Sources
       - path: App/Resources
+      - path: Shared          # SharedStore (App Group) — auch im Widget-Target
+    dependencies:
+      - target: FamilienplanerWidgets   # Extension einbetten
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.yagemi.familienplaner
@@ -35,6 +38,8 @@ targets:
       path: App/Familienplaner.entitlements
       properties:
         aps-environment: production   # TestFlight/App Store nutzt Production-APNs
+        com.apple.security.application-groups:
+          - group.app.yagemi.familienplaner
     info:
       path: App/Info.plist
       properties:
@@ -58,6 +63,32 @@ targets:
           - UIApplicationShortcutItemType: app.yagemi.familienplaner.today
             UIApplicationShortcutItemTitle: Was steht heute an
             UIApplicationShortcutItemIconType: UIApplicationShortcutIconTypeDate
+
+  # ── Widget-Extension (Home-/Lock-Screen/StandBy) ──
+  FamilienplanerWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Widgets
+      - path: Shared          # SharedStore (App Group) geteilt mit der App
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.yagemi.familienplaner.widgets
+        TARGETED_DEVICE_FAMILY: "1"           # iPhone
+        PROVISIONING_PROFILE_SPECIFIER: "$(WIDGET_PROFILE_NAME)"
+    entitlements:
+      path: Widgets/FamilienplanerWidgets.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.app.yagemi.familienplaner
+    info:
+      path: Widgets/Info.plist
+      properties:
+        CFBundleDisplayName: Familienplaner
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
 
 schemes:
   Familienplaner:
