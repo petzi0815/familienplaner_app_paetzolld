@@ -7,14 +7,16 @@
 export async function register(): Promise<void> {
   const runtime = process.env.NEXT_RUNTIME;
 
-  // DB initialisieren (Seed ins DATA_DIR + Migrationen) beim Start.
+  // DB initialisieren (Seed ins DATA_DIR + Migrationen) + Job-Scheduler starten.
   if (runtime === "nodejs") {
     try {
       const { getDb } = await import("@/server/db/connection");
       getDb();
+      const { startScheduler } = await import("@/server/jobs/scheduler");
+      startScheduler();
     } catch (e) {
       const { log } = await import("@/server/observability/logger");
-      log.error("DB-Init beim Start fehlgeschlagen", { error: String(e) });
+      log.error("Start-Init (DB/Scheduler) fehlgeschlagen", { error: String(e) });
     }
   }
 

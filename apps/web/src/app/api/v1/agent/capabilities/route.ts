@@ -42,6 +42,8 @@ export function GET(req: Request): Response {
       today: "GET /api/v1/dashboard/today",
       reminders_due: "GET /api/v1/reminders/due",
       reminder_sent: "POST /api/v1/reminders/{id}/sent",
+      jobs: "GET /api/v1/jobs",
+      job_run: "POST /api/v1/jobs/{name}/run  (?dry_run=1)",
     },
     domains: [...new Set(RESOURCES.map((r) => r.domain))],
     resources,

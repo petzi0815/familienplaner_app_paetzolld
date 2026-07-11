@@ -25,6 +25,9 @@ export const config = {
   sentryDsn: env("SENTRY_DSN"),
   sentryEnvironment: env("SENTRY_ENVIRONMENT", "production"),
 
+  // Jobs/Scheduler (Standard an; einzelne Notify-Sends sind zusätzlich token-gated)
+  jobsEnabled: env("JOBS_ENABLED", "1") !== "0",
+
   // Integrationen (optional)
   openaiApiKey: env("OPENAI_API_KEY"),
   telegram: {
