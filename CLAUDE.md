@@ -15,9 +15,11 @@ OpenAPI, API.md. **FTS5-Volltext live** (fts_index, ins CRUD integriert). **Bild
 (`/api/v1/media/upload` — JSON-Base64 **oder** multipart, optional `resource`+`id` → direkt an den Datensatz
 angehängt) + Upload-Button in der UI. **Reise-Doc-Download/Upload** (`/api/v1/files/reisen-docs`),
 **Schnellaktionen** (Geschenk „vergeben", Samu „aussortieren") in der UI. **graphify-Graph** generiert (`graphify-out/`, 221 Nodes/15 Communities, AST-only).
-**Offen/optional:** **`SENTRY_DSN` in Coolify setzen** (Projekt `yagemi/familienplaner` angelegt, DSN verifiziert —
-App ist bereits verdrahtet, aktiviert sich mit der Env). iOS-App bauen (API vorbereitet), Cloudflare-Cache-Regel
-„Bypass /api/*", elisbooks-Cover (nicht im Export).
+**iOS-App:** native SwiftUI-App gebaut (`ios-app/`, Foto → Bereich → Upload in den Foto-Eingang) + Backend-Feature
+**Foto-Inbox** (`foto_inbox`, `POST /api/v1/foto/upload`, Ole kategorisiert). Build via GitHub Actions
+(`.github/workflows-disabled/ios.yml` → aktivieren) — braucht Apple-Signing-Secrets (siehe `docs/IOS.md`).
+**Offen/optional:** **`SENTRY_DSN` in Coolify setzen** (Projekt `yagemi/familienplaner`, DSN verifiziert);
+Apple-App-Record + Signing-Secrets für den iOS-TestFlight-Build; Cloudflare-Cache-Regel „Bypass /api/*".
 
 <!-- Historie P0 -->
 **Stand (2026-07-11): Phase 0 — Fundament FERTIG & gepusht (commit `19247ad`).**
@@ -114,6 +116,20 @@ Geschenkplaner · Garten · Vorratskammer · Gypsi (Katzenfutter) · Reiniger ·
   committen; nach Push per `/version` verifizieren. Secrets nur via `.env`/Coolify.
 
 ## Dev-Log (jüngste zuerst)
+
+### Update 6 (2026-07-11) — iOS-App + Foto-Inbox-Feature
+- **Foto-Inbox (Backend, `4fe7024`, live):** Migration 0004 `foto_inbox` (storage_key, bereich, status
+  neu/in_bearbeitung/zugeordnet/verworfen, notiz, analyse, zugeordnet_resource/id) + Dashboard-Kachel.
+  `POST /api/v1/foto/upload` (multipart **oder** JSON-Base64) → Datei nach media/foto-inbox/ + Eintrag `neu`.
+  Ressource `foto-inbox` im generischen CRUD. Agent-Workflow: `GET ?status=neu` → analysieren →
+  `PATCH {status:zugeordnet,…}` (+ Bild via /media/upload {resource,id} anhängen). Lokal verifiziert.
+- **iOS-App (`ios-app/`, native SwiftUI, iOS 17+):** Login (Base-URL+API-Key, Keychain) → TabView Foto/Inbox/
+  Einstellungen. Kernfeature: `UIImagePickerController` (Kamera/Mediathek) → `jpegForUpload` → multipart an
+  `/api/v1/foto/upload` mit Bereich-Picker (aus `/lebensbereiche`). Inbox mit auth-bewussten Thumbnails.
+  Muster (Keychain, API-Client, Multipart, xcodegen/fastlane) via Workflow aus dem Referenzprojekt extrahiert.
+  Build: xcodegen + fastlane → TestFlight (`.github/workflows-disabled/ios.yml`, `docs/IOS.md`).
+  **Review (Subagent): 0 Blocker, baubar.** Kann hier nicht kompiliert werden (kein Mac) → Validierung im CI.
+  **Lesson:** „APN Punkte" (Lars) = API-Punkte/Endpunkte, kein Push nötig.
 
 ### Update 5 (2026-07-11) — Ole-Testfeedback-Fix + Sentry-Projekt
 - **Create-500-Bug gefixt (`f99ab4d`, live):** Ole-Abnahmetest — create bei `garten-duenger`,

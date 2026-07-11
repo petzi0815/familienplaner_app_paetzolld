@@ -1,0 +1,24 @@
+# Von xcodegen generiert — nicht committen
+*.xcodeproj/
+App/Info.plist
+
+# Build-Artefakte
+build/
+DerivedData/
+*.ipa
+*.dSYM.zip
+
+# Ruby / fastlane
+vendor/bundle/
+.bundle/
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/test_output/
+
+# Signing-Material NIEMALS committen
+*.p8
+*.p12
+*.mobileprovision
+*.cer
+
+.DS_Store
