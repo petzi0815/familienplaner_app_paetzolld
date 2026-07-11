@@ -1,0 +1,17 @@
+**/node_modules
+**/.next
+**/out
+**/build
+**/coverage
+.git
+.github
+graphify-out
+docs
+_legacy
+data
+**/.env
+**/.env.*
+!**/.env.example
+*.md
+!apps/web/README.md
+npm-debug.log*

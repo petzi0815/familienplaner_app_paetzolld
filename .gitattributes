@@ -1,0 +1,8 @@
+# Einheitliche Zeilenenden (LF) — der Build läuft auf Linux (Docker/Coolify).
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.woff binary
+*.woff2 binary

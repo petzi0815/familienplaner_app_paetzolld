@@ -1,0 +1,729 @@
+[
+  {
+    "route": "/api/bedarf",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/bedarf/route.ts"
+  },
+  {
+    "route": "/api/bedarf/[id]",
+    "methods": [
+      "GET",
+      "PATCH",
+      "DELETE"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/bedarf/[id]/route.ts"
+  },
+  {
+    "route": "/api/buecher",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/buecher/route.ts"
+  },
+  {
+    "route": "/api/buecher/[id]",
+    "methods": [
+      "GET",
+      "PATCH",
+      "DELETE"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/buecher/[id]/route.ts"
+  },
+  {
+    "route": "/api/buecher/download",
+    "methods": [
+      "POST",
+      "GET"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/buecher/download/route.ts"
+  },
+  {
+    "route": "/api/buecher/enrich",
+    "methods": [
+      "GET"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/buecher/enrich/route.ts"
+  },
+  {
+    "route": "/api/buecher/retry",
+    "methods": [
+      "POST"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/buecher/retry/route.ts"
+  },
+  {
+    "route": "/api/buecher/search",
+    "methods": [
+      "GET"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/buecher/search/route.ts"
+  },
+  {
+    "route": "/api/elisbooks/books",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/elisbooks/books/route.ts"
+  },
+  {
+    "route": "/api/elisbooks/books/[id]",
+    "methods": [
+      "GET",
+      "PATCH",
+      "DELETE"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/elisbooks/books/[id]/route.ts"
+  },
+  {
+    "route": "/api/elisbooks/books/bulk",
+    "methods": [
+      "POST"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/elisbooks/books/bulk/route.ts"
+  },
+  {
+    "route": "/api/elisbooks/bookshelves",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/elisbooks/bookshelves/route.ts"
+  },
+  {
+    "route": "/api/elisbooks/bookshelves/[id]",
+    "methods": [
+      "GET",
+      "PATCH",
+      "DELETE"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/elisbooks/bookshelves/[id]/route.ts"
+  },
+  {
+    "route": "/api/elisbooks/bookshelves/bulk",
+    "methods": [
+      "POST"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/elisbooks/bookshelves/bulk/route.ts"
+  },
+  {
+    "route": "/api/elisbooks/covers/[...path]",
+    "methods": [
+      "GET"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/elisbooks/covers/[...path]/route.ts"
+  },
+  {
+    "route": "/api/elisbooks/functions/ai-metadata-cleaner",
+    "methods": [
+      "POST"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/elisbooks/functions/ai-metadata-cleaner/route.ts"
+  },
+  {
+    "route": "/api/elisbooks/functions/ai-metadata-enhancer",
+    "methods": [
+      "POST"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/elisbooks/functions/ai-metadata-enhancer/route.ts"
+  },
+  {
+    "route": "/api/elisbooks/functions/openai-book-recommendations",
+    "methods": [
+      "POST"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/elisbooks/functions/openai-book-recommendations/route.ts"
+  },
+  {
+    "route": "/api/elisbooks/functions/shelf-scanner-ocr",
+    "methods": [
+      "POST"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/elisbooks/functions/shelf-scanner-ocr/route.ts"
+  },
+  {
+    "route": "/api/elisbooks/settings",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/elisbooks/settings/route.ts"
+  },
+  {
+    "route": "/api/elisbooks/stats",
+    "methods": [
+      "GET"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/elisbooks/stats/route.ts"
+  },
+  {
+    "route": "/api/elisbooks/wishlist",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/elisbooks/wishlist/route.ts"
+  },
+  {
+    "route": "/api/elisbooks/wishlist/[id]",
+    "methods": [
+      "PATCH",
+      "DELETE"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/elisbooks/wishlist/[id]/route.ts"
+  },
+  {
+    "route": "/api/elisbooks/wishlist/bulk",
+    "methods": [
+      "POST"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/elisbooks/wishlist/bulk/route.ts"
+  },
+  {
+    "route": "/api/garten/aufgaben",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/garten/aufgaben/route.ts"
+  },
+  {
+    "route": "/api/garten/aufgaben/[id]",
+    "methods": [
+      "GET",
+      "PUT",
+      "DELETE"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/garten/aufgaben/[id]/route.ts"
+  },
+  {
+    "route": "/api/garten/duenger",
+    "methods": [
+      "GET",
+      "POST",
+      "PUT",
+      "DELETE"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/garten/duenger/route.ts"
+  },
+  {
+    "route": "/api/garten/duenger/[id]",
+    "methods": [
+      "GET"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/garten/duenger/[id]/route.ts"
+  },
+  {
+    "route": "/api/garten/duenger/link",
+    "methods": [
+      "POST",
+      "DELETE"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/garten/duenger/link/route.ts"
+  },
+  {
+    "route": "/api/garten/gts",
+    "methods": [
+      "GET"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/garten/gts/route.ts"
+  },
+  {
+    "route": "/api/garten/images/[...path]",
+    "methods": [
+      "GET"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/garten/images/[...path]/route.ts"
+  },
+  {
+    "route": "/api/garten/pflanzen",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/garten/pflanzen/route.ts"
+  },
+  {
+    "route": "/api/garten/pflanzen/[id]",
+    "methods": [
+      "GET",
+      "PUT",
+      "DELETE"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/garten/pflanzen/[id]/route.ts"
+  },
+  {
+    "route": "/api/garten/samen",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/garten/samen/route.ts"
+  },
+  {
+    "route": "/api/garten/samen/[id]",
+    "methods": [
+      "GET",
+      "PUT",
+      "DELETE"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/garten/samen/[id]/route.ts"
+  },
+  {
+    "route": "/api/garten/stats",
+    "methods": [
+      "GET"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/garten/stats/route.ts"
+  },
+  {
+    "route": "/api/geschenkplaner/dashboard",
+    "methods": [
+      "GET"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/geschenkplaner/dashboard/route.ts"
+  },
+  {
+    "route": "/api/geschenkplaner/ereignisse",
+    "methods": [
+      "GET"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/geschenkplaner/ereignisse/route.ts"
+  },
+  {
+    "route": "/api/geschenkplaner/ereignisse/[id]",
+    "methods": [
+      "GET",
+      "PATCH"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/geschenkplaner/ereignisse/[id]/route.ts"
+  },
+  {
+    "route": "/api/geschenkplaner/ereignisse/generieren",
+    "methods": [
+      "POST"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/geschenkplaner/ereignisse/generieren/route.ts"
+  },
+  {
+    "route": "/api/geschenkplaner/geschenke",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/geschenkplaner/geschenke/route.ts"
+  },
+  {
+    "route": "/api/geschenkplaner/geschenke/[id]",
+    "methods": [
+      "GET",
+      "PATCH",
+      "DELETE"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/geschenkplaner/geschenke/[id]/route.ts"
+  },
+  {
+    "route": "/api/geschenkplaner/geschenke/[id]/schon-geschenkt",
+    "methods": [
+      "POST"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/geschenkplaner/geschenke/[id]/schon-geschenkt/route.ts"
+  },
+  {
+    "route": "/api/geschenkplaner/geschenke/[id]/vergeben",
+    "methods": [
+      "POST"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/geschenkplaner/geschenke/[id]/vergeben/route.ts"
+  },
+  {
+    "route": "/api/geschenkplaner/kinder",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/geschenkplaner/kinder/route.ts"
+  },
+  {
+    "route": "/api/geschenkplaner/kinder/[id]",
+    "methods": [
+      "GET",
+      "PATCH",
+      "DELETE"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/geschenkplaner/kinder/[id]/route.ts"
+  },
+  {
+    "route": "/api/geschenkplaner/kinder/[id]/anlaesse",
+    "methods": [
+      "GET",
+      "PUT"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/geschenkplaner/kinder/[id]/anlaesse/route.ts"
+  },
+  {
+    "route": "/api/geschenkplaner/kinder/[id]/profil-bestaetigen",
+    "methods": [
+      "POST"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/geschenkplaner/kinder/[id]/profil-bestaetigen/route.ts"
+  },
+  {
+    "route": "/api/geschenkplaner/vergangene-geschenke",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/geschenkplaner/vergangene-geschenke/route.ts"
+  },
+  {
+    "route": "/api/geschenkplaner/vergangene-geschenke/[id]",
+    "methods": [
+      "DELETE"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/geschenkplaner/vergangene-geschenke/[id]/route.ts"
+  },
+  {
+    "route": "/api/gypsi/futter",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/gypsi/futter/route.ts"
+  },
+  {
+    "route": "/api/gypsi/futter/[id]",
+    "methods": [
+      "GET",
+      "PATCH",
+      "DELETE"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/gypsi/futter/[id]/route.ts"
+  },
+  {
+    "route": "/api/gypsi/images/[...path]",
+    "methods": [
+      "GET"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/gypsi/images/[...path]/route.ts"
+  },
+  {
+    "route": "/api/images/[...path]",
+    "methods": [
+      "GET"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/images/[...path]/route.ts"
+  },
+  {
+    "route": "/api/items",
+    "methods": [
+      "GET"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/items/route.ts"
+  },
+  {
+    "route": "/api/items/[id]",
+    "methods": [
+      "GET",
+      "PUT",
+      "DELETE"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/items/[id]/route.ts"
+  },
+  {
+    "route": "/api/marken",
+    "methods": [
+      "GET"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/marken/route.ts"
+  },
+  {
+    "route": "/api/marken/[name]",
+    "methods": [
+      "GET"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/marken/[name]/route.ts"
+  },
+  {
+    "route": "/api/reiniger",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/reiniger/route.ts"
+  },
+  {
+    "route": "/api/reiniger/[id]",
+    "methods": [
+      "GET",
+      "PATCH",
+      "DELETE"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/reiniger/[id]/route.ts"
+  },
+  {
+    "route": "/api/reiniger/images/[...path]",
+    "methods": [
+      "GET"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/reiniger/images/[...path]/route.ts"
+  },
+  {
+    "route": "/api/reisen",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/reisen/route.ts"
+  },
+  {
+    "route": "/api/reisen/[id]",
+    "methods": [
+      "GET",
+      "PATCH",
+      "DELETE"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/reisen/[id]/route.ts"
+  },
+  {
+    "route": "/api/reisen/[id]/activities",
+    "methods": [
+      "GET",
+      "POST",
+      "DELETE"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/reisen/[id]/activities/route.ts"
+  },
+  {
+    "route": "/api/reisen/[id]/dayplans",
+    "methods": [
+      "POST"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/reisen/[id]/dayplans/route.ts"
+  },
+  {
+    "route": "/api/reisen/[id]/docs",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/reisen/[id]/docs/route.ts"
+  },
+  {
+    "route": "/api/reisen/[id]/docs/[docId]",
+    "methods": [
+      "GET",
+      "DELETE"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/reisen/[id]/docs/[docId]/route.ts"
+  },
+  {
+    "route": "/api/reisen/[id]/packing",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/reisen/[id]/packing/route.ts"
+  },
+  {
+    "route": "/api/reisen/[id]/restaurants",
+    "methods": [
+      "GET",
+      "POST",
+      "DELETE"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/reisen/[id]/restaurants/route.ts"
+  },
+  {
+    "route": "/api/reisen/[id]/weather-live",
+    "methods": [
+      "GET"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/reisen/[id]/weather-live/route.ts"
+  },
+  {
+    "route": "/api/reisen/wochenende/[id]",
+    "methods": [
+      "GET"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/reisen/wochenende/[id]/route.ts"
+  },
+  {
+    "route": "/api/smarthome/aliases",
+    "methods": [
+      "GET",
+      "POST",
+      "DELETE"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/smarthome/aliases/route.ts"
+  },
+  {
+    "route": "/api/smarthome/ask",
+    "methods": [
+      "POST",
+      "GET"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/smarthome/ask/route.ts"
+  },
+  {
+    "route": "/api/smarthome/entities",
+    "methods": [
+      "GET"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/smarthome/entities/route.ts"
+  },
+  {
+    "route": "/api/smarthome/entities/toggle-disabled",
+    "methods": [
+      "POST"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/smarthome/entities/toggle-disabled/route.ts"
+  },
+  {
+    "route": "/api/smarthome/exec",
+    "methods": [
+      "GET"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/smarthome/exec/route.ts"
+  },
+  {
+    "route": "/api/smarthome/log",
+    "methods": [
+      "GET"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/smarthome/log/route.ts"
+  },
+  {
+    "route": "/api/smarthome/prompt",
+    "methods": [
+      "GET"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/smarthome/prompt/route.ts"
+  },
+  {
+    "route": "/api/smarthome/relationships",
+    "methods": [
+      "GET",
+      "POST",
+      "DELETE",
+      "PATCH"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/smarthome/relationships/route.ts"
+  },
+  {
+    "route": "/api/smarthome/stats",
+    "methods": [
+      "GET"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/smarthome/stats/route.ts"
+  },
+  {
+    "route": "/api/termine",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/termine/route.ts"
+  },
+  {
+    "route": "/api/termine/[id]",
+    "methods": [
+      "GET",
+      "PATCH",
+      "DELETE"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/termine/[id]/route.ts"
+  },
+  {
+    "route": "/api/vorratskammer",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/vorratskammer/route.ts"
+  },
+  {
+    "route": "/api/vorratskammer/[id]",
+    "methods": [
+      "GET",
+      "PATCH",
+      "DELETE"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/vorratskammer/[id]/route.ts"
+  },
+  {
+    "route": "/api/vorratskammer/images/[...path]",
+    "methods": [
+      "GET"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/vorratskammer/images/[...path]/route.ts"
+  },
+  {
+    "route": "/api/vorratskammer/rezepte",
+    "methods": [
+      "GET",
+      "POST",
+      "DELETE"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/vorratskammer/rezepte/route.ts"
+  },
+  {
+    "route": "/api/wunschliste/enrich",
+    "methods": [
+      "POST"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/wunschliste/enrich/route.ts"
+  },
+  {
+    "route": "/api/wunschliste/events",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/wunschliste/events/route.ts"
+  },
+  {
+    "route": "/api/wunschliste/events/[id]",
+    "methods": [
+      "GET",
+      "PATCH",
+      "DELETE"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/wunschliste/events/[id]/route.ts"
+  },
+  {
+    "route": "/api/wunschliste/items",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/wunschliste/items/route.ts"
+  },
+  {
+    "route": "/api/wunschliste/items/[id]",
+    "methods": [
+      "GET",
+      "PATCH",
+      "DELETE"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/wunschliste/items/[id]/route.ts"
+  },
+  {
+    "route": "/api/wunschliste/pricecheck",
+    "methods": [
+      "POST"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/wunschliste/pricecheck/route.ts"
+  },
+  {
+    "route": "/api/wunschliste/scrape",
+    "methods": [
+      "POST"
+    ],
+    "file": "app/familienplaner-webapp/src/app/api/wunschliste/scrape/route.ts"
+  }
+]

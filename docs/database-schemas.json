@@ -1,0 +1,1164 @@
+[
+  {
+    "file": "databases/ebook-downloader/db/wishlist.db",
+    "objects": [
+      {
+        "name": "wishlist",
+        "type": "table",
+        "sql": "CREATE TABLE wishlist (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    title TEXT NOT NULL,\n    author TEXT,\n    publisher TEXT,\n    year TEXT,\n    category TEXT,\n    description TEXT,\n    cover_url TEXT,\n    isbn TEXT,\n    language TEXT DEFAULT 'de',\n    status TEXT DEFAULT 'gesucht',\n    source_id TEXT,\n    requested_by TEXT DEFAULT 'Elita',\n    requested_at TEXT,\n    downloaded_at TEXT,\n    attempts INTEGER DEFAULT 0,\n    last_attempt TEXT,\n    notes TEXT,\n    reviews TEXT,\n    created_at TEXT DEFAULT (datetime('now')),\n    updated_at TEXT DEFAULT (datetime('now'))\n  )"
+      }
+    ],
+    "counts": [
+      {
+        "table": "wishlist",
+        "rows": 88
+      }
+    ]
+  },
+  {
+    "file": "databases/elisbooks/db/elisbooks.db",
+    "objects": [
+      {
+        "name": "idx_books_bookshelf",
+        "type": "index",
+        "sql": "CREATE INDEX idx_books_bookshelf ON books(bookshelf_id)"
+      },
+      {
+        "name": "idx_books_is_read",
+        "type": "index",
+        "sql": "CREATE INDEX idx_books_is_read ON books(is_read)"
+      },
+      {
+        "name": "idx_books_isbn",
+        "type": "index",
+        "sql": "CREATE INDEX idx_books_isbn ON books(isbn)"
+      },
+      {
+        "name": "idx_books_title",
+        "type": "index",
+        "sql": "CREATE INDEX idx_books_title ON books(title)"
+      },
+      {
+        "name": "idx_wishlist_isbn",
+        "type": "index",
+        "sql": "CREATE INDEX idx_wishlist_isbn ON wishlist(isbn)"
+      },
+      {
+        "name": "books",
+        "type": "table",
+        "sql": "CREATE TABLE books (\n    id TEXT PRIMARY KEY,\n    isbn TEXT,\n    title TEXT NOT NULL,\n    authors TEXT NOT NULL DEFAULT '[]',\n    publisher TEXT,\n    published_date TEXT,\n    description TEXT,\n    page_count INTEGER,\n    categories TEXT NOT NULL DEFAULT '[]',\n    thumbnail TEXT,\n    language TEXT DEFAULT 'de',\n    bookshelf_id TEXT REFERENCES bookshelves(id) ON DELETE SET NULL,\n    is_read INTEGER NOT NULL DEFAULT 0,\n    is_on_picklist INTEGER NOT NULL DEFAULT 0,\n    added_at TEXT NOT NULL,\n    created_at TEXT NOT NULL,\n    updated_at TEXT NOT NULL\n  )"
+      },
+      {
+        "name": "bookshelves",
+        "type": "table",
+        "sql": "CREATE TABLE bookshelves (\n    id TEXT PRIMARY KEY,\n    name TEXT NOT NULL,\n    description TEXT,\n    color TEXT NOT NULL DEFAULT '#3B82F6',\n    created_at TEXT NOT NULL,\n    updated_at TEXT NOT NULL\n  )"
+      },
+      {
+        "name": "user_settings",
+        "type": "table",
+        "sql": "CREATE TABLE user_settings (\n    id TEXT PRIMARY KEY,\n    setting_key TEXT NOT NULL UNIQUE,\n    setting_value TEXT NOT NULL DEFAULT '{}',\n    created_at TEXT NOT NULL,\n    updated_at TEXT NOT NULL\n  )"
+      },
+      {
+        "name": "wishlist",
+        "type": "table",
+        "sql": "CREATE TABLE wishlist (\n    id TEXT PRIMARY KEY,\n    title TEXT NOT NULL,\n    authors TEXT NOT NULL DEFAULT '[]',\n    publisher TEXT,\n    published_date TEXT,\n    description TEXT,\n    page_count INTEGER,\n    categories TEXT NOT NULL DEFAULT '[]',\n    thumbnail TEXT,\n    isbn TEXT,\n    source TEXT DEFAULT 'manual',\n    added_at TEXT NOT NULL,\n    created_at TEXT NOT NULL,\n    updated_at TEXT NOT NULL\n  )"
+      }
+    ],
+    "counts": [
+      {
+        "table": "books",
+        "rows": 346
+      },
+      {
+        "table": "bookshelves",
+        "rows": 7
+      },
+      {
+        "table": "user_settings",
+        "rows": 5
+      },
+      {
+        "table": "wishlist",
+        "rows": 5
+      }
+    ]
+  },
+  {
+    "file": "databases/garten/db/garten.db",
+    "objects": [
+      {
+        "name": "idx_aufgaben_erledigt",
+        "type": "index",
+        "sql": "CREATE INDEX idx_aufgaben_erledigt ON aufgaben(erledigt)"
+      },
+      {
+        "name": "idx_aufgaben_monat",
+        "type": "index",
+        "sql": "CREATE INDEX idx_aufgaben_monat ON aufgaben(monat, jahr)"
+      },
+      {
+        "name": "idx_aufgaben_pflanze",
+        "type": "index",
+        "sql": "CREATE INDEX idx_aufgaben_pflanze ON aufgaben(pflanze_id)"
+      },
+      {
+        "name": "idx_duenger_typ",
+        "type": "index",
+        "sql": "CREATE INDEX idx_duenger_typ ON duenger(typ)"
+      },
+      {
+        "name": "idx_duenger_vorraetig",
+        "type": "index",
+        "sql": "CREATE INDEX idx_duenger_vorraetig ON duenger(vorraetig)"
+      },
+      {
+        "name": "idx_pflanze_duenger_duenger",
+        "type": "index",
+        "sql": "CREATE INDEX idx_pflanze_duenger_duenger ON pflanze_duenger(duenger_id)"
+      },
+      {
+        "name": "idx_pflanze_duenger_pflanze",
+        "type": "index",
+        "sql": "CREATE INDEX idx_pflanze_duenger_pflanze ON pflanze_duenger(pflanze_id)"
+      },
+      {
+        "name": "idx_pflanzen_art",
+        "type": "index",
+        "sql": "CREATE INDEX idx_pflanzen_art ON pflanzen(art)"
+      },
+      {
+        "name": "idx_pflanzen_status",
+        "type": "index",
+        "sql": "CREATE INDEX idx_pflanzen_status ON pflanzen(status)"
+      },
+      {
+        "name": "idx_samen_aktiv",
+        "type": "index",
+        "sql": "CREATE INDEX idx_samen_aktiv ON samen(aktiv)"
+      },
+      {
+        "name": "idx_samen_nummer",
+        "type": "index",
+        "sql": "CREATE UNIQUE INDEX idx_samen_nummer ON samen(nummer)"
+      },
+      {
+        "name": "aufgaben",
+        "type": "table",
+        "sql": "CREATE TABLE aufgaben (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    pflanze_id INTEGER, -- NULL für allgemeine Aufgaben (z.B. Rasen)\n    samen_id INTEGER,\n    titel TEXT NOT NULL,\n    beschreibung TEXT,\n    kategorie TEXT NOT NULL, -- duengen, schneiden, giessen, pflanzen, ernten, maehen, lueften, aerifizieren, sanden, nachsaeen, bodenanalyse, ph_messen, vorziehen\n    monat INTEGER NOT NULL, -- 1-12\n    jahr INTEGER NOT NULL,\n    erledigt INTEGER DEFAULT 0,\n    erledigt_am DATETIME,\n    prioritaet TEXT DEFAULT 'normal' CHECK(prioritaet IN ('niedrig', 'normal', 'hoch')),\n    wiederholung TEXT, -- jaehrlich, monatlich, einmalig\n    notizen TEXT, geplant_monat INTEGER, duenger_id INTEGER REFERENCES duenger(id),\n    FOREIGN KEY (pflanze_id) REFERENCES pflanzen(id),\n    FOREIGN KEY (samen_id) REFERENCES samen(id)\n)"
+      },
+      {
+        "name": "duenger",
+        "type": "table",
+        "sql": "CREATE TABLE duenger (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    name TEXT NOT NULL,\n    marke TEXT,\n    typ TEXT CHECK(typ IN ('fluessig', 'granulat', 'staebchen', 'pulver', 'organisch', 'kompost', 'sonstig')),\n    beschreibung TEXT,\n    geeignet_fuer TEXT,\n    naehrstoffe TEXT,\n    dosierung TEXT,\n    intervall_wochen INTEGER,\n    saison_von INTEGER,\n    saison_bis INTEGER,\n    vorraetig INTEGER DEFAULT 1,\n    kauflink TEXT,\n    bild_pfade TEXT,\n    erfasst_am DATETIME DEFAULT CURRENT_TIMESTAMP,\n    aktualisiert_am DATETIME DEFAULT CURRENT_TIMESTAMP,\n    metadata TEXT,\n    notizen TEXT\n)"
+      },
+      {
+        "name": "duenger_fts",
+        "type": "table",
+        "sql": "CREATE VIRTUAL TABLE duenger_fts USING fts5(name, marke, beschreibung, geeignet_fuer, naehrstoffe, notizen, content='duenger', content_rowid='id')"
+      },
+      {
+        "name": "duenger_fts_config",
+        "type": "table",
+        "sql": "CREATE TABLE 'duenger_fts_config'(k PRIMARY KEY, v) WITHOUT ROWID"
+      },
+      {
+        "name": "duenger_fts_data",
+        "type": "table",
+        "sql": "CREATE TABLE 'duenger_fts_data'(id INTEGER PRIMARY KEY, block BLOB)"
+      },
+      {
+        "name": "duenger_fts_docsize",
+        "type": "table",
+        "sql": "CREATE TABLE 'duenger_fts_docsize'(id INTEGER PRIMARY KEY, sz BLOB)"
+      },
+      {
+        "name": "duenger_fts_idx",
+        "type": "table",
+        "sql": "CREATE TABLE 'duenger_fts_idx'(segid, term, pgno, PRIMARY KEY(segid, term)) WITHOUT ROWID"
+      },
+      {
+        "name": "pflanze_duenger",
+        "type": "table",
+        "sql": "CREATE TABLE pflanze_duenger (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    pflanze_id INTEGER NOT NULL,\n    duenger_id INTEGER,\n    duenger_typ_benoetigt TEXT,\n    empfohlen INTEGER DEFAULT 1,\n    notizen TEXT,\n    FOREIGN KEY (pflanze_id) REFERENCES pflanzen(id) ON DELETE CASCADE,\n    FOREIGN KEY (duenger_id) REFERENCES duenger(id) ON DELETE SET NULL\n)"
+      },
+      {
+        "name": "pflanzen",
+        "type": "table",
+        "sql": "CREATE TABLE pflanzen (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    name TEXT NOT NULL,\n    art TEXT NOT NULL, -- baum, strauch, staude, blume, gras, hecke, kletterpflanze, bodendecker\n    sorte TEXT,\n    standort TEXT,\n    beschreibung TEXT,\n    bewaesserung TEXT DEFAULT 'hunter' CHECK(bewaesserung IN ('hunter', 'manuell')), -- Default: Hunter bewässert\n    status TEXT DEFAULT 'aktiv' CHECK(status IN ('aktiv', 'entfernt')),\n    bild_pfade TEXT, -- JSON Array\n    erfasst_am DATETIME DEFAULT CURRENT_TIMESTAMP,\n    aktualisiert_am DATETIME DEFAULT CURRENT_TIMESTAMP,\n    metadata TEXT, -- JSON für zusätzliche KI-erkannte Infos\n    notizen TEXT\n, gts_raus INTEGER, gts_rein INTEGER, frostempfindlich INTEGER DEFAULT 0, min_temp REAL)"
+      },
+      {
+        "name": "pflanzen_fts",
+        "type": "table",
+        "sql": "CREATE VIRTUAL TABLE pflanzen_fts USING fts5(name, art, sorte, standort, beschreibung, notizen, content='pflanzen', content_rowid='id')"
+      },
+      {
+        "name": "pflanzen_fts_config",
+        "type": "table",
+        "sql": "CREATE TABLE 'pflanzen_fts_config'(k PRIMARY KEY, v) WITHOUT ROWID"
+      },
+      {
+        "name": "pflanzen_fts_data",
+        "type": "table",
+        "sql": "CREATE TABLE 'pflanzen_fts_data'(id INTEGER PRIMARY KEY, block BLOB)"
+      },
+      {
+        "name": "pflanzen_fts_docsize",
+        "type": "table",
+        "sql": "CREATE TABLE 'pflanzen_fts_docsize'(id INTEGER PRIMARY KEY, sz BLOB)"
+      },
+      {
+        "name": "pflanzen_fts_idx",
+        "type": "table",
+        "sql": "CREATE TABLE 'pflanzen_fts_idx'(segid, term, pgno, PRIMARY KEY(segid, term)) WITHOUT ROWID"
+      },
+      {
+        "name": "samen",
+        "type": "table",
+        "sql": "CREATE TABLE samen (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    nummer TEXT NOT NULL, -- Elitas physische Nummer\n    name TEXT NOT NULL,\n    art TEXT, -- Gemüse, Blume, Kräuter, etc.\n    sorte TEXT,\n    beschreibung TEXT,\n    pflanz_von INTEGER, -- Monat (1-12) ab wann pflanzen\n    pflanz_bis INTEGER, -- Monat (1-12) bis wann pflanzen\n    vorziehen_ab INTEGER, -- Monat ab wann vorziehen (indoor)\n    ernte_von INTEGER,\n    ernte_bis INTEGER,\n    standort_empfehlung TEXT, -- Sonne, Halbschatten, Schatten\n    abstand_cm INTEGER, -- Pflanzabstand\n    tiefe_cm REAL, -- Saattiefe\n    keimzeit_tage INTEGER,\n    aktiv INTEGER DEFAULT 1, -- 1=aktiv, 0=inaktiv\n    bild_pfade TEXT,\n    erfasst_am DATETIME DEFAULT CURRENT_TIMESTAMP,\n    aktualisiert_am DATETIME DEFAULT CURRENT_TIMESTAMP,\n    metadata TEXT,\n    notizen TEXT\n, aussaat_2_von INTEGER, aussaat_2_bis INTEGER, ernte_2_von INTEGER, ernte_2_bis INTEGER, hersteller TEXT, bio TEXT, samenfest INTEGER DEFAULT 0, botanisch TEXT, keimtemp TEXT, keimfaehig_bis TEXT, inhalt TEXT, verwendung TEXT, typ TEXT, herkunft TEXT, besonderheiten TEXT)"
+      },
+      {
+        "name": "samen_fts",
+        "type": "table",
+        "sql": "CREATE VIRTUAL TABLE samen_fts USING fts5(name, art, sorte, beschreibung, notizen, content='samen', content_rowid='id')"
+      },
+      {
+        "name": "samen_fts_config",
+        "type": "table",
+        "sql": "CREATE TABLE 'samen_fts_config'(k PRIMARY KEY, v) WITHOUT ROWID"
+      },
+      {
+        "name": "samen_fts_data",
+        "type": "table",
+        "sql": "CREATE TABLE 'samen_fts_data'(id INTEGER PRIMARY KEY, block BLOB)"
+      },
+      {
+        "name": "samen_fts_docsize",
+        "type": "table",
+        "sql": "CREATE TABLE 'samen_fts_docsize'(id INTEGER PRIMARY KEY, sz BLOB)"
+      },
+      {
+        "name": "samen_fts_idx",
+        "type": "table",
+        "sql": "CREATE TABLE 'samen_fts_idx'(segid, term, pgno, PRIMARY KEY(segid, term)) WITHOUT ROWID"
+      }
+    ],
+    "counts": [
+      {
+        "table": "aufgaben",
+        "rows": 241
+      },
+      {
+        "table": "duenger",
+        "rows": 15
+      },
+      {
+        "table": "duenger_fts",
+        "rows": 15
+      },
+      {
+        "table": "duenger_fts_config",
+        "rows": 1
+      },
+      {
+        "table": "duenger_fts_data",
+        "rows": 2
+      },
+      {
+        "table": "duenger_fts_docsize",
+        "rows": 0
+      },
+      {
+        "table": "duenger_fts_idx",
+        "rows": 0
+      },
+      {
+        "table": "pflanze_duenger",
+        "rows": 1
+      },
+      {
+        "table": "pflanzen",
+        "rows": 6
+      },
+      {
+        "table": "pflanzen_fts",
+        "rows": 6
+      },
+      {
+        "table": "pflanzen_fts_config",
+        "rows": 1
+      },
+      {
+        "table": "pflanzen_fts_data",
+        "rows": 2
+      },
+      {
+        "table": "pflanzen_fts_docsize",
+        "rows": 0
+      },
+      {
+        "table": "pflanzen_fts_idx",
+        "rows": 0
+      },
+      {
+        "table": "samen",
+        "rows": 57
+      },
+      {
+        "table": "samen_fts",
+        "rows": 57
+      },
+      {
+        "table": "samen_fts_config",
+        "rows": 1
+      },
+      {
+        "table": "samen_fts_data",
+        "rows": 2
+      },
+      {
+        "table": "samen_fts_docsize",
+        "rows": 0
+      },
+      {
+        "table": "samen_fts_idx",
+        "rows": 0
+      }
+    ]
+  },
+  {
+    "file": "databases/garten/db/garten_backup_2026-02-14T20-38-18.db",
+    "objects": [
+      {
+        "name": "idx_aufgaben_erledigt",
+        "type": "index",
+        "sql": "CREATE INDEX idx_aufgaben_erledigt ON aufgaben(erledigt)"
+      },
+      {
+        "name": "idx_aufgaben_monat",
+        "type": "index",
+        "sql": "CREATE INDEX idx_aufgaben_monat ON aufgaben(monat, jahr)"
+      },
+      {
+        "name": "idx_aufgaben_pflanze",
+        "type": "index",
+        "sql": "CREATE INDEX idx_aufgaben_pflanze ON aufgaben(pflanze_id)"
+      },
+      {
+        "name": "idx_pflanzen_art",
+        "type": "index",
+        "sql": "CREATE INDEX idx_pflanzen_art ON pflanzen(art)"
+      },
+      {
+        "name": "idx_pflanzen_status",
+        "type": "index",
+        "sql": "CREATE INDEX idx_pflanzen_status ON pflanzen(status)"
+      },
+      {
+        "name": "idx_samen_aktiv",
+        "type": "index",
+        "sql": "CREATE INDEX idx_samen_aktiv ON samen(aktiv)"
+      },
+      {
+        "name": "aufgaben",
+        "type": "table",
+        "sql": "CREATE TABLE aufgaben (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    pflanze_id INTEGER, -- NULL für allgemeine Aufgaben (z.B. Rasen)\n    samen_id INTEGER,\n    titel TEXT NOT NULL,\n    beschreibung TEXT,\n    kategorie TEXT NOT NULL, -- duengen, schneiden, giessen, pflanzen, ernten, maehen, lueften, aerifizieren, sanden, nachsaeen, bodenanalyse, ph_messen, vorziehen\n    monat INTEGER NOT NULL, -- 1-12\n    jahr INTEGER NOT NULL,\n    erledigt INTEGER DEFAULT 0,\n    erledigt_am DATETIME,\n    prioritaet TEXT DEFAULT 'normal' CHECK(prioritaet IN ('niedrig', 'normal', 'hoch')),\n    wiederholung TEXT, -- jaehrlich, monatlich, einmalig\n    notizen TEXT, geplant_monat INTEGER,\n    FOREIGN KEY (pflanze_id) REFERENCES pflanzen(id),\n    FOREIGN KEY (samen_id) REFERENCES samen(id)\n)"
+      },
+      {
+        "name": "pflanzen",
+        "type": "table",
+        "sql": "CREATE TABLE pflanzen (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    name TEXT NOT NULL,\n    art TEXT NOT NULL, -- baum, strauch, staude, blume, gras, hecke, kletterpflanze, bodendecker\n    sorte TEXT,\n    standort TEXT,\n    beschreibung TEXT,\n    bewaesserung TEXT DEFAULT 'hunter' CHECK(bewaesserung IN ('hunter', 'manuell')), -- Default: Hunter bewässert\n    status TEXT DEFAULT 'aktiv' CHECK(status IN ('aktiv', 'entfernt')),\n    bild_pfade TEXT, -- JSON Array\n    erfasst_am DATETIME DEFAULT CURRENT_TIMESTAMP,\n    aktualisiert_am DATETIME DEFAULT CURRENT_TIMESTAMP,\n    metadata TEXT, -- JSON für zusätzliche KI-erkannte Infos\n    notizen TEXT\n)"
+      },
+      {
+        "name": "pflanzen_fts",
+        "type": "table",
+        "sql": "CREATE VIRTUAL TABLE pflanzen_fts USING fts5(name, art, sorte, standort, beschreibung, notizen, content='pflanzen', content_rowid='id')"
+      },
+      {
+        "name": "pflanzen_fts_config",
+        "type": "table",
+        "sql": "CREATE TABLE 'pflanzen_fts_config'(k PRIMARY KEY, v) WITHOUT ROWID"
+      },
+      {
+        "name": "pflanzen_fts_data",
+        "type": "table",
+        "sql": "CREATE TABLE 'pflanzen_fts_data'(id INTEGER PRIMARY KEY, block BLOB)"
+      },
+      {
+        "name": "pflanzen_fts_docsize",
+        "type": "table",
+        "sql": "CREATE TABLE 'pflanzen_fts_docsize'(id INTEGER PRIMARY KEY, sz BLOB)"
+      },
+      {
+        "name": "pflanzen_fts_idx",
+        "type": "table",
+        "sql": "CREATE TABLE 'pflanzen_fts_idx'(segid, term, pgno, PRIMARY KEY(segid, term)) WITHOUT ROWID"
+      },
+      {
+        "name": "samen",
+        "type": "table",
+        "sql": "CREATE TABLE samen (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    nummer TEXT NOT NULL, -- Elitas physische Nummer\n    name TEXT NOT NULL,\n    art TEXT, -- Gemüse, Blume, Kräuter, etc.\n    sorte TEXT,\n    beschreibung TEXT,\n    pflanz_von INTEGER, -- Monat (1-12) ab wann pflanzen\n    pflanz_bis INTEGER, -- Monat (1-12) bis wann pflanzen\n    vorziehen_ab INTEGER, -- Monat ab wann vorziehen (indoor)\n    ernte_von INTEGER,\n    ernte_bis INTEGER,\n    standort_empfehlung TEXT, -- Sonne, Halbschatten, Schatten\n    abstand_cm INTEGER, -- Pflanzabstand\n    tiefe_cm REAL, -- Saattiefe\n    keimzeit_tage INTEGER,\n    aktiv INTEGER DEFAULT 1, -- 1=aktiv, 0=inaktiv\n    bild_pfade TEXT,\n    erfasst_am DATETIME DEFAULT CURRENT_TIMESTAMP,\n    aktualisiert_am DATETIME DEFAULT CURRENT_TIMESTAMP,\n    metadata TEXT,\n    notizen TEXT\n)"
+      },
+      {
+        "name": "samen_fts",
+        "type": "table",
+        "sql": "CREATE VIRTUAL TABLE samen_fts USING fts5(name, art, sorte, beschreibung, notizen, content='samen', content_rowid='id')"
+      },
+      {
+        "name": "samen_fts_config",
+        "type": "table",
+        "sql": "CREATE TABLE 'samen_fts_config'(k PRIMARY KEY, v) WITHOUT ROWID"
+      },
+      {
+        "name": "samen_fts_data",
+        "type": "table",
+        "sql": "CREATE TABLE 'samen_fts_data'(id INTEGER PRIMARY KEY, block BLOB)"
+      },
+      {
+        "name": "samen_fts_docsize",
+        "type": "table",
+        "sql": "CREATE TABLE 'samen_fts_docsize'(id INTEGER PRIMARY KEY, sz BLOB)"
+      },
+      {
+        "name": "samen_fts_idx",
+        "type": "table",
+        "sql": "CREATE TABLE 'samen_fts_idx'(segid, term, pgno, PRIMARY KEY(segid, term)) WITHOUT ROWID"
+      }
+    ],
+    "counts": [
+      {
+        "table": "aufgaben",
+        "rows": 216
+      },
+      {
+        "table": "pflanzen",
+        "rows": 1
+      },
+      {
+        "table": "pflanzen_fts",
+        "rows": 1
+      },
+      {
+        "table": "pflanzen_fts_config",
+        "rows": 1
+      },
+      {
+        "table": "pflanzen_fts_data",
+        "rows": 2
+      },
+      {
+        "table": "pflanzen_fts_docsize",
+        "rows": 0
+      },
+      {
+        "table": "pflanzen_fts_idx",
+        "rows": 0
+      },
+      {
+        "table": "samen",
+        "rows": 47
+      },
+      {
+        "table": "samen_fts",
+        "rows": 47
+      },
+      {
+        "table": "samen_fts_config",
+        "rows": 1
+      },
+      {
+        "table": "samen_fts_data",
+        "rows": 2
+      },
+      {
+        "table": "samen_fts_docsize",
+        "rows": 0
+      },
+      {
+        "table": "samen_fts_idx",
+        "rows": 0
+      }
+    ]
+  },
+  {
+    "file": "databases/geschenkplaner/db/geschenkplaner.db",
+    "objects": [
+      {
+        "name": "anlass_config",
+        "type": "table",
+        "sql": "CREATE TABLE anlass_config (\n      id INTEGER PRIMARY KEY AUTOINCREMENT,\n      kind_id INTEGER NOT NULL REFERENCES kinder(id) ON DELETE CASCADE,\n      anlass TEXT NOT NULL CHECK(anlass IN ('geburtstag','ostern','weihnachten')),\n      aktiv INTEGER DEFAULT 1,\n      budget_min INTEGER,\n      budget_max INTEGER,\n      UNIQUE(kind_id, anlass)\n    )"
+      },
+      {
+        "name": "ereignisse",
+        "type": "table",
+        "sql": "CREATE TABLE ereignisse (\n      id INTEGER PRIMARY KEY AUTOINCREMENT,\n      kind_id INTEGER NOT NULL REFERENCES kinder(id) ON DELETE CASCADE,\n      anlass TEXT NOT NULL,\n      datum TEXT NOT NULL,\n      jahr INTEGER NOT NULL,\n      alter_zum_ereignis INTEGER,\n      profil_snapshot TEXT,\n      profil_bestaetigung_angefragt INTEGER DEFAULT 0,\n      profil_bestaetigt INTEGER DEFAULT 0,\n      recherche_gestartet INTEGER DEFAULT 0,\n      recherche_abgeschlossen INTEGER DEFAULT 0,\n      erstellt_am TEXT DEFAULT (datetime('now'))\n    , erinnerungen_aktiv INTEGER DEFAULT 1)"
+      },
+      {
+        "name": "geschenke",
+        "type": "table",
+        "sql": "CREATE TABLE geschenke (\n      id INTEGER PRIMARY KEY AUTOINCREMENT,\n      ereignis_id INTEGER REFERENCES ereignisse(id) ON DELETE SET NULL,\n      kind_id INTEGER NOT NULL REFERENCES kinder(id) ON DELETE CASCADE,\n      titel TEXT NOT NULL,\n      beschreibung TEXT,\n      preis REAL,\n      url TEXT,\n      shop TEXT,\n      status TEXT DEFAULT 'vorschlag' CHECK(status IN ('vorschlag','ausgewaehlt','bestellt','verpackt','vergeben')),\n      ist_manuell INTEGER DEFAULT 0,\n      quelle TEXT,\n      notizen TEXT,\n      erstellt_am TEXT DEFAULT (datetime('now')),\n      aktualisiert_am TEXT DEFAULT (datetime('now'))\n    , bild_url TEXT, ranking INTEGER, begruendung TEXT)"
+      },
+      {
+        "name": "kinder",
+        "type": "table",
+        "sql": "CREATE TABLE \"kinder\" (\n          id INTEGER PRIMARY KEY AUTOINCREMENT,\n          name TEXT NOT NULL,\n          geburtsdatum TEXT,\n          profil TEXT,\n          negativliste TEXT,\n          profil_bestaetigt_am TEXT,\n          erstellt_am TEXT DEFAULT (datetime('now')),\n          aktualisiert_am TEXT DEFAULT (datetime('now'))\n        )"
+      },
+      {
+        "name": "vergangene_geschenke",
+        "type": "table",
+        "sql": "CREATE TABLE vergangene_geschenke (\n      id INTEGER PRIMARY KEY AUTOINCREMENT,\n      kind_id INTEGER NOT NULL REFERENCES kinder(id) ON DELETE CASCADE,\n      titel TEXT NOT NULL,\n      anlass TEXT,\n      jahr INTEGER,\n      notizen TEXT,\n      erstellt_am TEXT DEFAULT (datetime('now'))\n    )"
+      }
+    ],
+    "counts": [
+      {
+        "table": "anlass_config",
+        "rows": 33
+      },
+      {
+        "table": "ereignisse",
+        "rows": 62
+      },
+      {
+        "table": "geschenke",
+        "rows": 433
+      },
+      {
+        "table": "kinder",
+        "rows": 11
+      },
+      {
+        "table": "vergangene_geschenke",
+        "rows": 0
+      }
+    ]
+  },
+  {
+    "file": "databases/gypsi/db/gypsi.db",
+    "objects": [
+      {
+        "name": "futter",
+        "type": "table",
+        "sql": "CREATE TABLE futter (\n      id INTEGER PRIMARY KEY AUTOINCREMENT,\n      marke TEXT NOT NULL,\n      sorte TEXT NOT NULL,\n      geschmack TEXT,\n      bild_pfad TEXT,\n      status TEXT DEFAULT 'mag_er' CHECK(status IN ('mag_er', 'mag_er_nicht_mehr')),\n      erfasst_am TEXT DEFAULT (datetime('now')),\n      status_geaendert_am TEXT,\n      notizen TEXT\n    )"
+      }
+    ],
+    "counts": [
+      {
+        "table": "futter",
+        "rows": 5
+      }
+    ]
+  },
+  {
+    "file": "databases/ha-voice/db/ha-voice.db",
+    "objects": [
+      {
+        "name": "idx_aliases_alias",
+        "type": "index",
+        "sql": "CREATE INDEX idx_aliases_alias ON aliases(alias)"
+      },
+      {
+        "name": "idx_aliases_entity",
+        "type": "index",
+        "sql": "CREATE INDEX idx_aliases_entity ON aliases(entity_id)"
+      },
+      {
+        "name": "idx_command_log_entity",
+        "type": "index",
+        "sql": "CREATE INDEX idx_command_log_entity ON command_log(matched_entity_id)"
+      },
+      {
+        "name": "idx_command_log_timestamp",
+        "type": "index",
+        "sql": "CREATE INDEX idx_command_log_timestamp ON command_log(timestamp)"
+      },
+      {
+        "name": "idx_entities_area",
+        "type": "index",
+        "sql": "CREATE INDEX idx_entities_area ON entities(area_name)"
+      },
+      {
+        "name": "idx_entities_disabled",
+        "type": "index",
+        "sql": "CREATE INDEX idx_entities_disabled ON entities(disabled)"
+      },
+      {
+        "name": "idx_entities_disabled_domain",
+        "type": "index",
+        "sql": "CREATE INDEX idx_entities_disabled_domain ON entities(disabled, domain)"
+      },
+      {
+        "name": "idx_entities_discovered_at",
+        "type": "index",
+        "sql": "CREATE INDEX idx_entities_discovered_at ON entities(discovered_at)"
+      },
+      {
+        "name": "idx_entities_domain",
+        "type": "index",
+        "sql": "CREATE INDEX idx_entities_domain ON entities(domain)"
+      },
+      {
+        "name": "idx_entities_friendly_name",
+        "type": "index",
+        "sql": "CREATE INDEX idx_entities_friendly_name ON entities(friendly_name)"
+      },
+      {
+        "name": "idx_relationships_child",
+        "type": "index",
+        "sql": "CREATE INDEX idx_relationships_child ON relationships(child_entity_id)"
+      },
+      {
+        "name": "idx_relationships_parent",
+        "type": "index",
+        "sql": "CREATE INDEX idx_relationships_parent ON relationships(parent_entity_id)"
+      },
+      {
+        "name": "aliases",
+        "type": "table",
+        "sql": "CREATE TABLE aliases (\n      id INTEGER PRIMARY KEY,\n      entity_id TEXT NOT NULL,\n      alias TEXT NOT NULL,\n      UNIQUE(entity_id, alias)\n    )"
+      },
+      {
+        "name": "command_log",
+        "type": "table",
+        "sql": "CREATE TABLE command_log (\n      id INTEGER PRIMARY KEY,\n      timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,\n      input_text TEXT,\n      matched_entity_id TEXT,\n      match_score REAL,\n      action TEXT,\n      dependencies_triggered TEXT,\n      result TEXT,\n      duration_ms INTEGER,\n      success BOOLEAN\n    )"
+      },
+      {
+        "name": "entities",
+        "type": "table",
+        "sql": "CREATE TABLE entities (\n      id INTEGER PRIMARY KEY,\n      entity_id TEXT UNIQUE NOT NULL,\n      domain TEXT NOT NULL,\n      friendly_name TEXT,\n      area_id TEXT,\n      area_name TEXT,\n      device_id TEXT,\n      device_name TEXT,\n      state TEXT,\n      attributes TEXT,\n      last_synced DATETIME DEFAULT CURRENT_TIMESTAMP\n    , disabled BOOLEAN DEFAULT 0, discovered_at DATETIME)"
+      },
+      {
+        "name": "entities_fts",
+        "type": "table",
+        "sql": "CREATE VIRTUAL TABLE entities_fts USING fts5(\n      entity_id, \n      friendly_name, \n      area_name, \n      device_name,\n      content=entities,\n      content_rowid=id\n    )"
+      },
+      {
+        "name": "entities_fts_config",
+        "type": "table",
+        "sql": "CREATE TABLE 'entities_fts_config'(k PRIMARY KEY, v) WITHOUT ROWID"
+      },
+      {
+        "name": "entities_fts_data",
+        "type": "table",
+        "sql": "CREATE TABLE 'entities_fts_data'(id INTEGER PRIMARY KEY, block BLOB)"
+      },
+      {
+        "name": "entities_fts_docsize",
+        "type": "table",
+        "sql": "CREATE TABLE 'entities_fts_docsize'(id INTEGER PRIMARY KEY, sz BLOB)"
+      },
+      {
+        "name": "entities_fts_idx",
+        "type": "table",
+        "sql": "CREATE TABLE 'entities_fts_idx'(segid, term, pgno, PRIMARY KEY(segid, term)) WITHOUT ROWID"
+      },
+      {
+        "name": "relationships",
+        "type": "table",
+        "sql": "CREATE TABLE relationships (\n      id INTEGER PRIMARY KEY,\n      parent_entity_id TEXT NOT NULL,\n      child_entity_id TEXT NOT NULL,\n      type TEXT NOT NULL,\n      auto_discovered BOOLEAN DEFAULT 1,\n      manually_verified BOOLEAN DEFAULT 0,\n      UNIQUE(parent_entity_id, child_entity_id, type)\n    )"
+      },
+      {
+        "name": "entities_ad",
+        "type": "trigger",
+        "sql": "CREATE TRIGGER entities_ad AFTER DELETE ON entities BEGIN\n      DELETE FROM entities_fts WHERE rowid = old.id;\n    END"
+      },
+      {
+        "name": "entities_ai",
+        "type": "trigger",
+        "sql": "CREATE TRIGGER entities_ai AFTER INSERT ON entities BEGIN\n      INSERT INTO entities_fts(rowid, entity_id, friendly_name, area_name, device_name)\n      VALUES (new.id, new.entity_id, new.friendly_name, new.area_name, new.device_name);\n    END"
+      },
+      {
+        "name": "entities_au",
+        "type": "trigger",
+        "sql": "CREATE TRIGGER entities_au AFTER UPDATE ON entities BEGIN\n      DELETE FROM entities_fts WHERE rowid = old.id;\n      INSERT INTO entities_fts(rowid, entity_id, friendly_name, area_name, device_name)\n      VALUES (new.id, new.entity_id, new.friendly_name, new.area_name, new.device_name);\n    END"
+      }
+    ],
+    "counts": [
+      {
+        "table": "aliases",
+        "rows": 2
+      },
+      {
+        "table": "command_log",
+        "rows": 19
+      },
+      {
+        "table": "entities",
+        "rows": 3906
+      },
+      {
+        "table": "entities_fts",
+        "rows": 3906
+      },
+      {
+        "table": "entities_fts_config",
+        "rows": 1
+      },
+      {
+        "table": "entities_fts_data",
+        "rows": 137
+      },
+      {
+        "table": "entities_fts_docsize",
+        "rows": 4240
+      },
+      {
+        "table": "entities_fts_idx",
+        "rows": 133
+      },
+      {
+        "table": "relationships",
+        "rows": 394
+      }
+    ]
+  },
+  {
+    "file": "databases/reiniger/db/reiniger.db",
+    "objects": [
+      {
+        "name": "idx_anwendungen_problem",
+        "type": "index",
+        "sql": "CREATE INDEX idx_anwendungen_problem ON anwendungen(problem)"
+      },
+      {
+        "name": "idx_reiniger_kategorie",
+        "type": "index",
+        "sql": "CREATE INDEX idx_reiniger_kategorie ON reiniger(kategorie)"
+      },
+      {
+        "name": "idx_reiniger_status",
+        "type": "index",
+        "sql": "CREATE INDEX idx_reiniger_status ON reiniger(status)"
+      },
+      {
+        "name": "anwendungen",
+        "type": "table",
+        "sql": "CREATE TABLE anwendungen (\n      id INTEGER PRIMARY KEY AUTOINCREMENT,\n      reiniger_id INTEGER NOT NULL REFERENCES reiniger(id) ON DELETE CASCADE,\n      problem TEXT NOT NULL,\n      material TEXT,\n      anleitung TEXT NOT NULL,\n      warnhinweise TEXT,\n      prioritaet INTEGER DEFAULT 5,\n      erstellt_am TEXT DEFAULT (datetime('now'))\n    , oberflaeche TEXT, fleck_art TEXT, anwendungsfall TEXT, begruendung TEXT)"
+      },
+      {
+        "name": "reiniger",
+        "type": "table",
+        "sql": "CREATE TABLE reiniger (\n      id INTEGER PRIMARY KEY AUTOINCREMENT,\n      name TEXT NOT NULL,\n      marke TEXT,\n      kategorie TEXT NOT NULL DEFAULT 'allzweck',\n      einsatzorte TEXT,\n      geeignet_fuer TEXT,\n      nicht_geeignet_fuer TEXT,\n      flecken TEXT,\n      pflegehinweise TEXT,\n      sicherheit TEXT,\n      dosierung TEXT,\n      menge TEXT,\n      bild_pfad TEXT,\n      status TEXT DEFAULT 'aktiv' CHECK(status IN ('aktiv', 'leer', 'nachkaufen', 'entsorgt')),\n      restock INTEGER DEFAULT 1,\n      quelle_url TEXT,\n      meta_json TEXT,\n      erfasst_am TEXT DEFAULT (datetime('now')),\n      aktualisiert_am TEXT,\n      notizen TEXT\n    , bild_mime TEXT, bild_sha256 TEXT)"
+      }
+    ],
+    "counts": [
+      {
+        "table": "anwendungen",
+        "rows": 17
+      },
+      {
+        "table": "reiniger",
+        "rows": 4
+      }
+    ]
+  },
+  {
+    "file": "databases/samu-inventar/db/garten.db",
+    "objects": [],
+    "counts": []
+  },
+  {
+    "file": "databases/samu-inventar/db/geschenkplaner.db",
+    "objects": [],
+    "counts": []
+  },
+  {
+    "file": "databases/samu-inventar/db/reisen.db",
+    "objects": [
+      {
+        "name": "idx_trip_activities_trip",
+        "type": "index",
+        "sql": "CREATE INDEX idx_trip_activities_trip ON trip_activities(trip_id)"
+      },
+      {
+        "name": "idx_trip_diving_trip",
+        "type": "index",
+        "sql": "CREATE INDEX idx_trip_diving_trip ON trip_diving(trip_id)"
+      },
+      {
+        "name": "idx_trip_docs_trip",
+        "type": "index",
+        "sql": "CREATE INDEX idx_trip_docs_trip ON trip_docs(trip_id)"
+      },
+      {
+        "name": "idx_trip_emails_trip",
+        "type": "index",
+        "sql": "CREATE INDEX idx_trip_emails_trip ON trip_emails(trip_id)"
+      },
+      {
+        "name": "idx_trip_links_trip",
+        "type": "index",
+        "sql": "CREATE INDEX idx_trip_links_trip ON trip_links(trip_id)"
+      },
+      {
+        "name": "idx_trip_restaurants_trip",
+        "type": "index",
+        "sql": "CREATE INDEX idx_trip_restaurants_trip ON trip_restaurants(trip_id)"
+      },
+      {
+        "name": "idx_trip_weather_trip",
+        "type": "index",
+        "sql": "CREATE INDEX idx_trip_weather_trip ON trip_weather(trip_id)"
+      },
+      {
+        "name": "idx_trips_start",
+        "type": "index",
+        "sql": "CREATE INDEX idx_trips_start ON trips(start_date)"
+      },
+      {
+        "name": "idx_trips_status",
+        "type": "index",
+        "sql": "CREATE INDEX idx_trips_status ON trips(status)"
+      },
+      {
+        "name": "idx_weekend_tips_week",
+        "type": "index",
+        "sql": "CREATE INDEX idx_weekend_tips_week ON weekend_tips(year, calendar_week)"
+      },
+      {
+        "name": "trip_activities",
+        "type": "table",
+        "sql": "CREATE TABLE trip_activities (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    trip_id INTEGER NOT NULL,\n    title TEXT NOT NULL,\n    category TEXT DEFAULT 'sehenswuerdigkeit',\n    description TEXT,\n    details TEXT,\n    location TEXT,\n    lat REAL,\n    lng REAL,\n    google_maps_url TEXT,\n    tripadvisor_url TEXT,\n    website_url TEXT,\n    image_url TEXT,\n    duration TEXT,\n    price TEXT,\n    kid_friendly INTEGER DEFAULT 1,\n    kid_notes TEXT,\n    best_time TEXT,\n    tips TEXT,\n    sort_order INTEGER DEFAULT 0,\n    created_at TEXT,\n    FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE\n  )"
+      },
+      {
+        "name": "trip_day_plans",
+        "type": "table",
+        "sql": "CREATE TABLE trip_day_plans (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  trip_id INTEGER NOT NULL,\n  day_number INTEGER NOT NULL,\n  day_date TEXT,\n  title TEXT,\n  time_slot TEXT,\n  activity TEXT NOT NULL,\n  activity_id INTEGER,\n  location TEXT,\n  emoji TEXT DEFAULT '📍',\n  notes TEXT,\n  sort_order INTEGER DEFAULT 0,\n  created_at TEXT NOT NULL,\n  FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE\n)"
+      },
+      {
+        "name": "trip_diving",
+        "type": "table",
+        "sql": "CREATE TABLE trip_diving (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    trip_id INTEGER NOT NULL,\n    dive_center_name TEXT,\n    description TEXT,\n    location TEXT,\n    lat REAL,\n    lng REAL,\n    google_maps_url TEXT,\n    tripadvisor_url TEXT,\n    website_url TEXT,\n    certifications TEXT,\n    highlights TEXT,\n    conditions TEXT,\n    price_range TEXT,\n    kid_notes TEXT,\n    tips TEXT,\n    sort_order INTEGER DEFAULT 0,\n    created_at TEXT,\n    FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE\n  )"
+      },
+      {
+        "name": "trip_docs",
+        "type": "table",
+        "sql": "CREATE TABLE trip_docs (id INTEGER PRIMARY KEY AUTOINCREMENT, trip_id INTEGER NOT NULL, name TEXT NOT NULL, doc_type TEXT DEFAULT \"sonstig\", mime_type TEXT, file_data BLOB, file_size INTEGER, text_content TEXT, url TEXT, notes TEXT, created_at TEXT, FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE)"
+      },
+      {
+        "name": "trip_emails",
+        "type": "table",
+        "sql": "CREATE TABLE trip_emails (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    trip_id INTEGER NOT NULL,\n    email_subject TEXT,\n    email_from TEXT,\n    email_date TEXT,\n    email_snippet TEXT,\n    email_db_id INTEGER,\n    category TEXT DEFAULT 'allgemein',\n    created_at TEXT,\n    FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE\n  )"
+      },
+      {
+        "name": "trip_emergency",
+        "type": "table",
+        "sql": "CREATE TABLE trip_emergency (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  trip_id INTEGER NOT NULL,\n  category TEXT NOT NULL,\n  title TEXT NOT NULL,\n  phone TEXT,\n  address TEXT,\n  url TEXT,\n  lat REAL,\n  lng REAL,\n  notes TEXT,\n  sort_order INTEGER DEFAULT 0,\n  created_at TEXT NOT NULL,\n  FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE\n)"
+      },
+      {
+        "name": "trip_flights",
+        "type": "table",
+        "sql": "CREATE TABLE trip_flights (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  trip_id INTEGER NOT NULL,\n  direction TEXT NOT NULL DEFAULT \"outbound\",  -- outbound / return\n  airline TEXT,\n  airline_code TEXT,\n  flight_number TEXT,\n  departure_airport TEXT,\n  departure_code TEXT,\n  departure_time TEXT,\n  arrival_airport TEXT,\n  arrival_code TEXT,\n  arrival_time TEXT,\n  duration TEXT,\n  aircraft_type TEXT,\n  booking_ref TEXT,\n  seat_info TEXT,\n  gate TEXT,\n  terminal TEXT,\n  status TEXT DEFAULT \"scheduled\",  -- scheduled / boarding / departed / arrived / delayed / cancelled\n  delay_minutes INTEGER,\n  baggage_belt TEXT,\n  checkin_url TEXT,\n  notes TEXT,\n  sort_order INTEGER DEFAULT 0,\n  created_at TEXT NOT NULL,\n  updated_at TEXT,\n  FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE\n)"
+      },
+      {
+        "name": "trip_hotel",
+        "type": "table",
+        "sql": "CREATE TABLE trip_hotel (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  trip_id INTEGER NOT NULL UNIQUE,\n  name TEXT,\n  category TEXT,\n  room_type TEXT,\n  board_type TEXT,\n  check_in TEXT,\n  check_out TEXT,\n  amenities TEXT,\n  pools TEXT,\n  spa TEXT,\n  kids_club TEXT,\n  restaurants_info TEXT,\n  wifi TEXT,\n  parking TEXT,\n  beach TEXT,\n  website_url TEXT,\n  booking_url TEXT,\n  tripadvisor_url TEXT,\n  holidaycheck_url TEXT,\n  description TEXT,\n  notes TEXT,\n  created_at TEXT NOT NULL,\n  FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE\n)"
+      },
+      {
+        "name": "trip_links",
+        "type": "table",
+        "sql": "CREATE TABLE trip_links (id INTEGER PRIMARY KEY AUTOINCREMENT, trip_id INTEGER NOT NULL, title TEXT NOT NULL, url TEXT NOT NULL, link_type TEXT DEFAULT \"info\", description TEXT, image_url TEXT, created_at TEXT, FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE)"
+      },
+      {
+        "name": "trip_packing",
+        "type": "table",
+        "sql": "CREATE TABLE trip_packing (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  trip_id INTEGER NOT NULL,\n  category TEXT NOT NULL,\n  item TEXT NOT NULL,\n  quantity INTEGER DEFAULT 1,\n  packed INTEGER DEFAULT 0,\n  notes TEXT,\n  sort_order INTEGER DEFAULT 0,\n  created_at TEXT NOT NULL,\n  FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE\n)"
+      },
+      {
+        "name": "trip_phrases",
+        "type": "table",
+        "sql": "CREATE TABLE trip_phrases (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  trip_id INTEGER NOT NULL,\n  category TEXT NOT NULL,\n  local_text TEXT NOT NULL,\n  pronunciation TEXT,\n  german TEXT NOT NULL,\n  sort_order INTEGER DEFAULT 0,\n  created_at TEXT NOT NULL,\n  FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE\n)"
+      },
+      {
+        "name": "trip_restaurants",
+        "type": "table",
+        "sql": "CREATE TABLE trip_restaurants (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    trip_id INTEGER NOT NULL,\n    name TEXT NOT NULL,\n    cuisine TEXT,\n    description TEXT,\n    specialties TEXT,\n    location TEXT,\n    lat REAL,\n    lng REAL,\n    google_maps_url TEXT,\n    tripadvisor_url TEXT,\n    website_url TEXT,\n    menu_url TEXT,\n    image_url TEXT,\n    price_range TEXT,\n    kid_friendly INTEGER DEFAULT 1,\n    kid_notes TEXT,\n    reservation_needed INTEGER DEFAULT 0,\n    reservation_url TEXT,\n    opening_hours TEXT,\n    tips TEXT,\n    sort_order INTEGER DEFAULT 0,\n    created_at TEXT, vegetarian_options TEXT,\n    FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE\n  )"
+      },
+      {
+        "name": "trip_samu_activities",
+        "type": "table",
+        "sql": "CREATE TABLE trip_samu_activities (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  trip_id INTEGER NOT NULL,\n  title TEXT NOT NULL,\n  description TEXT,\n  details TEXT,\n  emoji TEXT DEFAULT '👶',\n  category TEXT DEFAULT 'hotel',\n  location TEXT,\n  age_range TEXT,\n  equipment_needed TEXT,\n  safety_notes TEXT,\n  tips TEXT,\n  sort_order INTEGER DEFAULT 0,\n  created_at TEXT NOT NULL,\n  FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE\n)"
+      },
+      {
+        "name": "trip_weather",
+        "type": "table",
+        "sql": "CREATE TABLE trip_weather (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    trip_id INTEGER NOT NULL,\n    type TEXT DEFAULT 'historical',\n    date TEXT,\n    temp_min REAL,\n    temp_max REAL,\n    temp_water REAL,\n    rain_mm REAL,\n    rain_days INTEGER,\n    sun_hours REAL,\n    humidity REAL,\n    wind_kmh REAL,\n    description TEXT,\n    source TEXT,\n    updated_at TEXT,\n    FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE\n  )"
+      },
+      {
+        "name": "trips",
+        "type": "table",
+        "sql": "CREATE TABLE trips (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, type TEXT DEFAULT \"urlaub\", status TEXT DEFAULT \"geplant\", start_date TEXT, end_date TEXT, destination TEXT, country TEXT, region TEXT, lat REAL, lng REAL, hotel TEXT, hotel_url TEXT, booking_ref TEXT, booking_platform TEXT, flight TEXT, flight_ref TEXT, transport TEXT, budget TEXT, cost_total TEXT, currency TEXT DEFAULT \"EUR\", participants TEXT DEFAULT \"Familie\", activities TEXT, highlights TEXT, rating INTEGER, cover_image TEXT, notes TEXT, source TEXT DEFAULT \"manuell\", tags TEXT, created_at TEXT, updated_at TEXT, destination_info TEXT, timezone_offset INTEGER DEFAULT 0, timezone_name TEXT)"
+      },
+      {
+        "name": "weekend_tips",
+        "type": "table",
+        "sql": "CREATE TABLE weekend_tips (id INTEGER PRIMARY KEY AUTOINCREMENT, calendar_week INTEGER NOT NULL, year INTEGER NOT NULL, title TEXT NOT NULL, description TEXT, location TEXT, lat REAL, lng REAL, url TEXT, image_url TEXT, category TEXT, date_info TEXT, price TEXT, kid_friendly INTEGER DEFAULT 1, created_at TEXT, details TEXT, google_maps_url TEXT, tripadvisor_url TEXT, website_url TEXT, tips TEXT, kid_notes TEXT, address TEXT, opening_hours TEXT, distance_from_home TEXT, weather_dependent INTEGER DEFAULT 1, indoor_alternative TEXT, is_event INTEGER DEFAULT 0, priority INTEGER DEFAULT 0, UNIQUE(year, calendar_week, title))"
+      }
+    ],
+    "counts": [
+      {
+        "table": "trip_activities",
+        "rows": 22
+      },
+      {
+        "table": "trip_day_plans",
+        "rows": 44
+      },
+      {
+        "table": "trip_diving",
+        "rows": 3
+      },
+      {
+        "table": "trip_docs",
+        "rows": 16
+      },
+      {
+        "table": "trip_emails",
+        "rows": 3
+      },
+      {
+        "table": "trip_emergency",
+        "rows": 14
+      },
+      {
+        "table": "trip_flights",
+        "rows": 2
+      },
+      {
+        "table": "trip_hotel",
+        "rows": 1
+      },
+      {
+        "table": "trip_links",
+        "rows": 42
+      },
+      {
+        "table": "trip_packing",
+        "rows": 50
+      },
+      {
+        "table": "trip_phrases",
+        "rows": 28
+      },
+      {
+        "table": "trip_restaurants",
+        "rows": 7
+      },
+      {
+        "table": "trip_samu_activities",
+        "rows": 9
+      },
+      {
+        "table": "trip_weather",
+        "rows": 5
+      },
+      {
+        "table": "trips",
+        "rows": 21
+      },
+      {
+        "table": "weekend_tips",
+        "rows": 88
+      }
+    ]
+  },
+  {
+    "file": "databases/samu-inventar/db/samu-inventar.db",
+    "objects": [
+      {
+        "name": "idx_items_groesse",
+        "type": "index",
+        "sql": "CREATE INDEX idx_items_groesse ON items(groesse)"
+      },
+      {
+        "name": "idx_items_kategorie",
+        "type": "index",
+        "sql": "CREATE INDEX idx_items_kategorie ON items(kategorie)"
+      },
+      {
+        "name": "idx_items_marke",
+        "type": "index",
+        "sql": "CREATE INDEX idx_items_marke ON items(marke)"
+      },
+      {
+        "name": "idx_items_status",
+        "type": "index",
+        "sql": "CREATE INDEX idx_items_status ON items(status)"
+      },
+      {
+        "name": "idx_items_typ",
+        "type": "index",
+        "sql": "CREATE INDEX idx_items_typ ON items(typ)"
+      },
+      {
+        "name": "bedarfsliste",
+        "type": "table",
+        "sql": "CREATE TABLE bedarfsliste (\n      id INTEGER PRIMARY KEY AUTOINCREMENT,\n      beschreibung TEXT NOT NULL,\n      kategorie TEXT,\n      groesse TEXT,\n      prioritaet TEXT DEFAULT 'normal',\n      notizen TEXT,\n      erledigt INTEGER DEFAULT 0,\n      erledigt_am TEXT,\n      erstellt_am TEXT DEFAULT (datetime('now')),\n      aktualisiert_am TEXT DEFAULT (datetime('now'))\n    )"
+      },
+      {
+        "name": "items",
+        "type": "table",
+        "sql": "CREATE TABLE items (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    \n    -- Basis-Infos\n    typ TEXT NOT NULL CHECK(typ IN ('kleidung', 'spielzeug')),\n    kategorie TEXT NOT NULL,\n    unterkategorie TEXT,\n    name TEXT,\n    marke TEXT,\n    beschreibung TEXT,\n    \n    -- Größe/Alter\n    groesse TEXT,                    -- Kleidergröße (56-116) oder Schuhgröße\n    altersgruppe TEXT,               -- 0-6M, 6-12M, 1-2J, 2-3J, 3+J\n    passt_ab_groesse TEXT,           -- Für eingelagerte Items\n    passt_ab_alter TEXT,             -- Für eingelagerte Items\n    \n    -- Zustand & Wert\n    zustand TEXT CHECK(zustand IN ('neu', 'sehr_gut', 'gut', 'gebraucht')),\n    verkaufswert REAL,               -- Geschätzter Preis in Euro\n    \n    -- Optik\n    farbe TEXT,\n    saison TEXT CHECK(saison IN ('sommer', 'winter', 'ganzjaehrig')),\n    material TEXT,\n    \n    -- Status\n    status TEXT DEFAULT 'aktiv' CHECK(status IN ('aktiv', 'eingelagert', 'aussortiert', 'verkauft', 'verschenkt')),\n    verkaufskanal TEXT,              -- vinted, kleinanzeigen, etc.\n    \n    -- Bilder (mehrere möglich, kommasepariert oder in separater Tabelle)\n    bild_pfade TEXT,                 -- Pfade zu Originalbildern (JSON Array)\n    bild_telegram_ids TEXT,          -- Telegram file_ids (JSON Array)\n    \n    -- Timestamps\n    erfasst_am DATETIME DEFAULT CURRENT_TIMESTAMP,\n    aktualisiert_am DATETIME DEFAULT CURRENT_TIMESTAMP,\n    aussortiert_am DATETIME,\n    \n    -- Notizen\n    notizen TEXT\n)"
+      },
+      {
+        "name": "items_fts",
+        "type": "table",
+        "sql": "CREATE VIRTUAL TABLE items_fts USING fts5(\n    name,\n    marke,\n    beschreibung,\n    kategorie,\n    unterkategorie,\n    farbe,\n    material,\n    content='items',\n    content_rowid='id'\n)"
+      },
+      {
+        "name": "items_fts_config",
+        "type": "table",
+        "sql": "CREATE TABLE 'items_fts_config'(k PRIMARY KEY, v) WITHOUT ROWID"
+      },
+      {
+        "name": "items_fts_data",
+        "type": "table",
+        "sql": "CREATE TABLE 'items_fts_data'(id INTEGER PRIMARY KEY, block BLOB)"
+      },
+      {
+        "name": "items_fts_docsize",
+        "type": "table",
+        "sql": "CREATE TABLE 'items_fts_docsize'(id INTEGER PRIMARY KEY, sz BLOB)"
+      },
+      {
+        "name": "items_fts_idx",
+        "type": "table",
+        "sql": "CREATE TABLE 'items_fts_idx'(segid, term, pgno, PRIMARY KEY(segid, term)) WITHOUT ROWID"
+      },
+      {
+        "name": "marken",
+        "type": "table",
+        "sql": "CREATE TABLE marken (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  name TEXT UNIQUE NOT NULL,\n  groessen_info TEXT,\n  herkunft TEXT,\n  material_fokus TEXT,\n  website TEXT,\n  preis_segment TEXT,\n  notizen TEXT,\n  angereichert_am TEXT,\n  erstellt_am TEXT DEFAULT (datetime('now'))\n)"
+      },
+      {
+        "name": "items_ad",
+        "type": "trigger",
+        "sql": "CREATE TRIGGER items_ad AFTER DELETE ON items BEGIN\n    INSERT INTO items_fts(items_fts, rowid, name, marke, beschreibung, kategorie, unterkategorie, farbe, material)\n    VALUES ('delete', old.id, old.name, old.marke, old.beschreibung, old.kategorie, old.unterkategorie, old.farbe, old.material);\nEND"
+      },
+      {
+        "name": "items_ai",
+        "type": "trigger",
+        "sql": "CREATE TRIGGER items_ai AFTER INSERT ON items BEGIN\n    INSERT INTO items_fts(rowid, name, marke, beschreibung, kategorie, unterkategorie, farbe, material)\n    VALUES (new.id, new.name, new.marke, new.beschreibung, new.kategorie, new.unterkategorie, new.farbe, new.material);\nEND"
+      },
+      {
+        "name": "items_au",
+        "type": "trigger",
+        "sql": "CREATE TRIGGER items_au AFTER UPDATE ON items BEGIN\n    INSERT INTO items_fts(items_fts, rowid, name, marke, beschreibung, kategorie, unterkategorie, farbe, material)\n    VALUES ('delete', old.id, old.name, old.marke, old.beschreibung, old.kategorie, old.unterkategorie, old.farbe, old.material);\n    INSERT INTO items_fts(rowid, name, marke, beschreibung, kategorie, unterkategorie, farbe, material)\n    VALUES (new.id, new.name, new.marke, new.beschreibung, new.kategorie, new.unterkategorie, new.farbe, new.material);\nEND"
+      }
+    ],
+    "counts": [
+      {
+        "table": "bedarfsliste",
+        "rows": 8
+      },
+      {
+        "table": "items",
+        "rows": 222
+      },
+      {
+        "table": "items_fts",
+        "rows": 222
+      },
+      {
+        "table": "items_fts_config",
+        "rows": 1
+      },
+      {
+        "table": "items_fts_data",
+        "rows": 13
+      },
+      {
+        "table": "items_fts_docsize",
+        "rows": 222
+      },
+      {
+        "table": "items_fts_idx",
+        "rows": 11
+      },
+      {
+        "table": "marken",
+        "rows": 48
+      }
+    ]
+  },
+  {
+    "file": "databases/samu-inventar/db/termine.db",
+    "objects": [
+      {
+        "name": "idx_termine_category",
+        "type": "index",
+        "sql": "CREATE INDEX idx_termine_category ON termine(category)"
+      },
+      {
+        "name": "idx_termine_date",
+        "type": "index",
+        "sql": "CREATE INDEX idx_termine_date ON termine(date)"
+      },
+      {
+        "name": "idx_termine_status",
+        "type": "index",
+        "sql": "CREATE INDEX idx_termine_status ON termine(status)"
+      },
+      {
+        "name": "termine",
+        "type": "table",
+        "sql": "CREATE TABLE termine (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    title TEXT NOT NULL,\n    description TEXT,\n    category TEXT NOT NULL DEFAULT 'allgemein',\n    date TEXT NOT NULL,\n    time TEXT,\n    end_date TEXT,\n    end_time TEXT,\n    location TEXT,\n    person TEXT,\n    recurring TEXT,\n    recurring_interval TEXT,\n    reminder_days INTEGER DEFAULT 2,\n    reminder_sent INTEGER DEFAULT 0,\n    cron_job_id TEXT,\n    status TEXT DEFAULT 'offen',\n    notes TEXT,\n    source TEXT DEFAULT 'manuell',\n    created_at TEXT DEFAULT (datetime('now')),\n    updated_at TEXT DEFAULT (datetime('now'))\n  )"
+      }
+    ],
+    "counts": [
+      {
+        "table": "termine",
+        "rows": 36
+      }
+    ]
+  },
+  {
+    "file": "databases/samu-inventar/db/wunschliste.db",
+    "objects": [
+      {
+        "name": "events",
+        "type": "table",
+        "sql": "CREATE TABLE events (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    name TEXT NOT NULL,\n    emoji TEXT DEFAULT '🎁',\n    date TEXT,\n    type TEXT DEFAULT 'einmalig',\n    recurring_month INTEGER,\n    recurring_day INTEGER,\n    notes TEXT,\n    archived INTEGER DEFAULT 0,\n    created_at TEXT DEFAULT (datetime('now')),\n    updated_at TEXT DEFAULT (datetime('now'))\n  , erinnerungen_aktiv INTEGER DEFAULT 1)"
+      },
+      {
+        "name": "items",
+        "type": "table",
+        "sql": "CREATE TABLE items (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    event_id INTEGER NOT NULL,\n    title TEXT NOT NULL,\n    description TEXT,\n    price TEXT,\n    url TEXT,\n    image_url TEXT,\n    category TEXT,\n    priority INTEGER DEFAULT 0,\n    status TEXT DEFAULT 'offen',\n    purchased_by TEXT,\n    notes TEXT,\n    created_at TEXT DEFAULT (datetime('now')),\n    updated_at TEXT DEFAULT (datetime('now')), ean TEXT, price_comparison TEXT,\n    FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE\n  )"
+      }
+    ],
+    "counts": [
+      {
+        "table": "events",
+        "rows": 3
+      },
+      {
+        "table": "items",
+        "rows": 26
+      }
+    ]
+  },
+  {
+    "file": "databases/vorratskammer/db/vorratskammer.db",
+    "objects": [
+      {
+        "name": "lebensmittel",
+        "type": "table",
+        "sql": "CREATE TABLE lebensmittel (\n      id INTEGER PRIMARY KEY AUTOINCREMENT,\n      name TEXT NOT NULL,\n      marke TEXT,\n      kategorie TEXT NOT NULL CHECK(kategorie IN ('trocken', 'kuehlschrank', 'gefrierfach')),\n      menge TEXT,\n      mhd TEXT,\n      bild_pfad TEXT,\n      status TEXT DEFAULT 'aktiv' CHECK(status IN ('aktiv', 'verbraucht')),\n      restock INTEGER DEFAULT 1,\n      erfasst_am TEXT DEFAULT (datetime('now')),\n      verbraucht_am TEXT,\n      notizen TEXT\n    )"
+      },
+      {
+        "name": "rezepte",
+        "type": "table",
+        "sql": "CREATE TABLE rezepte (\n      id INTEGER PRIMARY KEY AUTOINCREMENT,\n      titel TEXT NOT NULL,\n      url TEXT,\n      quelle TEXT,\n      beschreibung TEXT,\n      zutaten_match TEXT,\n      bild_url TEXT,\n      erstellt_am TEXT DEFAULT (datetime('now')),\n      notizen TEXT\n    )"
+      }
+    ],
+    "counts": [
+      {
+        "table": "lebensmittel",
+        "rows": 0
+      },
+      {
+        "table": "rezepte",
+        "rows": 0
+      }
+    ]
+  }
+]

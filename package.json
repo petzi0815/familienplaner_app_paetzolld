@@ -1,0 +1,19 @@
+{
+  "name": "familienplaner",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Familienplaner Paetzold-Stilke — API-first Monorepo (Web + zukünftige iOS-App), Autodeploy via Coolify",
+  "workspaces": [
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "npm run dev -w @familienplaner/web",
+    "build": "npm run build -w @familienplaner/web",
+    "start": "npm run start -w @familienplaner/web",
+    "lint": "npm run lint -w @familienplaner/web",
+    "typecheck": "npm run typecheck -w @familienplaner/web"
+  }
+}

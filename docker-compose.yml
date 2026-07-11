@@ -1,0 +1,26 @@
+# Lokaler Produktions-Paritäts-Lauf: `docker compose up --build`
+# In Produktion läuft die App als Coolify-App (Build Pack Dockerfile, Port 3000,
+# persistentes Volume auf /data). Siehe docs/DEPLOYMENT.md.
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SOURCE_COMMIT: local
+    image: familienplaner-web:local
+    container_name: familienplaner-web
+    ports:
+      - "3000:3000"
+    env_file: .env
+    volumes:
+      - familienplaner-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  familienplaner-data:

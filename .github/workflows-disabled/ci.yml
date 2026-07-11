@@ -1,0 +1,33 @@
+# CI — Lint, Typecheck, Build (Smoke). DEAKTIVIERT, bis aktiviert.
+# Aktivieren: Datei nach `.github/workflows/ci.yml` verschieben und mit einem Git-Token
+# MIT `workflow`-Scope pushen (`gh auth refresh -s workflow`). Fürs Coolify-Deployment
+# NICHT nötig — Coolify baut/deployt bei jedem Push auf main selbst.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Build
+        run: npm run build

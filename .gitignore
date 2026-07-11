@@ -1,0 +1,41 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.*
+
+# next.js
+.next/
+out/
+build/
+**/.next/
+**/out/
+
+# production data (Coolify-Volume /data — nie committen!)
+/data/
+apps/web/data/
+
+# testing
+coverage/
+
+# misc
+.DS_Store
+*.pem
+*.tsbuildinfo
+next-env.d.ts
+
+# debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env — Secrets nie committen (nur .env.example)
+.env
+.env.*
+!.env.example
+
+# graphify cache (Graph-Report + graph.html werden committet, Cache nicht)
+graphify-out/cache/
+
+# migration source (lokale Arbeitskopie der Legacy-Daten)
+_legacy/

@@ -1,0 +1,36 @@
+# iOS TestFlight — DEAKTIVIERTER PLATZHALTER (es gibt noch keine ios-app/).
+# Analog zum Referenzprojekt (placetel-elevenlabs-asterix-bridge): Push auf main mit
+# Änderungen unter ios-app/** → signierter Build → internes TestFlight.
+# Aktivieren, sobald die native SwiftUI-App existiert: Datei nach
+# `.github/workflows/ios.yml` verschieben (Git-Token mit `workflow`-Scope) und die
+# ASC-/Signing-Secrets als Repo-Secrets hinterlegen (siehe docs/IOS.md, folgt).
+name: iOS TestFlight (disabled)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  testflight:
+    if: ${{ false }} # bewusst deaktiviert bis ios-app/ existiert
+    runs-on: macos-15
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: ios-app
+    steps:
+      - uses: actions/checkout@v4
+      - name: Xcode auswählen
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "latest-stable"
+      - name: XcodeGen installieren
+        run: brew install xcodegen
+      - name: Projekt generieren
+        run: xcodegen generate
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+          working-directory: ios-app
+      - name: Build + Upload an TestFlight
+        run: bundle exec fastlane ios beta
