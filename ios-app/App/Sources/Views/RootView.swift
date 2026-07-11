@@ -21,7 +21,7 @@ struct MainTabView: View {
 
     var body: some View {
         TabView(selection: $app.selectedTab) {
-            Tab("Heute", systemImage: "square.grid.2x2.fill", value: AppState.MainTab.heute) {
+            Tab("Heute", systemImage: "house.fill", value: AppState.MainTab.heute) {
                 HeuteView()
             }
             Tab("Foto", systemImage: "camera.fill", value: AppState.MainTab.foto) {
@@ -35,8 +35,8 @@ struct MainTabView: View {
             Tab("Scannen", systemImage: "barcode.viewfinder", value: AppState.MainTab.scan) {
                 ScanHubView()
             }
-            Tab("Mehr", systemImage: "ellipsis.circle.fill", value: AppState.MainTab.mehr) {
-                MehrView()
+            Tab("Bereiche", systemImage: "square.grid.2x2.fill", value: AppState.MainTab.mehr) {
+                BereicheHubView()
             }
             Tab("Suchen", systemImage: "magnifyingglass", value: AppState.MainTab.search, role: .search) {
                 SearchView()

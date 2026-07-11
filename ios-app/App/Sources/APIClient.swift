@@ -175,6 +175,31 @@ final class APIClient {
         return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
     }
 
+    /// Maschinenlesbarer Ressourcen-Index (alle Bereiche + Spalten + Bild-Spec).
+    func capabilities() async throws -> [ResourceInfo] {
+        try await get("/agent/capabilities", as: Capabilities.self).resources
+    }
+
+    /// Generische Liste (Rohwerte, dynamische Spalten) — für den Bereiche-Browser.
+    func listRecords(_ resource: String, primaryKey: String, search: String? = nil, limit: Int = 200) async throws -> [GenericRecord] {
+        var q = [URLQueryItem(name: "limit", value: String(limit))]
+        if let s = search, !s.isEmpty { q.append(URLQueryItem(name: "search", value: s)) }
+        let (data, resp) = try await Self.session.data(for: request("/\(resource)", query: q))
+        try checkStatus(resp, data)
+        let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let arr = (obj?["data"] as? [[String: Any]]) ?? []
+        return arr.map { row in
+            let idStr = row[primaryKey].map { fieldString($0) } ?? UUID().uuidString
+            return GenericRecord(id: idStr, fields: row)
+        }
+    }
+
+    /// Teil-Update (Schnellaktion, z.B. Status-PATCH).
+    func patchRecord(_ resource: String, id: String, fields: [String: Any]) async throws {
+        let body = try JSONSerialization.data(withJSONObject: fields)
+        _ = try await send("/\(resource)/\(id)", method: "PATCH", body: body)
+    }
+
     /// Media (Thumbnails) auth-bewusst laden — /api/v1/media/… braucht den Bearer-Header.
     func loadMedia(pathOrUrl: String) async throws -> Data {
         let full = pathOrUrl.hasPrefix("http") ? pathOrUrl : base + pathOrUrl

@@ -10,6 +10,7 @@ final class AppState: ObservableObject {
     @Published var inboxNeu: Int = 0
     @Published var dashboard: DashboardToday?
     @Published var dashboardError: String?
+    @Published var domains: [BereichDomain] = []
 
     let settings: Settings
     let api: APIClient
@@ -33,6 +34,13 @@ final class AppState: ObservableObject {
         if let list = try? await api.inbox() {
             inbox = list
             inboxNeu = list.filter { $0.status == "neu" }.count
+        }
+    }
+
+    func loadCapabilities() async {
+        guard domains.isEmpty else { return }
+        if let resources = try? await api.capabilities() {
+            domains = DomainCatalog.build(from: resources)
         }
     }
 

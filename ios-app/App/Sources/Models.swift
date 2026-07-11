@@ -114,3 +114,68 @@ struct TripActivity: Decodable, Identifiable {
     let lng: Double?
 }
 struct TripActivityList: Decodable { let data: [TripActivity]; let total: Int }
+
+// ── Generischer Bereiche-Browser (aus /agent/capabilities) ──
+struct ResourceImageSpec: Decodable { let col: String; let multi: Bool; let area: String }
+struct ResourceInfo: Decodable, Identifiable {
+    let key: String
+    let domain: String
+    let label: String
+    let readonly: Bool
+    let primaryKey: String
+    let image: ResourceImageSpec?
+    let columns: [String]
+    var id: String { key }
+}
+struct Capabilities: Decodable { let resources: [ResourceInfo] }
+
+/// Ein Datensatz mit dynamischen Feldern (Rohwerte aus JSONSerialization).
+struct GenericRecord: Identifiable {
+    let id: String
+    let fields: [String: Any]
+}
+
+/// Lebensbereich (Domain) mit seinen Ressourcen — clientseitig aus den Capabilities gebaut.
+struct BereichDomain: Identifiable {
+    let key: String
+    let title: String
+    let emoji: String
+    let resources: [ResourceInfo]
+    var id: String { key }
+}
+
+// ── Anzeige-Helfer für dynamische Felder ──
+func fieldString(_ value: Any?) -> String {
+    switch value {
+    case nil, is NSNull: return ""
+    case let s as String: return s
+    case let a as [Any]: return a.map { fieldString($0) }.joined(separator: ", ")
+    default: return String(describing: value!)
+    }
+}
+
+private let titleKeys = ["title", "titel", "name", "friendly_name", "bezeichnung", "anbieter", "item", "local_text", "problem", "frage"]
+private let subtitleKeys = ["date", "datum", "kategorie", "category", "status", "mhd", "start_date", "destination", "menge", "marke", "author"]
+
+func recordTitle(_ fields: [String: Any]) -> String {
+    for k in titleKeys { let v = fieldString(fields[k]); if !v.isEmpty { return v } }
+    return "#\(fieldString(fields["id"]))"
+}
+func recordSubtitle(_ fields: [String: Any], titleShown: String) -> String? {
+    for k in subtitleKeys {
+        let v = fieldString(fields[k]); if !v.isEmpty && v != titleShown {
+            return (k == "date" || k == "datum" || k == "mhd" || k == "start_date") ? DateText.pretty(v) : v
+        }
+    }
+    return nil
+}
+func recordImageURL(_ fields: [String: Any], _ spec: ResourceImageSpec?) -> String? {
+    guard let spec else { return nil }
+    if spec.multi { return (fields[spec.col + "_urls"] as? [Any])?.compactMap { $0 as? String }.first }
+    return fields[spec.col + "_url"] as? String
+}
+/// snake_case → hübsches Label.
+func prettyColumn(_ name: String) -> String {
+    name.replacingOccurrences(of: "_", with: " ")
+        .split(separator: " ").map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(separator: " ")
+}
