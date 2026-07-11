@@ -18,10 +18,16 @@ platform :ios do
       keychain_password: ENV["MATCH_KEYCHAIN_PASSWORD"] || ""
     )
 
-    # Provisioning-Profil (.mobileprovision) aus base64
+    # Provisioning-Profil App (.mobileprovision) aus base64
     app_profile = "/tmp/app.mobileprovision"
     File.binwrite(app_profile, Base64.decode64(ENV.fetch("APP_PROFILE_BASE64")))
     install_provisioning_profile(path: app_profile)
+
+    # Provisioning-Profil Widget-Extension (App-Group-Entitlement) — die App bettet die
+    # Extension ein, daher wird das Profil fuer app.yagemi.familienplaner.widgets zwingend gebraucht.
+    widget_profile = "/tmp/widget.mobileprovision"
+    File.binwrite(widget_profile, Base64.decode64(ENV.fetch("WIDGET_PROFILE_BASE64")))
+    install_provisioning_profile(path: widget_profile)
 
     # App Store Connect API-Key (.p8) aus base64 — ersetzt Apple-ID-Login
     api_key = app_store_connect_api_key(
@@ -42,12 +48,14 @@ platform :ios do
         "CURRENT_PROJECT_VERSION=#{build_number}",
         "DEVELOPMENT_TEAM=#{ENV['APPLE_TEAM_ID']}",
         %(CODE_SIGN_IDENTITY="Apple Distribution"),   # sonst gewinnt xcodebuilds Default "iOS Development"
-        %(APP_PROFILE_NAME="#{ENV['APP_PROFILE_NAME']}")
+        %(APP_PROFILE_NAME="#{ENV['APP_PROFILE_NAME']}"),
+        %(WIDGET_PROFILE_NAME="#{ENV['WIDGET_PROFILE_NAME']}")
       ].join(" "),
       export_options: {
         signingStyle: "manual",
         provisioningProfiles: {
-          APP_ID => ENV.fetch("APP_PROFILE_NAME")
+          APP_ID => ENV.fetch("APP_PROFILE_NAME"),
+          "#{APP_ID}.widgets" => ENV.fetch("WIDGET_PROFILE_NAME")
         }
       }
     )
