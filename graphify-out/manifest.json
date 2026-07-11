@@ -1,0 +1,238 @@
+{
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\instrumentation.ts": {
+    "mtime": 1783769926.251089,
+    "hash": "6dcc4d7bf540564f499d6824a2a9e311"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\middleware.ts": {
+    "mtime": 1783768423.227504,
+    "hash": "f68c1992bb7c135f6ccae3f1b8f507aa"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\app\\layout.tsx": {
+    "mtime": 1783764677.660382,
+    "hash": "480d46771eeabd4b1647615103281e95"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\app\\page.tsx": {
+    "mtime": 1783769607.0957928,
+    "hash": "1d028960f47f71e7e3fefb146a9fb211"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\app\\api\\v1\\route.ts": {
+    "mtime": 1783768763.5979075,
+    "hash": "1e67d61627680300f488c415c6d88e20"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\app\\api\\v1\\agent\\action\\route.ts": {
+    "mtime": 1783768287.3240252,
+    "hash": "5aa482963ea7aba19a416feaf48df34d"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\app\\api\\v1\\agent\\capabilities\\route.ts": {
+    "mtime": 1783771016.167734,
+    "hash": "8841335070865d7491072feffb23fc2c"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\app\\api\\v1\\agent\\query\\route.ts": {
+    "mtime": 1783768280.9562788,
+    "hash": "ce3ef1c17ba456e7a69b68b349de6f6d"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\app\\api\\v1\\auth\\login\\route.ts": {
+    "mtime": 1783768246.1132376,
+    "hash": "2809198ff5c9c321eea59b7ca69703c1"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\app\\api\\v1\\auth\\logout\\route.ts": {
+    "mtime": 1783768248.6221867,
+    "hash": "bf342b837f75a01ea5e6758190c7b76d"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\app\\api\\v1\\auth\\me\\route.ts": {
+    "mtime": 1783768250.0618098,
+    "hash": "231016c7bf8c38ebb23326a05f55251d"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\app\\api\\v1\\config\\route.ts": {
+    "mtime": 1783768360.1221592,
+    "hash": "18b777d0ef6552611a0d97b86a0695fe"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\app\\api\\v1\\dashboard\\today\\route.ts": {
+    "mtime": 1783768529.9038105,
+    "hash": "db0b926c000850b2b431a9827fd7f670"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\app\\api\\v1\\debug\\backup\\route.ts": {
+    "mtime": 1783770069.5791428,
+    "hash": "55b6801b139c4991c2bcdea097de115e"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\app\\api\\v1\\debug\\db-stats\\route.ts": {
+    "mtime": 1783768755.0298593,
+    "hash": "d424737a4b5e903dbc31ea737cecf39a"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\app\\api\\v1\\debug\\logs\\route.ts": {
+    "mtime": 1783768752.171972,
+    "hash": "f0d5c11671bbbdc7f76b10684e1b056b"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\app\\api\\v1\\docs\\route.ts": {
+    "mtime": 1783764663.9581246,
+    "hash": "c4f8a485983b0c081b3ec14ec454302a"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\app\\api\\v1\\files\\reisen-docs\\route.ts": {
+    "mtime": 1783770841.6873803,
+    "hash": "2f8edcaee6617c5aaa35fe3bff5cdc6c"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\app\\api\\v1\\files\\reisen-docs\\[id]\\route.ts": {
+    "mtime": 1783770834.1014223,
+    "hash": "5802b5fb8439345238f1e46d24f78fb9"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\app\\api\\v1\\jobs\\route.ts": {
+    "mtime": 1783769911.7857983,
+    "hash": "adeb7ebf293c0eeba9ca19e51b8cbfb8"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\app\\api\\v1\\jobs\\[name]\\route.ts": {
+    "mtime": 1783769915.6921227,
+    "hash": "bf77f43c8d0dd4895fd3b62e38cbee26"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\app\\api\\v1\\jobs\\[name]\\run\\route.ts": {
+    "mtime": 1783769919.445485,
+    "hash": "2cc955c4b9b7b4ae317a2cac4bca8c89"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\app\\api\\v1\\media\\upload\\route.ts": {
+    "mtime": 1783770829.0370865,
+    "hash": "64cf3cbf8bff03d576af50ae5da0c452"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\app\\api\\v1\\media\\[...key]\\route.ts": {
+    "mtime": 1783768417.598411,
+    "hash": "071afce239e5db99f644375dcbb5f153"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\app\\api\\v1\\openapi.json\\route.ts": {
+    "mtime": 1783768742.215951,
+    "hash": "40e96a3cb6370ff19fed9c41614807ba"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\app\\api\\v1\\reminders\\due\\route.ts": {
+    "mtime": 1783768325.9546869,
+    "hash": "638199ae14381f385ccd5884c5bc6c3d"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\app\\api\\v1\\reminders\\[id]\\sent\\route.ts": {
+    "mtime": 1783768329.7077343,
+    "hash": "30fd0f44a88dd843aaa4c516637ea0a3"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\app\\api\\v1\\search\\route.ts": {
+    "mtime": 1783770773.0400434,
+    "hash": "8baa1e08218d0951d3b88cad8da2470c"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\app\\api\\v1\\[domain]\\route.ts": {
+    "mtime": 1783768158.901684,
+    "hash": "bb77a1d53237e3216d3dd26c6284b272"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\app\\api\\v1\\[domain]\\[id]\\route.ts": {
+    "mtime": 1783768172.061404,
+    "hash": "969cd72d07902a323c8bbbcb85d00c79"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\app\\bereich\\[key]\\page.tsx": {
+    "mtime": 1783770921.2014503,
+    "hash": "e26b4b2d939f605b8985784cc436a335"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\app\\healthz\\route.ts": {
+    "mtime": 1783764626.49593,
+    "hash": "fa7b909fbda7540f1b4ef132c88b0f67"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\app\\liste\\[resource]\\page.tsx": {
+    "mtime": 1783770919.0010993,
+    "hash": "026d8933a31b85a98d78a11c6e61dac9"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\app\\login\\page.tsx": {
+    "mtime": 1783768469.0854633,
+    "hash": "abf4cebc717d650b03efaa487e62cccc"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\app\\version\\route.ts": {
+    "mtime": 1783764629.4955142,
+    "hash": "e7ddcdd486368336744c0b0cedb08524"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\components\\LogoutButton.tsx": {
+    "mtime": 1783768425.3309913,
+    "hash": "f7f212d1e658181a57350edf5331aa0b"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\components\\ResourceBrowser.tsx": {
+    "mtime": 1783770915.9154172,
+    "hash": "feb382ee797b56f67c3b7a214ab0f884"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\lib\\api.ts": {
+    "mtime": 1783769481.8198369,
+    "hash": "2628caca14e84171be80042c7716aace"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\server\\config.ts": {
+    "mtime": 1783769814.1784756,
+    "hash": "7c959e5f2713e47a35a2cfff7c467cb7"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\server\\auth\\auth.ts": {
+    "mtime": 1783768047.783443,
+    "hash": "b431891a0a7ff114b8941f67d29b4321"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\server\\auth\\server.ts": {
+    "mtime": 1783768243.5050538,
+    "hash": "c252e83206a15b817a1d935c188ee2f9"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\server\\auth\\session.ts": {
+    "mtime": 1783768039.8564043,
+    "hash": "f387256d5e6b81111b4a58c07f73a361"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\server\\db\\connection.ts": {
+    "mtime": 1783770743.6884913,
+    "hash": "72fac91a7deca2b5b30bc4b99544a60b"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\server\\db\\fts.ts": {
+    "mtime": 1783770734.523383,
+    "hash": "b632cc424c5dde33987bebf40e4fb1be"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\server\\db\\introspect.ts": {
+    "mtime": 1783767969.8821313,
+    "hash": "c8060fe560b2be6664a6a340027d834f"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\server\\db\\migrate.ts": {
+    "mtime": 1783766127.8564007,
+    "hash": "9b0208af38025b121c743347dac78cea"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\server\\db\\paths.ts": {
+    "mtime": 1783766114.856824,
+    "hash": "bbfbcb89d0860ada878886f81e9d9816"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\server\\db\\seed.ts": {
+    "mtime": 1783766121.9203515,
+    "hash": "01b7a362e85bab4949f8f658c3cd4bd8"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\server\\domains\\crud.ts": {
+    "mtime": 1783770759.1913285,
+    "hash": "d4152919df60261ddcb850bb828d0081"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\server\\domains\\registry.ts": {
+    "mtime": 1783770817.2689185,
+    "hash": "e7826a1fc123c2ee018453dd634748a0"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\server\\http\\respond.ts": {
+    "mtime": 1783767963.459967,
+    "hash": "71d275516786edcee449eb97bd0cd3b1"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\server\\jobs\\notify.ts": {
+    "mtime": 1783769868.8303766,
+    "hash": "40c08bc93d7961f2dea6969b96bcb372"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\server\\jobs\\registry.ts": {
+    "mtime": 1783769885.462003,
+    "hash": "dad44bcd5056dfa7cab5595cd4453790"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\server\\jobs\\runner.ts": {
+    "mtime": 1783769895.1272604,
+    "hash": "83a2998490201251245d407b682a5190"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\server\\jobs\\scheduler.ts": {
+    "mtime": 1783769899.0804713,
+    "hash": "6d9d2053a0a657099fcfdf9a77b6b9bc"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\server\\media\\media.ts": {
+    "mtime": 1783768096.3383927,
+    "hash": "b6867c09c244a622580ebcd44029d1ec"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\server\\observability\\logger.ts": {
+    "mtime": 1783764610.3566785,
+    "hash": "9e3abeee8c4e275badd39c6d25dc5422"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\server\\observability\\ringbuffer.ts": {
+    "mtime": 1783764602.7677555,
+    "hash": "152764779fde85de5af50fa62b5ad7d7"
+  },
+  "C:\\bin\\familienplaner-app\\apps\\web\\src\\server\\util\\hash.ts": {
+    "mtime": 1783768033.8608744,
+    "hash": "901797ec41eb5d331a94f96f9668daf1"
+  }
+}
