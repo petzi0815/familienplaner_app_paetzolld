@@ -6,16 +6,13 @@
 
 ## ▶️ WIEDERAUFNAHME (nächste Session) — START HIER
 
-**Stand (2026-07-11): Phase 2 — API-Framework + Auth + Agent FERTIG (lokal verifiziert).**
-P0+P1 live auf Coolify (`https://familienplaner.yagemi.app`). Persistenz des `/data`-Volumes
-bestätigt (seeded_at konstant, boot_count wächst über Redeploys). Env in Coolify gesetzt.
-**P2 fügt hinzu:** rollenbasierte Auth (API-Keys `api_keys` + Familien-Passwort-Session, Bootstrap-
-Agent-Key beim Boot), generisches **registry-getriebenes CRUD** für ~48 Ressourcen (`/api/v1/<key>`),
-Agent-Endpunkte (`agent/capabilities|query|action` mit Dry-Run), `search`, `dashboard/today`,
-`reminders/due` + `/{id}/sent`, `config` (GET/PUT), Media-Serving (`/api/v1/media/<key>`),
-Middleware-Login-Gate, Login-Seite, **datengetriebenes Portal** (Kacheln + Tagesübersicht aus DB),
-OpenAPI aus Registry. Lokal end-to-end getestet (Login, Auth-Rollen, CRUD, Dry-Run, Media, Audit).
-Nächster Schritt: **P3 — Domänen-UIs** (Seiten je Bereich, die die v1-API konsumieren) + bereichsspezifische Sonderlogik.
+**Stand (2026-07-11): ALLE PHASEN P0–P5 FERTIG & LIVE.** `https://familienplaner.yagemi.app`.
+Migration komplett: konsolidierte SQLite (Seed-on-Boot, Volume persistent verifiziert), generische v1-API
+für ~48 Ressourcen, rollenbasierte Auth (API-Keys + Familien-Login), Agent-Endpunkte (capabilities/query/
+action + Dry-Run), Suche/Dashboard/Reminders, Domänen-UIs (Ressourcen-Browser + Bereichs-Navigation),
+Jobs/Scheduler (Run-Logs, env-gated Notify), Backup-Endpunkt + VPS-Skripte, Sentry + Log-Ringpuffer,
+OpenAPI, API.md. **Offen/optional:** bereichsspezifische Sonderlogik (Reise-Doc-Upload, Geschenk-„vergeben",
+Bild-Upload in der UI), FTS5-Volltext (aktuell LIKE), iOS-App bauen (API ist vorbereitet), graphify-Graph.
 
 <!-- Historie P0 -->
 **Stand (2026-07-11): Phase 0 — Fundament FERTIG & gepusht (commit `19247ad`).**
@@ -112,6 +109,18 @@ Geschenkplaner · Garten · Vorratskammer · Gypsi (Katzenfutter) · Reiniger ·
   committen; nach Push per `/version` verifizieren. Secrets nur via `.env`/Coolify.
 
 ## Dev-Log (jüngste zuerst)
+
+### Update 3 (2026-07-11) — Phasen 3–5: UIs, Jobs, Härtung (LIVE)
+- **P3 UIs:** generischer `ResourceBrowser` (Liste/Bildraster, Suche, Detail, CRUD via v1-API, Bilder,
+  Formular aus `/schema`) + `/bereich/[key]` (Einzel→Browser, Multi→Unterkacheln) + `/liste/[resource]`;
+  Portal-Kacheln verlinkt. **Lessons:** setState synchron im Effect → Lint-Error (Initial-Load async);
+  `<img>` = nur Warnung (ok). `lib/api.ts` schickt Session-Cookie mit.
+- **P4 Jobs:** `server/jobs/{registry,runner,scheduler,notify}.ts` — 3 idempotente Jobs (termine-reminders,
+  vorrat-mhd-check, garten-aufgaben-check), Run-Logs in `job_runs`, node-cron In-Process-Scheduler
+  (`JOBS_ENABLED`), Notify env-gated (kein Telegram-Token → nur Log). Endpunkte `GET /api/v1/jobs`,
+  `GET /jobs/{name}`, `POST /jobs/{name}/run?dry_run=1`. Verifiziert (garten dry-run: 35 Aufgaben).
+- **P5 Härtung:** `POST/GET /api/v1/debug/backup` (better-sqlite3 `.backup()` nach `$DATA_DIR/backups/`),
+  `scripts/{backup,restore}.sh` (VPS), `scripts/smoke.mjs` (API-Smoke), `docs/API.md`, README aktualisiert.
 
 ### Update 2 (2026-07-11) — Phase 2: API-Framework + Auth + Agent (lokal verifiziert)
 - **Auth:** `server/auth/{auth,session,server}.ts` — Bearer (Admin-Passwort ODER `api_keys`-Hash mit

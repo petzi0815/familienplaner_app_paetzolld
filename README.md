@@ -8,8 +8,15 @@ Die Web-UI ist **Konsument der eigenen REST-API** (`/api/v1`). Dieselbe API bedi
 lokalen KI-Agenten „Ole" (API-Key) und später eine iPhone-App. Deployment: **Autodeploy
 via GitHub-Push → Coolify**.
 
-> **Status:** 🏗️ Phase 0 — Fundament. Projektstand & Spezifikation: [`CLAUDE.md`](CLAUDE.md) ·
-> vollständiger Plan: [`docs/MIGRATION_PLAN.md`](docs/MIGRATION_PLAN.md).
+> **Status:** ✅ Migration abgeschlossen & live (`https://familienplaner.yagemi.app`).
+> Projektstand & Spezifikation: [`CLAUDE.md`](CLAUDE.md) · Plan: [`docs/MIGRATION_PLAN.md`](docs/MIGRATION_PLAN.md) ·
+> API-Nutzung: [`docs/API.md`](docs/API.md) · Deployment: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+>
+> **Funktionen:** konsolidierte SQLite (12 Legacy-DBs migriert, ID-erhaltend, Seed-on-Boot) ·
+> generische v1-API für ~48 Ressourcen · rollenbasierte API-Keys + Familien-Login ·
+> agentenfreundliche Endpunkte (capabilities/query/action, Dry-Run) · Cross-Domain-Suche ·
+> datengetriebenes iOS-Style-Portal + Ressourcen-UIs · Jobs/Scheduler (Run-Logs, env-gated Notify) ·
+> Sentry + Log-Ringpuffer + DB-Backup.
 
 ## Stack
 
