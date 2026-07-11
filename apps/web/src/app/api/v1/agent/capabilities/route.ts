@@ -50,6 +50,7 @@ export function GET(req: Request): Response {
       foto_upload: "POST /api/v1/foto/upload — multipart (bereich, notiz?, file) ODER JSON (bereich?, data_base64). Legt foto_inbox-Eintrag status='neu' an.",
       foto_inbox_workflow: "Agent: GET /api/v1/foto-inbox?status=neu&sort=id:asc → Bild via url/media laden + analysieren → PATCH /api/v1/foto-inbox/{id} { status:'zugeordnet', analyse, zugeordnet_resource, zugeordnet_id } (Bild via /api/v1/media/upload {resource,id} an den Zieldatensatz hängen). PATCH auf status='zugeordnet' löst automatisch einen Push an die iOS-App aus.",
       push_send: "POST /api/v1/push/send { title, body, data? } — Alert-Push an alle iOS-Geräte (nur wenn APNs konfiguriert).",
+      mcp: "POST /api/mcp — MCP-Server (Streamable HTTP) im selben Backend. Gleicher Bearer-Key wie hier (Rolle >= agent). Tools: list_resources, resource_schema, list_records, get_record, create_record, update_record, delete_record, search, dashboard_today, reminders_due, foto_inbox_new, list_jobs, run_job, send_push. Für MCP-fähige Agenten die bevorzugte Anbindung.",
     },
     domains: [...new Set(RESOURCES.map((r) => r.domain))],
     resources,
