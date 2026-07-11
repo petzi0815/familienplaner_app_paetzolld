@@ -2,6 +2,7 @@ import { config } from "@/server/config";
 import { getDb } from "@/server/db/connection";
 
 // API-Wurzel: kurzer, maschinenlesbarer Einstieg + DB-Liveness. Offen.
+// (Persistenz-Test 2026-07-11: Re-Deploy #1 zur Volume-Validierung.)
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
