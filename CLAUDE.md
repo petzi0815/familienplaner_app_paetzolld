@@ -6,14 +6,15 @@
 
 ## ▶️ WIEDERAUFNAHME (nächste Session) — START HIER
 
-**Stand (2026-07-11): ALLE PHASEN P0–P5 FERTIG & LIVE.** `https://familienplaner.yagemi.app`.
+**Stand (2026-07-11, HEAD `79d87b2`): ALLE PHASEN P0–P5 FERTIG & LIVE.** `https://familienplaner.yagemi.app`.
 Migration komplett: konsolidierte SQLite (Seed-on-Boot, Volume persistent verifiziert), generische v1-API
 für ~48 Ressourcen, rollenbasierte Auth (API-Keys + Familien-Login), Agent-Endpunkte (capabilities/query/
 action + Dry-Run), Suche/Dashboard/Reminders, Domänen-UIs (Ressourcen-Browser + Bereichs-Navigation),
 Jobs/Scheduler (Run-Logs, env-gated Notify), Backup-Endpunkt + VPS-Skripte, Sentry + Log-Ringpuffer,
-OpenAPI, API.md. **FTS5-Volltext live** (fts_index, ins CRUD integriert). **Bild-Upload** (`/api/v1/media/upload`),
-**Reise-Doc-Download/Upload** (`/api/v1/files/reisen-docs`), **Schnellaktionen** (Geschenk „vergeben", Samu
-„aussortieren") in der UI. **graphify-Graph** generiert (`graphify-out/`, 221 Nodes/15 Communities, AST-only).
+OpenAPI, API.md. **FTS5-Volltext live** (fts_index, ins CRUD integriert). **Bild-Upload per API**
+(`/api/v1/media/upload` — JSON-Base64 **oder** multipart, optional `resource`+`id` → direkt an den Datensatz
+angehängt) + Upload-Button in der UI. **Reise-Doc-Download/Upload** (`/api/v1/files/reisen-docs`),
+**Schnellaktionen** (Geschenk „vergeben", Samu „aussortieren") in der UI. **graphify-Graph** generiert (`graphify-out/`, 221 Nodes/15 Communities, AST-only).
 **Offen/optional:** iOS-App bauen (API vorbereitet), Cloudflare-Cache-Regel „Bypass /api/*", elisbooks-Cover (nicht im Export).
 
 <!-- Historie P0 -->
