@@ -11,8 +11,10 @@ Migration komplett: konsolidierte SQLite (Seed-on-Boot, Volume persistent verifi
 für ~48 Ressourcen, rollenbasierte Auth (API-Keys + Familien-Login), Agent-Endpunkte (capabilities/query/
 action + Dry-Run), Suche/Dashboard/Reminders, Domänen-UIs (Ressourcen-Browser + Bereichs-Navigation),
 Jobs/Scheduler (Run-Logs, env-gated Notify), Backup-Endpunkt + VPS-Skripte, Sentry + Log-Ringpuffer,
-OpenAPI, API.md. **Offen/optional:** bereichsspezifische Sonderlogik (Reise-Doc-Upload, Geschenk-„vergeben",
-Bild-Upload in der UI), FTS5-Volltext (aktuell LIKE), iOS-App bauen (API ist vorbereitet), graphify-Graph.
+OpenAPI, API.md. **FTS5-Volltext live** (fts_index, ins CRUD integriert). **Bild-Upload** (`/api/v1/media/upload`),
+**Reise-Doc-Download/Upload** (`/api/v1/files/reisen-docs`), **Schnellaktionen** (Geschenk „vergeben", Samu
+„aussortieren") in der UI. **graphify-Graph** generiert (`graphify-out/`, 221 Nodes/15 Communities, AST-only).
+**Offen/optional:** iOS-App bauen (API vorbereitet), Cloudflare-Cache-Regel „Bypass /api/*", elisbooks-Cover (nicht im Export).
 
 <!-- Historie P0 -->
 **Stand (2026-07-11): Phase 0 — Fundament FERTIG & gepusht (commit `19247ad`).**
@@ -109,6 +111,16 @@ Geschenkplaner · Garten · Vorratskammer · Gypsi (Katzenfutter) · Reiniger ·
   committen; nach Push per `/version` verifizieren. Secrets nur via `.env`/Coolify.
 
 ## Dev-Log (jüngste zuerst)
+
+### Update 4 (2026-07-11) — Nacharbeiten: FTS5, Uploads, graphify (LIVE)
+- **FTS5 (Migration 0003):** einheitlicher `fts_index`, ins generische CRUD integriert (Reindex bei
+  create/update/delete), Boot-Aufbau; `/search` nutzt FTS (LIKE-Fallback). Prod: `engine:fts5`, korfu 41 Treffer.
+- **Uploads/Sonderlogik:** `POST /api/v1/media/upload` (Bild → storage_key) + Upload-Button im ResourceBrowser;
+  `GET/POST /api/v1/files/reisen-docs[/{id}]` (BLOB-Download/Upload); Schnellaktionen (Status-PATCH) im Detail.
+  Prod verifiziert (PDF-Download id 13 → 200/130 KB).
+- **graphify:** `graphify-out/` generiert (AST-only, 0 Tokens; 221 Nodes/805 Edges/15 Communities). God-Nodes
+  `getDb/getAuth/hasRole/ok/fail`. **Lesson (Windows):** graphify-Reports mit `PYTHONUTF8=1` schreiben (cp1252
+  scheitert an `→`); auf `apps/web/src` zielen (nicht Repo-Root — sonst 808 Media-Bilder als Vision-Chunks).
 
 ### Update 3 (2026-07-11) — Phasen 3–5: UIs, Jobs, Härtung (LIVE)
 - **P3 UIs:** generischer `ResourceBrowser` (Liste/Bildraster, Suche, Detail, CRUD via v1-API, Bilder,
