@@ -35,8 +35,8 @@ struct MainTabView: View {
             Tab("Scannen", systemImage: "barcode.viewfinder", value: AppState.MainTab.scan) {
                 ScanHubView()
             }
-            Tab("Einstellungen", systemImage: "gearshape.fill", value: AppState.MainTab.mehr) {
-                SettingsView()
+            Tab("Mehr", systemImage: "ellipsis.circle.fill", value: AppState.MainTab.mehr) {
+                MehrView()
             }
             Tab("Suchen", systemImage: "magnifyingglass", value: AppState.MainTab.search, role: .search) {
                 SearchView()

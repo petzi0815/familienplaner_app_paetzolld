@@ -1,11 +1,17 @@
 import SwiftUI
 
-struct SettingsView: View {
+/// „Mehr"-Hub: weitere Lebensbereiche (Reisen-Karte) + Konto/Server.
+struct MehrView: View {
     @EnvironmentObject private var settings: Settings
 
     var body: some View {
         NavigationStack {
-            Form {
+            List {
+                Section("Lebensbereiche") {
+                    NavigationLink { ReiseListView() } label: {
+                        Label("Reisen (Karte)", systemImage: "map.fill")
+                    }
+                }
                 Section("Server") {
                     LabeledContent("URL", value: settings.baseURL)
                 }
@@ -19,10 +25,10 @@ struct SettingsView: View {
                 Section {
                     LabeledContent("Version", value: "1.0")
                 } footer: {
-                    Text("Fotos werden an den Familienplaner hochgeladen; der Agent Ole analysiert und ordnet sie den Datensätzen zu.")
+                    Text("Familienplaner – Fotos, Termine, Bücher, Vorräte und mehr. Der Agent Ole analysiert Uploads und ordnet sie zu.")
                 }
             }
-            .navigationTitle("Einstellungen")
+            .navigationTitle("Mehr")
         }
     }
 }

@@ -1,8 +1,10 @@
 import SwiftUI
+import UIKit
 
 /// „Heute" — kompakter Tageszustand aus GET /api/v1/dashboard/today.
 struct HeuteView: View {
     @EnvironmentObject private var app: AppState
+    @State private var calMessage = ""
 
     private let statCols = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
 
@@ -64,9 +66,32 @@ struct HeuteView: View {
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
+                    Button {
+                        Task { await addToCalendar(t) }
+                    } label: {
+                        Image(systemName: "calendar.badge.plus").font(.title3)
+                    }
+                    .buttonStyle(.plain).foregroundStyle(Palette.colors(for: "termine").first!)
                 }
                 if t.id != items.prefix(6).last?.id { Divider() }
             }
+            if !calMessage.isEmpty {
+                Text(calMessage).font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func addToCalendar(_ t: TerminShort) async {
+        guard let date = DateText.parse(date: t.date, time: t.time) else { return }
+        let allDay = (t.time ?? "").isEmpty
+        switch await CalendarSync.addEvent(title: t.title, date: date, allDay: allDay, notes: "Aus Familienplaner") {
+        case .success:
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            calMessage = "\"\(t.title)\" im Kalender eingetragen."
+        case .failure(let e):
+            calMessage = (e as? CalendarSync.CalError) == .denied
+                ? "Kalenderzugriff nicht erlaubt (in Einstellungen aktivieren)."
+                : "Konnte nicht eintragen."
         }
     }
 
@@ -145,12 +170,20 @@ struct SectionCard<Content: View>: View {
     }
 }
 
-/// „yyyy-MM-dd" → hübsches deutsches Datum.
+/// „yyyy-MM-dd" → hübsches deutsches Datum + Parsing für Kalender/Erinnerungen.
 enum DateText {
     private static let inFmt: DateFormatter = { let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.locale = Locale(identifier: "de_DE"); return f }()
     private static let outFmt: DateFormatter = { let f = DateFormatter(); f.locale = Locale(identifier: "de_DE"); f.setLocalizedDateFormatFromTemplate("EEEEdMMMM"); return f }()
     static func pretty(_ s: String) -> String {
         guard let d = inFmt.date(from: String(s.prefix(10))) else { return s }
         return outFmt.string(from: d)
+    }
+    /// Datum (+ optional Uhrzeit „HH:mm") in lokaler Zeit.
+    static func parse(date: String, time: String? = nil) -> Date? {
+        guard let day = inFmt.date(from: String(date.prefix(10))) else { return nil }
+        guard let time, time.count >= 4 else { return day }
+        let parts = time.split(separator: ":")
+        guard let h = Int(parts.first ?? ""), parts.count > 1, let m = Int(parts[1]) else { return day }
+        return Calendar.current.date(bySettingHour: h, minute: m, second: 0, of: day) ?? day
     }
 }

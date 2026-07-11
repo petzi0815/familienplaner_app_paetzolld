@@ -38,8 +38,10 @@ final class AppState: ObservableObject {
 
     func loadDashboard() async {
         do {
-            dashboard = try await api.dashboard()
+            let d = try await api.dashboard()
+            dashboard = d
             dashboardError = nil
+            LocalReminders.reschedule(termine: d.termineUpcoming, vorrat: d.vorratBaldAblaufend)
         } catch {
             dashboardError = (error as? APIError)?.errorDescription ?? "Konnte Heute-Übersicht nicht laden."
         }
