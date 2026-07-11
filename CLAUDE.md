@@ -6,6 +6,16 @@
 
 ## ▶️ WIEDERAUFNAHME (nächste Session) — START HIER
 
+**Stand (2026-07-11): Phase 1 — DB-Konsolidierung & Datenmigration FERTIG & LIVE.**
+P0 (Fundament) + P1 (Datenmigration) sind gepusht und auf Coolify deployt
+(`https://familienplaner.yagemi.app`, Domain bestätigt). Alle 12 Legacy-SQLite + `vertraege.json`
+sind ID-erhaltend in EINE `familienplaner.db` konsolidiert (46 Domänen-Tabellen präfixiert,
+FK umgeschrieben, BLOBs erhalten), Media (406 Assets) auf Storage-Keys umgezogen. Die App
+**seedet das `/data`-Volume beim ersten Boot selbst** aus `seed/` (verifiziert: frischer
+DATA_DIR → 56 Tabellen, 6801 Zeilen). Debug: `/api/v1/debug/db-stats` (admin),
+DB-Liveness am `/api/v1`-Index. Nächster Schritt: **P2 — API-Framework + Auth + OpenAPI + Agent**.
+
+<!-- Historie P0 -->
 **Stand (2026-07-11): Phase 0 — Fundament FERTIG & gepusht (commit `19247ad`).**
 Migration des lokal (Synology) laufenden Familienplaners in ein API-first Monorepo mit
 Autodeploy via GitHub → Coolify. Bestätigte Entscheidungen (siehe Tabelle unten):
@@ -100,6 +110,26 @@ Geschenkplaner · Garten · Vorratskammer · Gypsi (Katzenfutter) · Reiniger ·
   committen; nach Push per `/version` verifizieren. Secrets nur via `.env`/Coolify.
 
 ## Dev-Log (jüngste zuerst)
+
+### Update 1 (2026-07-11) — Phase 1: DB-Konsolidierung & Datenmigration (LIVE)
+- Alle 12 Legacy-SQLite exakt introspiziert (`scripts/introspect-legacy.mjs` → `_legacy/schemas.json`).
+- Konsolidiertes Schema: `db/migrations/0001_infra.sql` (Registry, Auth, Jobs, Media, Audit,
+  Verträge, Escape-Hatch) + `0002_domains.sql` (46 Domänen-Tabellen, generiert von
+  `gen-domain-migration.mjs` — präfixiert wg. Kollisionen items/wishlist/events/user_settings,
+  FK-REFERENCES umgeschrieben).
+- **Lesson (Regex-FK-Rewrite):** `REFERENCES books` matchte auch `bookshelves` (→ Syntaxfehler
+  „near helves"). Fix: Wortgrenze `\b` nach dem Tabellennamen.
+- Seed-Builder (`scripts/build-seed.mjs`): ID-erhaltender Import via ATTACH+INSERT (inkl. BLOBs:
+  16 Reise-Docs/5 MB), Media-Umzug `_legacy/media` → `seed/media/<bereich>/`, Bildpfad-Rewrite auf
+  Storage-Keys (`<bereich>/<datei>`; externe URLs bleiben), Verträge aus JSON, Registry-Seed.
+  Verifikation dst==src grün (6355 Domänen-Zeilen), 406 Assets, 307 Pfade, 2 fehlende Dateien.
+- Laufzeit: `server/db/{connection,migrate,seed,paths}.ts` — Seed-on-Boot ins DATA_DIR +
+  idempotenter Migrations-Runner, gestartet via `instrumentation.register()` (nodejs).
+- **Lesson:** `instrumentation.register()` darf NICHT früh returnen, wenn `SENTRY_DSN` leer ist —
+  sonst läuft die DB-Init nie (DSN ist default leer). DB-Init vor der Sentry-Guard.
+- Dockerfile kopiert `db/` + `seed/` ins Image (`DB_MIGRATIONS_DIR`/`DB_SEED_DIR`).
+- Seed (DB 8 MB + Media 63 MB) committet → Coolify seedet Prod-Volume beim Boot selbst.
+- **Verifiziert:** frischer DATA_DIR seedet sich (56 Tabellen/6801 Zeilen); Prod-Deploy `a419872` live.
 
 ### Update 0 (2026-07-11) — Projekt-Setup & Plan
 - Migrationsquellen analysiert (3 ZIPs: core + media-rest + media-samu): Next.js-16-App,
