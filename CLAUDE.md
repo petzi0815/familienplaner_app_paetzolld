@@ -6,20 +6,22 @@
 
 ## ▶️ WIEDERAUFNAHME (nächste Session) — START HIER
 
-**Stand (2026-07-11, HEAD `79d87b2`): ALLE PHASEN P0–P5 FERTIG & LIVE.** `https://familienplaner.yagemi.app`.
-Migration komplett: konsolidierte SQLite (Seed-on-Boot, Volume persistent verifiziert), generische v1-API
-für ~48 Ressourcen, rollenbasierte Auth (API-Keys + Familien-Login), Agent-Endpunkte (capabilities/query/
-action + Dry-Run), Suche/Dashboard/Reminders, Domänen-UIs (Ressourcen-Browser + Bereichs-Navigation),
-Jobs/Scheduler (Run-Logs, env-gated Notify), Backup-Endpunkt + VPS-Skripte, Sentry + Log-Ringpuffer,
-OpenAPI, API.md. **FTS5-Volltext live** (fts_index, ins CRUD integriert). **Bild-Upload per API**
-(`/api/v1/media/upload` — JSON-Base64 **oder** multipart, optional `resource`+`id` → direkt an den Datensatz
-angehängt) + Upload-Button in der UI. **Reise-Doc-Download/Upload** (`/api/v1/files/reisen-docs`),
-**Schnellaktionen** (Geschenk „vergeben", Samu „aussortieren") in der UI. **graphify-Graph** generiert (`graphify-out/`, 221 Nodes/15 Communities, AST-only).
-**iOS-App:** native SwiftUI-App gebaut (`ios-app/`, Foto → Bereich → Upload in den Foto-Eingang) + Backend-Feature
-**Foto-Inbox** (`foto_inbox`, `POST /api/v1/foto/upload`, Ole kategorisiert). Build via GitHub Actions
-(`.github/workflows-disabled/ios.yml` → aktivieren) — braucht Apple-Signing-Secrets (siehe `docs/IOS.md`).
-**Offen/optional:** **`SENTRY_DSN` in Coolify setzen** (Projekt `yagemi/familienplaner`, DSN verifiziert);
-Apple-App-Record + Signing-Secrets für den iOS-TestFlight-Build; Cloudflare-Cache-Regel „Bypass /api/*".
+**Stand (2026-07-11, HEAD `e5f6ddc`): Backend LIVE + native iOS-App auf TestFlight (Build 2).** `https://familienplaner.yagemi.app`.
+
+**NEU (Details: Memory [[session-2026-07-11_part2]] + [[familienplaner-ios-app]]):**
+- **MCP-Server** `POST /api/mcp` (Streamable HTTP, gleicher Agent-Key wie REST, 14 generische Tools; `docs/MCP.md`).
+- **iOS-App komplett auf iOS 26** (Liquid Glass, Barcode-Scanner ISBN/EAN, On-Device-KI Foto-Vorschlag [Vision+FoundationModels],
+  EventKit-Kalender, lokale Erinnerungen, MapKit-Reisen, Siri-Kurzbefehle, WidgetKit-Widgets) + **Bereiche-Browser**
+  (alle Lebensbereiche durchnavigieren, datengetrieben aus `/agent/capabilities`; Liste/Bildraster/Detail + Schnellaktionen).
+- **CI-Pipeline live:** `.github/workflows/ios-build.yml` (Compile-Check ohne Signing) + `ios.yml` (signierter TestFlight-Upload,
+  Build-Nr = run_number). Apple-Provisioning **komplett autonom via ASC-API** (Node ES256-JWT, kein fastlane): Bundle-IDs,
+  frisches Cert `A7DKJCU523`, 2 Profile, alle GH-Secrets/Vars. App-Record `6789983007`, App Group `group.app.yagemi.familienplaner` live.
+
+**Migration P0–P5 (Basis):** konsolidierte SQLite (Seed-on-Boot), generische v1-API (~48 Ressourcen), rollenbasierte Auth,
+Agent-Endpunkte, Suche/Dashboard/Reminders, Jobs, **FTS5**, Bild-Upload, Reise-Docs, Sentry-Wiring, OpenAPI, graphify. Details: [[session-2026-07-11]].
+
+**Offen (Lars, extern — kann ich nicht):** Coolify **`APNS_*`** (5 Vars, Block geliefert) + Redeploy → dann `GET /api/v1/push/status`;
+optional **`SENTRY_DSN`** (Projekt `yagemi/familienplaner`); TestFlight interne **Tester** eintragen. Sonst sauberer Stand.
 
 <!-- Historie P0 -->
 **Stand (2026-07-11): Phase 0 — Fundament FERTIG & gepusht (commit `19247ad`).**
@@ -116,6 +118,20 @@ Geschenkplaner · Garten · Vorratskammer · Gypsi (Katzenfutter) · Reiniger ·
   committen; nach Push per `/version` verifizieren. Secrets nur via `.env`/Coolify.
 
 ## Dev-Log (jüngste zuerst)
+
+### Update 9 (2026-07-11) — MCP-Server + iOS-26-Ausbau + TestFlight LIVE + Bereiche-Browser
+- **MCP-Server** `POST /api/mcp` (`d5deae5`): dünner Adapter über crud/queries, 14 generische Tools, Auth = Agent-Key.
+  Geteilte Query-Logik nach `server/domains/queries.ts` (REST+MCP). Doku `docs/MCP.md`.
+- **iOS-App auf iOS 26** (Target 17→26, mehrere Commits bis `e5f6ddc`): Liquid Glass Tab-Bar, Barcode-Scanner (ISBN→Open
+  Library, EAN→Open Food Facts), **On-Device-KI** (Vision + FoundationModels) Foto-Bereichsvorschlag, EventKit-Kalender,
+  lokale Erinnerungen, MapKit-Reisen, ausgebaute Siri-Intents, **WidgetKit-Widgets** (App Group), **Bereiche-Browser**
+  (`Bereiche.swift`/`ResourceBrowser.swift`, datengetrieben aus `/agent/capabilities`).
+- **CI**: `ios-build.yml` (signaturfreier Compile-Check — fing einen dt.-Anführungszeichen-Bug, den 2 Review-Subagenten
+  übersahen → [[feedback-swift-string-literals-ci]]) + `ios.yml` aktiviert (TestFlight, Build 1+2 live).
+- **Apple-Provisioning autonom via ASC-REST-API** (Node ES256-JWT, kein fastlane/kein Mac): Bundle-IDs+Caps, frisches
+  Cert `A7DKJCU523` gemintet (alter `.p12` nicht auslesbar), 2 Profile, alle GH-Secrets/Vars. **Lesson:** App-Record
+  (`POST /v1/apps`=FORBIDDEN) + App-Group brauchen zwingend Apple-2FA — kein Key umgeht das.
+- Coolify-APNs-ENV-Block an Lars geliefert (Werte team-weit aus Referenz-`.env`, nur `APNS_BUNDLE_ID` abweichend).
 
 ### Update 8 (2026-07-11) — iOS UI/UX-Ausbau (frohe Farben + native Funktionen)
 - **Design-System (`Theme.swift`):** `Color(hex:)`, `Palette` mit frohen Verläufen je Lebensbereich
