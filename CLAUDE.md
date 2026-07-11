@@ -117,6 +117,22 @@ Geschenkplaner · Garten · Vorratskammer · Gypsi (Katzenfutter) · Reiniger ·
 
 ## Dev-Log (jüngste zuerst)
 
+### Update 7 (2026-07-11) — APNs-Push (Backend + iOS) + App-Icon + TestFlight-Prep
+- **APNs-Push-Backend:** `server/push/apns.ts` — token-basiert (ES256-JWT via `crypto.sign` dsaEncoding
+  ieee-p1363 = 64-Byte-Sig, verifiziert; Provider-Token ~40 min gecacht) + **HTTP/2** (`node:http2`) an
+  api.push.apple.com; tote Tokens (410) werden entfernt. Migration 0005 `device_tokens`. Endpunkte
+  `POST/DELETE /api/v1/push/register`, `POST /api/v1/push/send` (agent), `GET /api/v1/push/status` (admin).
+  **Auto-Push** wenn `foto-inbox`→`zugeordnet` (Hook in der `[id]`-PATCH-Route). Token-gated (kein Key → No-Op).
+  Config: `APNS_KEY_P8/KEY_ID`, `APPLE_TEAM_ID`, `APNS_BUNDLE_ID`. **Key ist team-weit → aus Referenz-.env
+  wiederverwendbar, nur Bundle-ID (=apns-topic) unterscheidet sich.** Lokal verifiziert (register/status/send/hook/delete).
+- **iOS-Push:** `AppDelegate` (Token-Registrierung → `POST /push/register`, `#if DEBUG`→sandbox/production),
+  `@UIApplicationDelegateAdaptor`, `requestPushAuthorization` in MainTabView, `aps-environment: production`
+  im project.yml-Entitlement (gitignored, xcodegen-generiert).
+- **App-Icon** neu gestaltet (Haus + Kamera-Linse auf Blau→Indigo-Verlauf, 1024px, via System.Drawing).
+- **TestFlight-Prep:** `ios-app/tools/prepare-signing.sh` (base64 + gh-Befehle); Doku `docs/IOS.md`
+  (Push-Env, reusable team-weite Keys, Apple-Push-Capability).
+- **Lesson:** APNs braucht HTTP/2 → `node:http2` (globales fetch/undici macht kein HTTP/2 zu Apple).
+
 ### Update 6 (2026-07-11) — iOS-App + Foto-Inbox-Feature
 - **Foto-Inbox (Backend, `4fe7024`, live):** Migration 0004 `foto_inbox` (storage_key, bereich, status
   neu/in_bearbeitung/zugeordnet/verworfen, notiz, analyse, zugeordnet_resource/id) + Dashboard-Kachel.

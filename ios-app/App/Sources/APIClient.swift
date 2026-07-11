@@ -86,6 +86,13 @@ final class APIClient {
         return try Self.decoder.decode(T.self, from: data)
     }
 
+    @discardableResult
+    private func send(_ path: String, method: String, body: Data? = nil) async throws -> Data {
+        let (data, resp) = try await Self.session.data(for: request(path, method: method, body: body))
+        try checkStatus(resp, data)
+        return data
+    }
+
     // MARK: - Endpunkte
 
     /// Leichter Auth-Check (für den Login).
@@ -125,6 +132,17 @@ final class APIClient {
         let (data, resp) = try await URLSession.shared.data(for: req)
         try checkStatus(resp, data)
         return try Self.decoder.decode(FotoUploadResult.self, from: data)
+    }
+
+    /// APNs-Device-Token registrieren.
+    func registerPush(token: String) async throws {
+        #if DEBUG
+        let env = "sandbox"
+        #else
+        let env = "production"
+        #endif
+        let body = try JSONSerialization.data(withJSONObject: ["token": token, "environment": env])
+        _ = try await send("/push/register", method: "POST", body: body)
     }
 
     /// Media (Thumbnails) auth-bewusst laden — /api/v1/media/… braucht den Bearer-Header.

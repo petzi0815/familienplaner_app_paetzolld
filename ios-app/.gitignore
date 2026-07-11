@@ -1,6 +1,7 @@
 # Von xcodegen generiert — nicht committen
 *.xcodeproj/
 App/Info.plist
+App/Familienplaner.entitlements
 
 # Build-Artefakte
 build/

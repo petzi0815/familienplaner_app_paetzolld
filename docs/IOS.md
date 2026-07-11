@@ -40,6 +40,30 @@ Manuell: Actions → „iOS TestFlight" → Run workflow.
 Runner `macos-15` · Xcode `latest-stable` · Ruby `3.3` · fastlane `~> 2.226` · XcodeGen `≥ 2.38` ·
 Deployment-Target iOS `17.0` · Signing: Manual / `Apple Distribution`.
 
+## Push (APNs) — „Foto zugeordnet"-Benachrichtigung
+Die App registriert beim Start ihr Device-Token (`POST /api/v1/push/register`). Wenn Ole ein Foto
+zuordnet (`PATCH /api/v1/foto-inbox/{id} {status:"zugeordnet"}`), sendet das Backend automatisch einen
+Push. Ole kann zusätzlich jederzeit `POST /api/v1/push/send { title, body }` aufrufen.
+
+**Backend (Coolify-Env) — der APNs-Auth-Key ist team-weit und aus dem Referenzprojekt wiederverwendbar
+(`C:\bin\placetel-elevenlabs-asterix-bridge\.env`), nur die Bundle-ID unterscheidet sich:**
+```
+APNS_KEY_P8=<wie im Referenz-.env — base64 der AuthKey_XXXX.p8>
+APNS_KEY_ID=<wie im Referenz-.env>
+APPLE_TEAM_ID=<wie im Referenz-.env>
+APNS_BUNDLE_ID=app.yagemi.familienplaner
+```
+Ohne diese Env sind Pushes stille No-Ops. Status prüfen: `GET /api/v1/push/status` (admin) → `{enabled, devices}`.
+
+**Apple-seitig:** Für die App-ID `app.yagemi.familienplaner` die Capability **Push Notifications**
+aktivieren (Developer-Portal) und das Provisioning-Profil neu erzeugen. Das Entitlement
+`aps-environment: production` steckt bereits in `project.yml` (xcodegen erzeugt die `.entitlements`).
+
+## Signing-Secrets vorbereiten (Helfer)
+`ios-app/tools/prepare-signing.sh <p8> <p12> <mobileprovision>` base64-kodiert die Dateien und gibt die
+`gh secret set` / `gh variable set`-Befehle aus. **ASC-API-Key + Distribution-Zertifikat sind team-weit**
+(aus dem Referenzprojekt wiederverwendbar); **neu** ist nur das Provisioning-Profil für die neue Bundle-ID.
+
 ## Lokal auf dem Mac
 ```bash
 cd ios-app && brew install xcodegen && xcodegen generate && open Familienplaner.xcodeproj

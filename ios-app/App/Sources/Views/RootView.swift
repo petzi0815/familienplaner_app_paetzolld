@@ -33,6 +33,9 @@ struct MainTabView: View {
                 .tabItem { Label("Einstellungen", systemImage: "gearshape.fill") }
                 .tag(AppState.MainTab.settings)
         }
-        .task { app.start() }
+        .task {
+            app.start()
+            AppDelegate.requestPushAuthorization()
+        }
     }
 }

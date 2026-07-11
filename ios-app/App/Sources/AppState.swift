@@ -32,4 +32,10 @@ final class AppState: ObservableObject {
             inboxNeu = list.filter { $0.status == "neu" }.count
         }
     }
+
+    /// APNs-Device-Token ans Backend melden (nur wenn angemeldet).
+    func registerPushToken(_ token: String) async {
+        guard settings.isConfigured else { return }
+        try? await api.registerPush(token: token)
+    }
 }

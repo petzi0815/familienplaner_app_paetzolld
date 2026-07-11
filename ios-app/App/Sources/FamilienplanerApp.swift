@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct FamilienplanerApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var settings: Settings
     @StateObject private var app: AppState
 
@@ -17,6 +18,7 @@ struct FamilienplanerApp: App {
                 .environmentObject(app)
                 .environmentObject(settings)
                 .tint(Theme.accent)
+                .onAppear { AppDelegate.appState = app }
         }
     }
 }

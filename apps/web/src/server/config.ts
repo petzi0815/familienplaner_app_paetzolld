@@ -28,6 +28,17 @@ export const config = {
   // Jobs/Scheduler (Standard an; einzelne Notify-Sends sind zusätzlich token-gated)
   jobsEnabled: env("JOBS_ENABLED", "1") !== "0",
 
+  // APNs-Push (native iOS-App, token-basiert .p8). Leer = deaktiviert (No-Op).
+  // Der APNs-Auth-Key ist team-weit — aus dem Referenzprojekt wiederverwendbar,
+  // nur APNS_BUNDLE_ID (= apns-topic) unterscheidet sich.
+  apns: {
+    keyP8: env("APNS_KEY_P8"),          // Inhalt der AuthKey_XXXX.p8 (PEM oder base64)
+    keyId: env("APNS_KEY_ID"),          // 10-stellige Key-ID
+    teamId: env("APPLE_TEAM_ID"),       // Developer-Team-ID
+    bundleId: env("APNS_BUNDLE_ID", "app.yagemi.familienplaner"),
+    useSandbox: env("APNS_USE_SANDBOX", "0") === "1",
+  },
+
   // Integrationen (optional)
   openaiApiKey: env("OPENAI_API_KEY"),
   telegram: {
