@@ -1,5 +1,9 @@
+import Link from "next/link";
 import { getDb } from "@/server/db/connection";
 import { LogoutButton } from "@/components/LogoutButton";
+
+// Lebensbereich-Key → Registry-Domain (fast identisch; nur „buecher" → „ebooks").
+const DOMAIN_OF: Record<string, string> = { buecher: "ebooks" };
 
 // Datengetriebenes Portal: Kacheln aus der `lebensbereiche`-Registry + Tagesübersicht aus der DB.
 // Domänen-spezifische UIs folgen in Phase 3; die REST-API (/api/v1/*) ist bereits vollständig.
@@ -76,7 +80,7 @@ export default function Portal() {
       <div className="max-w-3xl mx-auto px-3 pb-6 pt-2">
         <div className="grid grid-cols-2 gap-2.5">
           {bereiche.map((b) => (
-            <div key={b.key} className="group relative overflow-hidden bg-white rounded-2xl shadow-sm border border-black/5 h-full">
+            <Link key={b.key} href={`/bereich/${DOMAIN_OF[b.key] ?? b.key}`} className="group relative overflow-hidden bg-white rounded-2xl shadow-sm border border-black/5 h-full active:scale-[0.97] transition-transform">
               <div className={`absolute inset-0 bg-gradient-to-br ${GRADIENTS[b.key] ?? b.gradient ?? DEFAULT_GRADIENT} opacity-90`} />
               <div className="absolute inset-0"><div className="absolute -top-4 -right-4 w-16 h-16 bg-white rounded-full blur-2xl opacity-20" /></div>
               <div className="relative p-3 flex flex-col gap-1 min-h-[92px]">
@@ -86,10 +90,12 @@ export default function Portal() {
                   <p className="text-white/70 text-[10px] font-medium leading-snug">{b.beschreibung}</p>
                 </div>
                 <div className="flex justify-end mt-auto">
-                  <span className="text-[9px] font-semibold text-white/80 bg-white/20 backdrop-blur-md rounded-md px-1.5 py-0.5">🚧 UI folgt</span>
+                  <div className="flex items-center justify-center w-6 h-6 bg-white/20 backdrop-blur-md rounded-lg">
+                    <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+                  </div>
                 </div>
               </div>
-            </div>
+            </Link>
           ))}
         </div>
         <footer className="mt-6 text-center text-[#8E8E93] text-[11px] font-medium">
