@@ -45,3 +45,4 @@ _datatest/
 # SQLite WAL/SHM (transient)
 *.db-wal
 *.db-shm
+_reference/
