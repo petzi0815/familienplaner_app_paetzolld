@@ -6,7 +6,15 @@
 
 ## ▶️ WIEDERAUFNAHME (nächste Session) — START HIER
 
-**Stand (2026-07-12, HEAD `f1700bf`): Backend LIVE + alle 12 bespoke Bereichsseiten 1:1 + Fotobox-Feature (API `5696b71` live + iOS Build 4).** `https://familienplaner.yagemi.app`.
+**Stand (2026-07-12, HEAD `897595b`): Backend LIVE + 12 bespoke Bereichsseiten + Fotobox + iOS-Bücher-Handoff (Build 5).** `https://familienplaner.yagemi.app`.
+
+**NEU 2026-07-12 — iOS-Bücher-Handoff + Migrations-Parität (Details: Memory [[reference-elisbooks-original-app]]):**
+- **iOS „Buch scannen"** legt jetzt den VOLLEN Datensatz an wie die Original-Bücher-App: Google-Books-Anreicherung
+  (Verlag/Datum/Beschreibung/Seiten/Kategorien/Sprache/Cover, Open Library Fallback) + **Regal-Auswahl** +
+  Lesestatus; authors/categories als JSON, publisher-Fallback „Unbekannter Verlag". Redundante „Foto aufnehmen"-Kachel raus.
+- **Elitas Original-App validiert** via Supabase-Connector (Projekt `ldbzlizkgsdoxxjceuao`): Schema + Row-Counts
+  (346 books/7 shelves/5 wishlist) 1:1 zu Oles Port; 4/5 Edge Functions migriert — **`canopy-proxy` (Amazon-Empfehlungen)
+  fehlt**; das reiche Lovable-**Frontend** ist im neuen App noch NICHT nachgebaut (nur generischer Browser).
 
 **NEU 2026-07-12 — Fotobox (Details: Memory [[session-2026-07-12_fotobox]]):**
 - **Strukturierte Foto-Queue** als 2. Eingangskanal neben Telegram. Ole: `GET /api/v1/fotobox-items?status=pending`
@@ -142,6 +150,17 @@ Geschenkplaner · Garten · Vorratskammer · Gypsi (Katzenfutter) · Reiniger ·
   committen; nach Push per `/version` verifizieren. Secrets nur via `.env`/Coolify.
 
 ## Dev-Log (jüngste zuerst)
+
+### Update 12 (2026-07-12) — iOS-Bücher-Handoff 1:1 + Fotobox-Kachel-Aufräumen + Original-App-Parität
+- **`897595b` (iOS Build 5):** „Buch scannen" legt den VOLLEN elisbooks-books-Datensatz an wie die Original-App:
+  `ProductLookup.book` → Google Books zuerst (Verlag/Datum/Beschreibung/Seiten/Kategorien/Sprache/Cover), Open Library
+  Fallback; `BookScanSheet` mit Verlag-Feld, **Regal-Picker** (`elisbooks-bookshelves`), Gelesen-Toggle; authors/categories
+  als JSON, publisher-Fallback „Unbekannter Verlag", is_read/is_on_picklist, bookshelf_id. `APIClient.bookshelves()` +
+  `Models.Bookshelf`. Runtime-Smoke (create voller Feldsatz + FK-Regal + readback + delete) grün. Redundante
+  „Foto aufnehmen"-Kachel im Erfassen-Hub entfernt (Fotobox übernimmt).
+- **Migrations-Parität** via Supabase-Connector geprüft (Elitas Original, Projekt `ldbzlizkgsdoxxjceuao`): Schema +
+  Row-Counts 1:1; **`canopy-proxy` (Amazon-Empfehlungen) nicht migriert**; Lovable-Frontend im neuen App noch nicht nachgebaut.
+  **Lesson:** unsere `elisbooks_*`-IDs sind ID-erhaltend = identisch mit Supabase (Regal-FKs matchen direkt). Details [[reference-elisbooks-original-app]].
 
 ### Update 11 (2026-07-12) — Fotobox: strukturierte Foto-Queue + erweiterbare Enums + iOS-Picker
 - **API (`5696b71`, live):** `fotobox-items`-Queue + Lifecycle (`/claim` [409-Lock], `/result`, `/fail`, `/approve`,
