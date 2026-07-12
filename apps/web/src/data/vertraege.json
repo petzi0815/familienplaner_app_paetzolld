@@ -1,0 +1,268 @@
+{
+  "lastUpdated": "2026-02-23",
+  "categories": [
+    {
+      "name": "Baufinanzierung",
+      "icon": "🏦",
+      "color": "#FF3B30",
+      "contracts": [
+        {
+          "provider": "Sparkasse Hannover",
+          "type": "Baufinanzierung",
+          "contractNr": "DE292505018060",
+          "amount": 2180.75,
+          "interval": "monatlich",
+          "details": "Sondertilgung 30.500 €/Jahr (Januar). Vermittlung: Dr. Klein"
+        }
+      ]
+    },
+    {
+      "name": "Krankenversicherung",
+      "icon": "🏥",
+      "color": "#FF2D55",
+      "contracts": [
+        {
+          "provider": "LKH",
+          "type": "PKV Lars",
+          "contractNr": "H/O-7.750.764",
+          "amount": 1250.59,
+          "interval": "monatlich",
+          "details": "KV 1.181,74 € + PPV 68,85 €"
+        },
+        {
+          "provider": "LKH",
+          "type": "PKV Elita",
+          "contractNr": "H/O-7.755.228",
+          "amount": 372.38,
+          "interval": "monatlich",
+          "details": "Tarife A100+S200+Z90+PVN+T06U+AKV"
+        }
+      ]
+    },
+    {
+      "name": "Versicherungen",
+      "icon": "🛡️",
+      "color": "#5856D6",
+      "contracts": [
+        {
+          "provider": "VGH",
+          "type": "Wohngebäude",
+          "contractNr": "0102-586.663.721",
+          "amount": 632.37,
+          "interval": "jährlich",
+          "details": "Versicherungsschein 17.07.2020"
+        },
+        {
+          "provider": "VGH",
+          "type": "Hausrat + Glas",
+          "contractNr": "0101-586.596.669",
+          "amount": 110.79,
+          "interval": "jährlich",
+          "details": "Versicherungsschein 13.07.2020"
+        },
+        {
+          "provider": "VGH",
+          "type": "Haftpflicht",
+          "contractNr": "S 901953425",
+          "amount": 109.86,
+          "interval": "jährlich",
+          "details": ""
+        },
+        {
+          "provider": "VGH",
+          "type": "KFZ Tesla",
+          "contractNr": "",
+          "amount": 889.0,
+          "interval": "jährlich",
+          "details": "~500 € Jan + ~389 € Juli (halbjährlich)"
+        },
+        {
+          "provider": "ARAG",
+          "type": "Rechtsschutz",
+          "contractNr": "11 0030 1413 3937",
+          "amount": 35.06,
+          "interval": "monatlich",
+          "details": "Vermittlung via CHECK24"
+        },
+        {
+          "provider": "HanseMerkur",
+          "type": "Reiseversicherung",
+          "contractNr": "811194507G60012",
+          "amount": 285.0,
+          "interval": "jährlich",
+          "details": "Vermittler: Mein Urlaubsglück GmbH"
+        }
+      ]
+    },
+    {
+      "name": "Vorsorge & Sparen",
+      "icon": "💰",
+      "color": "#FF9500",
+      "contracts": [
+        {
+          "provider": "Hannoversche",
+          "type": "Risikoleben Lars",
+          "contractNr": "LV10191777 5301",
+          "amount": 14.91,
+          "interval": "monatlich",
+          "details": "250.000 € Absicherung Baufinanzierung"
+        },
+        {
+          "provider": "Hannoversche",
+          "type": "Risikoleben Elita",
+          "contractNr": "LV10191874 6301",
+          "amount": 12.88,
+          "interval": "monatlich",
+          "details": ""
+        },
+        {
+          "provider": "Proxalto",
+          "type": "Fondsgebundene Rente",
+          "contractNr": "32916225",
+          "amount": 139.31,
+          "interval": "monatlich",
+          "details": "Lars. Ehem. Generali/Skandia"
+        },
+        {
+          "provider": "Bitpanda",
+          "type": "Krypto-Sparplan",
+          "contractNr": "",
+          "amount": 100.0,
+          "interval": "monatlich",
+          "details": "Läuft über ING-Konto"
+        }
+      ]
+    },
+    {
+      "name": "Wohnen & Nebenkosten",
+      "icon": "🏠",
+      "color": "#34C759",
+      "contracts": [
+        {
+          "provider": "Naturwerke",
+          "type": "Strom",
+          "contractNr": "VK 1500003045 30",
+          "amount": 196.0,
+          "interval": "monatlich",
+          "details": "Seit März 2025 via CHECK24"
+        },
+        {
+          "provider": "Wasserverband Nordhannover",
+          "type": "Wasser/Abwasser",
+          "contractNr": "",
+          "amount": 1016.0,
+          "interval": "jährlich",
+          "details": "254 €/Quartal"
+        },
+        {
+          "provider": "Stadt Burgwedel",
+          "type": "Grundsteuer/Müll",
+          "contractNr": "",
+          "amount": 471.28,
+          "interval": "jährlich",
+          "details": "117,82 €/Quartal"
+        },
+        {
+          "provider": "ARD ZDF",
+          "type": "Rundfunkbeitrag",
+          "contractNr": "",
+          "amount": 220.32,
+          "interval": "jährlich",
+          "details": "55,08 €/Quartal (gesetzlich)"
+        }
+      ]
+    },
+    {
+      "name": "Mobilität",
+      "icon": "🚗",
+      "color": "#007AFF",
+      "contracts": [
+        {
+          "provider": "Arval",
+          "type": "BYD Dolphin Surf Leasing",
+          "contractNr": "4519844",
+          "amount": 281.52,
+          "interval": "monatlich",
+          "details": "Full-Service inkl. KFZ-Versicherung"
+        }
+      ]
+    },
+    {
+      "name": "Kinderbetreuung",
+      "icon": "👶",
+      "color": "#FF9F0A",
+      "contracts": [
+        {
+          "provider": "Heidi Manz (Zwergenstübchen)",
+          "type": "Tagesmutter",
+          "contractNr": "",
+          "amount": 128.0,
+          "interval": "monatlich",
+          "details": "Private Tagespflege MO-DO"
+        },
+        {
+          "provider": "Stadt Burgwedel",
+          "type": "Kita-Beitrag",
+          "contractNr": "",
+          "amount": 246.0,
+          "interval": "monatlich",
+          "details": "Kommunaler Beitrag"
+        }
+      ]
+    },
+    {
+      "name": "Freizeit & Vereine",
+      "icon": "⛵",
+      "color": "#00C7BE",
+      "contracts": [
+        {
+          "provider": "WSV Altwarmbüchen",
+          "type": "Segelverein Familienbeitrag",
+          "contractNr": "",
+          "amount": 150.0,
+          "interval": "jährlich",
+          "details": ""
+        },
+        {
+          "provider": "WSV Altwarmbüchen",
+          "type": "Segelverein (2. Beitrag)",
+          "contractNr": "",
+          "amount": 94.5,
+          "interval": "jährlich",
+          "details": "Liegeplatz?"
+        },
+        {
+          "provider": "Sven Ehlert",
+          "type": "Fitnessstudio (ruht)",
+          "contractNr": "",
+          "amount": 10.0,
+          "interval": "monatlich",
+          "details": "Ruhebeitrag seit Jan 2022"
+        }
+      ]
+    },
+    {
+      "name": "Banken",
+      "icon": "🏧",
+      "color": "#8E8E93",
+      "contracts": [
+        {
+          "provider": "Commerzbank",
+          "type": "Girokonto",
+          "contractNr": "",
+          "amount": 10.0,
+          "interval": "jährlich",
+          "details": "Hauptkonto"
+        },
+        {
+          "provider": "ING",
+          "type": "Girokonto",
+          "contractNr": "DE72 5001 0517 5418 1536 04",
+          "amount": 35.76,
+          "interval": "jährlich",
+          "details": "2× 1,49 €/Mo Girocard"
+        }
+      ]
+    }
+  ]
+}

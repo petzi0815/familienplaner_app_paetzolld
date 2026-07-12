@@ -4,8 +4,21 @@ import { LogoutButton } from "@/components/LogoutButton";
 
 // Lebensbereich-Key → Registry-Domain (fast identisch; nur „buecher" → „ebooks").
 const DOMAIN_OF: Record<string, string> = { buecher: "ebooks" };
-// Bespoke, originalgetreue Bereichsseiten (statt generischem Browser); wird pro portiertem Bereich ergänzt.
-const BESPOKE_HREF: Record<string, string> = { reisen: "/reisen" };
+// Bespoke, originalgetreue Bereichsseiten (statt generischem Browser) — via Kompat-API-Layer 1:1 portiert.
+const BESPOKE_HREF: Record<string, string> = {
+  reisen: "/reisen",
+  samu: "/samu",
+  garten: "/garten",
+  geschenkplaner: "/geschenkplaner",
+  termine: "/termine",
+  vorratskammer: "/vorratskammer",
+  wunschliste: "/wunschliste",
+  gypsi: "/gypsi",
+  reiniger: "/reiniger",
+  buecher: "/buecher",
+  smarthome: "/smarthome",
+  vertraege: "/vertraege",
+};
 
 // Datengetriebenes Portal: Kacheln aus der `lebensbereiche`-Registry + Tagesübersicht aus der DB.
 // Domänen-spezifische UIs folgen in Phase 3; die REST-API (/api/v1/*) ist bereits vollständig.
