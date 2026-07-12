@@ -4,6 +4,7 @@ import SwiftUI
 enum DomainCatalog {
     static let meta: [String: (title: String, emoji: String)] = [
         "termine": ("Termine", "📅"),
+        "abfuhrkalender": ("Abfuhr", "🗑️"),
         "reisen": ("Reisen", "✈️"),
         "samu": ("Samu", "🧸"),
         "geschenkplaner": ("Geschenke", "🎁"),
@@ -17,7 +18,7 @@ enum DomainCatalog {
         "smarthome": ("Smart Home", "🏠"),
         "vertraege": ("Verträge", "📄"),
     ]
-    static let order = ["termine", "reisen", "samu", "geschenkplaner", "garten", "vorratskammer",
+    static let order = ["termine", "abfuhrkalender", "reisen", "samu", "geschenkplaner", "garten", "vorratskammer",
                         "wunschliste", "gypsi", "reiniger", "elisbooks", "ebooks", "smarthome", "vertraege"]
 
     static func build(from resources: [ResourceInfo]) -> [BereichDomain] {
@@ -97,6 +98,8 @@ struct BereichView: View {
                 ReiseListView()
             } else if domain.key == "elisbooks" {
                 BooksRootView(settings: app.settings)
+            } else if domain.key == "abfuhrkalender" {
+                AbfuhrCalendarView()
             } else if domain.resources.count == 1 {
                 ResourceListView(resource: domain.resources[0])
             } else {

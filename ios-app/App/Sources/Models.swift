@@ -61,6 +61,24 @@ struct AbfuhrNext: Decodable, Identifiable {
     let daysUntil: Int?
     var id: String { kategorie }
 }
+
+// ── Abfuhrkalender (alle kommenden Termine je Kategorie gruppiert) ──
+struct AbfuhrCalendarResponse: Decodable { let groups: [AbfuhrGroup] }
+struct AbfuhrGroup: Decodable, Identifiable {
+    let kategorie: String
+    let label: String
+    let emoji: String
+    let color: String
+    let termine: [AbfuhrTerminDate]
+    var id: String { kategorie }
+    /// Nächster (frühester) Termin — die Liste kommt sortiert vom Server.
+    var next: AbfuhrTerminDate? { termine.first }
+}
+struct AbfuhrTerminDate: Decodable, Identifiable {
+    let datum: String
+    let daysUntil: Int
+    var id: String { datum }
+}
 struct TerminShort: Decodable, Identifiable {
     let id: Int
     let title: String

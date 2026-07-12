@@ -150,6 +150,19 @@ final class APIClient {
         try await get("/dashboard/today", as: DashboardToday.self)
     }
 
+    /// Kommende Abfuhrtermine je Kategorie gruppiert (für die native Kalenderansicht).
+    func abfuhrCalendar() async throws -> [AbfuhrGroup] {
+        try await get("/abfuhr/calendar", as: AbfuhrCalendarResponse.self).groups
+    }
+
+    /// Termine online von aha-region.de neu ziehen (Agent-Rolle). Gibt Anzahl importierter Termine zurück.
+    @discardableResult
+    func syncAbfuhr() async throws -> Int {
+        let data = try await send("/abfuhr/sync-aha", method: "POST")
+        let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        return (obj?["upserted"] as? Int) ?? 0
+    }
+
     /// Ressourcenübergreifende Volltextsuche.
     func search(_ q: String) async throws -> SearchResponse {
         try await get("/search", query: [URLQueryItem(name: "q", value: q)], as: SearchResponse.self)

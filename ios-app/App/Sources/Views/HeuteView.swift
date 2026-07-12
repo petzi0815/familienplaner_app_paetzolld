@@ -204,6 +204,18 @@ enum DateText {
         guard let d = inFmt.date(from: String(s.prefix(10))) else { return s }
         return outFmt.string(from: d)
     }
+    private static let dayFmt: DateFormatter = { let f = DateFormatter(); f.locale = Locale(identifier: "de_DE"); f.dateFormat = "d"; return f }()
+    private static let monFmt: DateFormatter = { let f = DateFormatter(); f.locale = Locale(identifier: "de_DE"); f.dateFormat = "MMM"; return f }()
+    private static let wdShortFmt: DateFormatter = { let f = DateFormatter(); f.locale = Locale(identifier: "de_DE"); f.dateFormat = "EE"; return f }()
+    private static let wdLongFmt: DateFormatter = { let f = DateFormatter(); f.locale = Locale(identifier: "de_DE"); f.dateFormat = "EEEE"; return f }()
+    private static let longFmt: DateFormatter = { let f = DateFormatter(); f.locale = Locale(identifier: "de_DE"); f.dateFormat = "d. MMMM yyyy"; return f }()
+    private static func fmt(_ s: String, _ f: DateFormatter) -> String { inFmt.date(from: String(s.prefix(10))).map { f.string(from: $0) } ?? "" }
+    static func day(_ s: String) -> String { fmt(s, dayFmt) }
+    static func monthShort(_ s: String) -> String { fmt(s, monFmt) }
+    static func weekdayShort(_ s: String) -> String { fmt(s, wdShortFmt) }
+    static func weekdayLong(_ s: String) -> String { fmt(s, wdLongFmt) }
+    static func longNoWeekday(_ s: String) -> String { fmt(s, longFmt) }
+
     /// Datum (+ optional Uhrzeit „HH:mm") in lokaler Zeit.
     static func parse(date: String, time: String? = nil) -> Date? {
         guard let day = inFmt.date(from: String(date.prefix(10))) else { return nil }

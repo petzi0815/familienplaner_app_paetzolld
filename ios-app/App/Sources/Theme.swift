@@ -11,6 +11,18 @@ extension Color {
                   blue: Double(rgb & 0xFF) / 255,
                   opacity: 1)
     }
+
+    /// Ob diese Füllfarbe hell ist (helle Flächen brauchen dunklen Text). Basiert auf der
+    /// wahrgenommenen Helligkeit (Luma) — z.B. Amber/Lime = hell, Grau/Blau = dunkel.
+    var isLightFill: Bool {
+        let ui = UIColor(self)
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        ui.getRed(&r, green: &g, blue: &b, alpha: &a)
+        return (0.2126 * r + 0.7152 * g + 0.0722 * b) > 0.6
+    }
+
+    /// Garantiert lesbare Textfarbe auf dieser Füllfarbe (schwarz auf hell, weiß auf dunkel).
+    var onFill: Color { isLightFill ? Color.black.opacity(0.85) : .white }
 }
 
 enum Theme {
@@ -34,6 +46,7 @@ enum Palette {
         "ebooks": ["FF2D55", "FF6B6B", "FF9500"],
         "wunschliste": ["AF52DE", "FF2D55", "FF9500"],
         "termine": ["007AFF", "5856D6", "34C759"],
+        "abfuhrkalender": ["10B981", "059669", "0D9488"],
         "reisen": ["FF9500", "FF6B6B", "5856D6"],
         "geschenkplaner": ["F59E0B", "EF4444", "8B5CF6"],
         "vorratskammer": ["F97316", "FB923C", "FBBF24"],
