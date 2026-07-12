@@ -171,7 +171,7 @@ let DISPLAY_SPECS: [String: DisplaySpec] = [
     "ha-entities": S("entity", "friendly_name", sub: "area_name", badge: "state",
         primary: ["domain", "area_name", "device_name", "entity_id", "disabled", "attributes"],
         hidden: ["area_id", "device_id", "last_synced", "discovered_at"],
-        fmt: ["state": .badge, "disabled": .bool, "attributes": .multiline],
+        fmt: ["state": .badge, "disabled": .bool, "attributes": .keyValue],
         listSub: "area_name"),
 
     "ha-relationships": S("generic", "parent_entity_id", sub: "child_entity_id", badge: "type",

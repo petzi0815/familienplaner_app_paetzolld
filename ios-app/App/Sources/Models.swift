@@ -187,7 +187,7 @@ func prettyColumn(_ name: String) -> String {
 
 // ── UI/UX-Feldformatierung (statt stumpfer Tabellen mit JSON-Rohwerten) ──
 enum FieldFormat: String {
-    case date, datetime, time, bool, badge, jsonList, url, number, price, multiline, plain, hidden
+    case date, datetime, time, bool, badge, jsonList, keyValue, url, number, price, multiline, plain, hidden
 }
 
 /// Pro-Ressource-Anzeige-Spec (aus dem UI-Spec-Workflow; sonst generisch geraten).
@@ -226,12 +226,20 @@ func parseJSONList(_ s: String) -> [String] {
     return s.isEmpty ? [] : [s]
 }
 
+/// JSON-Objekt-String (`{"a":1,"b":"x"}`) → geordnete Key/Value-Paare; sonst leer (kein Objekt).
+func parseJSONObject(_ s: String) -> [(key: String, value: String)] {
+    guard let data = s.data(using: .utf8),
+          let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [] }
+    return obj.keys.sorted().map { (key: $0, value: fieldString(obj[$0])) }.filter { !$0.value.isEmpty }
+}
+
 /// Format raten, wenn die Spec keins vorgibt.
 func guessFormat(_ col: String, _ value: Any?) -> FieldFormat {
     if isTechnicalField(col) { return .hidden }
     let s = fieldString(value)
     if s.isEmpty { return .hidden }
     if s.hasPrefix("[") && s.hasSuffix("]") { return .jsonList }
+    if s.hasPrefix("{") && s.hasSuffix("}") && !parseJSONObject(s).isEmpty { return .keyValue }
     if s.hasPrefix("http://") || s.hasPrefix("https://") { return .url }
     if isDateString(s) { return .date }
     if col.hasPrefix("is_") || col.hasPrefix("has_") || ["restock", "packed", "kid_friendly", "erledigt"].contains(col) { return .bool }

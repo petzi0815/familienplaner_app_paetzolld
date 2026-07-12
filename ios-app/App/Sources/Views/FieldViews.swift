@@ -2,7 +2,7 @@ import SwiftUI
 
 extension FieldFormat {
     /// Formate, die die volle Breite brauchen (Label darüber statt daneben).
-    var isBlock: Bool { self == .jsonList || self == .multiline }
+    var isBlock: Bool { self == .jsonList || self == .multiline || self == .keyValue }
 }
 
 /// Status-/Enum-Farbe nach Schlüsselwort.
@@ -64,6 +64,21 @@ struct FieldValueView: View {
                         .padding(.horizontal, 8).padding(.vertical, 4)
                         .background(accent.opacity(0.14), in: Capsule())
                         .foregroundStyle(accent)
+                }
+            }
+        case .keyValue:
+            let pairs = parseJSONObject(fieldString(value))
+            if pairs.isEmpty {
+                Text(fieldString(value)).multilineTextAlignment(.leading)
+            } else {
+                VStack(alignment: .leading, spacing: 5) {
+                    ForEach(Array(pairs.enumerated()), id: \.offset) { _, kv in
+                        HStack(alignment: .top, spacing: 8) {
+                            Text(prettyColumn(kv.key)).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                            Spacer(minLength: 8)
+                            Text(kv.value).font(.caption).multilineTextAlignment(.trailing)
+                        }
+                    }
                 }
             }
         case .date: Text(DateText.pretty(fieldString(value)))
