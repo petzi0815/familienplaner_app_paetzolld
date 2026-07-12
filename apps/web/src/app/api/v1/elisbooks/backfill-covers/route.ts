@@ -2,48 +2,48 @@ import { getDb } from "@/server/db/connection";
 import { getAuth, hasRole } from "@/server/auth/auth";
 import { ok, fail, unauthorized, forbidden } from "@/server/http/respond";
 
-// Einmalig: echte Cover-URLs (Google Books) aus Elitas Supabase in unsere elisbooks_books.thumbnail
-// zurückschreiben. Oles Migration hatte sie durch tote `/api/elisbooks/covers/<uuid>.jpg`-Pfade ersetzt.
-// Matcht per ID (ID-erhaltend). Body: { supabaseUrl, anonKey }.
+// Cover-Backfill: für elisbooks_books mit kaputtem/fehlendem Cover (Oles tote /api/elisbooks/covers/-Pfade)
+// das echte Google-Books-Cover per ISBN nachladen (dieselbe Quelle wie die Original-App). Server-seitig,
+// in Batches (limit). Mehrfach aufrufen, bis remaining=0. POST /api/v1/elisbooks/backfill-covers { limit? }
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
+const BROKEN = "(thumbnail IS NULL OR thumbnail='' OR thumbnail LIKE '/api/%')";
+
+async function googleCover(isbn: string): Promise<string | null> {
+  try {
+    const r = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${encodeURIComponent(isbn)}&country=DE&maxResults=1`);
+    if (!r.ok) return null;
+    const d = (await r.json()) as { items?: { volumeInfo?: { imageLinks?: Record<string, string> } }[] };
+    const links = d.items?.[0]?.volumeInfo?.imageLinks;
+    const t = links?.thumbnail ?? links?.smallThumbnail;
+    return t ? t.replace(/^http:\/\//i, "https://") : null;
+  } catch { return null; }
+}
+
 export async function POST(req: Request): Promise<Response> {
   const auth = getAuth(req);
   if (!hasRole(auth, "agent")) return auth ? forbidden() : unauthorized();
-  let body: Record<string, unknown>;
-  try { body = (await req.json()) as Record<string, unknown>; } catch { return fail("bad_json", "Ungültiger JSON-Body.", 400); }
-  const supabaseUrl = String(body.supabaseUrl ?? "").replace(/\/+$/, "");
-  const anonKey = String(body.anonKey ?? "");
-  if (!supabaseUrl || !anonKey) return fail("missing", "supabaseUrl + anonKey erforderlich.", 400);
-
-  // Supabase REST: alle Bücher mit id + thumbnail.
-  let rows: { id: string; thumbnail: string | null }[] = [];
-  try {
-    const r = await fetch(`${supabaseUrl}/rest/v1/books?select=id,thumbnail&limit=2000`, {
-      headers: { apikey: anonKey, authorization: `Bearer ${anonKey}` },
-    });
-    if (!r.ok) return fail("supabase_error", `Supabase ${r.status}`, 502, { detail: (await r.text()).slice(0, 200) });
-    rows = (await r.json()) as { id: string; thumbnail: string | null }[];
-  } catch (e) {
-    return fail("fetch_error", "Supabase-Abruf fehlgeschlagen.", 502, { detail: String((e as Error)?.message ?? e) });
-  }
+  let body: Record<string, unknown> = {};
+  try { body = (await req.json()) as Record<string, unknown>; } catch { /* leerer Body ok */ }
+  const limit = Math.min(Math.max(Number(body.limit ?? 80) || 80, 1), 200);
 
   const db = getDb();
-  const upd = db.prepare(
-    "UPDATE elisbooks_books SET thumbnail=?, updated_at=datetime('now') WHERE id=? AND (thumbnail IS NULL OR thumbnail LIKE '/api/%' OR thumbnail='')",
-  );
-  let updated = 0, skipped = 0;
-  const tx = db.transaction(() => {
-    for (const b of rows) {
-      const t = (b.thumbnail ?? "").trim();
-      if (!t || !/^https?:\/\//i.test(t)) { skipped++; continue; }
-      const https = t.replace(/^http:\/\//i, "https://");
-      const info = upd.run(https, b.id);
-      if (info.changes > 0) updated++; else skipped++;
-    }
-  });
-  tx();
-  return ok({ supabase_books: rows.length, updated, skipped });
+  const rows = db.prepare(
+    `SELECT id, isbn FROM elisbooks_books WHERE ${BROKEN} AND isbn IS NOT NULL AND isbn<>'' LIMIT ?`,
+  ).all(limit) as { id: string; isbn: string }[];
+  const upd = db.prepare("UPDATE elisbooks_books SET thumbnail=?, updated_at=datetime('now') WHERE id=?");
+
+  let updated = 0, tried = 0;
+  for (const r of rows) {
+    tried++;
+    const cover = await googleCover(r.isbn.trim());
+    if (cover) { upd.run(cover, r.id); updated++; }
+    await new Promise((res) => setTimeout(res, 80)); // sanft gegen Rate-Limits
+  }
+  const remaining = (db.prepare(
+    `SELECT COUNT(*) c FROM elisbooks_books WHERE ${BROKEN} AND isbn IS NOT NULL AND isbn<>''`,
+  ).get() as { c: number }).c;
+  return ok({ tried, updated, remaining });
 }
