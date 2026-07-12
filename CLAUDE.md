@@ -6,7 +6,21 @@
 
 ## ▶️ WIEDERAUFNAHME (nächste Session) — START HIER
 
-**Stand (2026-07-12, HEAD `1c0f82c`): Backend LIVE + nativer ElisBooks-Bücherbereich in iOS (Build 7, inkl. KI-Metadaten/Dubletten/Export/Einstellungen).** `https://familienplaner.yagemi.app`. **Offen:** OpenAI-Live-Check (`GET /api/v1/elisbooks/ai/status?test=1` mit Agent-Key) — Lars hat `OPENAI_API_KEY` in Coolify gesetzt; OpenAI live verifiziert (recommendations/cleaner ok); Menü-Config-Gating gebaut.
+**Stand (2026-07-12, HEAD `312a8a8`): Backend + iOS LIVE — NEU: Abfuhrkalender (Müll-Termine) komplett + Legacy-Backup Supabase/Lovable gesichert.** `https://familienplaner.yagemi.app`.
+
+**NEU 2026-07-12 — Abfuhrkalender + Legacy-Backup (Details: [[session-2026-07-12_abfuhr-und-backup]]):**
+- **Abfuhrkalender** neuer Lebensbereich: Backend (`server/abfuhr/*`, Routen `/abfuhr/{import-ics,next,sync-aha,calendar}`,
+  Migration 0008/0009, Jobs `abfuhr-reminder` 19-Uhr-Vorabend + `abfuhr-aha-sync` monatlich) + **aha-region.de Auto-Sync**
+  (3-Schritt-Formular, kein jährliches ICS-Upload; live 37 Termine) + iOS Heute-Karte + **native Kategorie-Ansicht**
+  `Views/AbfuhrCalendarView.swift` (Bereich `abfuhrkalender`→native). Lokale Vorabend-Erinnerung 19 Uhr (offline).
+- **Legacy-Backup** (Lars will Lovable+Supabase löschen): `_reference/elisbooks-original-backup-20260712/` — pristine
+  Supabase (Daten 346/7/5/5 + 8 Migrationen + 5 Edge Functions inkl. **canopy-proxy** = nie migriert) + kompletter
+  Lovable-Quellcode (264 Dateien). **Migration 1:1 verifiziert** (IDs identisch, 0 Verlust). ⚠️ `_reference/` git-ignored →
+  Backup NUR lokal. **OFFEN: Lars fragen ob off-site ins Git committen** (`git add -f …`), DANN darf er löschen.
+- **OFFEN (nur Todo, NICHT umsetzen bis Lars startet):** Per-User-Login-Keys für Lars & Elita statt Oles Shared-Key
+  → Geräte-Zuordnung + gezielte Push (nur an Foto-Uploader). Spec: [[todo-per-user-login-keys]].
+
+**Stand (2026-07-12, HEAD `1c0f82c`): Backend LIVE + nativer ElisBooks-Bücherbereich in iOS (Build 7, inkl. KI-Metadaten/Dubletten/Export/Einstellungen).** OpenAI live verifiziert (recommendations/cleaner ok); Menü-Config-Gating gebaut.
 
 **NEU 2026-07-12 — Nativer ElisBooks-Bereich in iOS (Details: [[reference-elisbooks-original-app]]):**
 - Elitas Lovable/Supabase-Bücher-App **nativ nachgebaut** (ersetzt den generischen Browser für `elisbooks`), Backend =
