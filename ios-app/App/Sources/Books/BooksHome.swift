@@ -4,6 +4,13 @@ import SwiftUI
 /// Kopf (Logo + aktives Regal + Regale-Button) + Segment-Navigation + aktive View.
 struct BooksRootView: View {
     @StateObject private var store: BooksStore
+    @State private var showSettings = false
+    @AppStorage("elisbooks.menu.scanner") private var mScanner = true
+    @AppStorage("elisbooks.menu.bulk-scanner") private var mBulk = true
+    @AppStorage("elisbooks.menu.shelf-scanner") private var mRegal = true
+    @AppStorage("elisbooks.menu.ocr-scanner") private var mOcr = true
+    @AppStorage("elisbooks.menu.manual") private var mManual = true
+    @AppStorage("elisbooks.menu.similar") private var mSimilar = true
 
     init(settings: Settings) { _store = StateObject(wrappedValue: BooksStore(settings: settings)) }
 
@@ -19,6 +26,7 @@ struct BooksRootView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task { if store.books.isEmpty && store.shelves.isEmpty { await store.loadAll() } }
         .environmentObject(store)
+        .sheet(isPresented: $showSettings) { BooksSettingsSheet() }
         .overlay(alignment: .bottom) { toast }
     }
 
@@ -50,6 +58,9 @@ struct BooksRootView: View {
             Button { store.currentView = .shelves } label: {
                 Image(systemName: "square.grid.2x2.fill").foregroundStyle(BookTheme.amber700)
             }
+            Button { showSettings = true } label: {
+                Image(systemName: "gearshape").foregroundStyle(BookTheme.amber700)
+            }
         }
         .padding(.horizontal, 14).padding(.vertical, 10)
     }
@@ -60,12 +71,12 @@ struct BooksRootView: View {
             HStack(spacing: 8) {
                 navChip(.books, "Bücher", "list.bullet")
                 navChip(.wishlist, "Wunschliste", "heart")
-                navChip(.scanner, "Scanner", "barcode.viewfinder")
-                navChip(.bulkScanner, "Bulk", "square.stack.3d.up")
-                navChip(.shelfScanner, "Regalscan", "camera.viewfinder")
-                navChip(.ocrScanner, "OCR", "doc.viewfinder")
-                navChip(.manual, "Manuell", "plus.circle")
-                navChip(.similar, "Vorschläge", "sparkles")
+                if mScanner { navChip(.scanner, "Scanner", "barcode.viewfinder") }
+                if mBulk { navChip(.bulkScanner, "Bulk", "square.stack.3d.up") }
+                if mRegal { navChip(.shelfScanner, "Regalscan", "camera.viewfinder") }
+                if mOcr { navChip(.ocrScanner, "OCR", "doc.viewfinder") }
+                if mManual { navChip(.manual, "Manuell", "plus.circle") }
+                if mSimilar { navChip(.similar, "Vorschläge", "sparkles") }
             }
             .padding(.horizontal, 12).padding(.vertical, 8)
         }
