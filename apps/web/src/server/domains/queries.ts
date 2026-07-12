@@ -2,6 +2,7 @@ import { getDb } from "@/server/db/connection";
 import { RESOURCES, pkOf, resourceByKey } from "./registry";
 import { textColumns } from "@/server/db/introspect";
 import { ftsAvailable, ftsSearch, ftsFuzzy } from "@/server/db/fts";
+import { nextPerCategory } from "@/server/abfuhr/abfuhr";
 
 // Geteilte Query-Logik — von REST-Routen UND MCP-Tools genutzt (Single Source of Truth).
 
@@ -66,6 +67,7 @@ export function dashboardToday(): Record<string, unknown> {
 
   const gartenOffen = safe(() => (db.prepare("SELECT COUNT(*) c FROM garten_aufgaben WHERE COALESCE(erledigt,0)=0 AND monat=? AND (jahr=? OR jahr IS NULL)").get(month, year) as { c: number }).c, 0);
   const vorratBaldAb = safe(() => db.prepare("SELECT id,name,mhd FROM vorrat_lebensmittel WHERE mhd IS NOT NULL AND mhd<>'' AND mhd<=date('now','+14 days') ORDER BY mhd ASC LIMIT 10").all(), []);
+  const abfuhrNext = safe(() => nextPerCategory(db).filter((n) => n.datum), [] as unknown[]);
 
   const counts = safe(() => ({
     samu_items: (db.prepare("SELECT COUNT(*) c FROM samu_items WHERE COALESCE(status,'')<>'aussortiert'").get() as { c: number }).c,
@@ -75,7 +77,7 @@ export function dashboardToday(): Record<string, unknown> {
     foto_inbox_neu: (db.prepare("SELECT COUNT(*) c FROM foto_inbox WHERE status='neu'").get() as { c: number }).c,
   }), { samu_items: 0, geschenke_offen: 0, buecher: 0, vertraege: 0, foto_inbox_neu: 0 });
 
-  return { date: new Date().toISOString().slice(0, 10), termine_upcoming: termineUpcoming, reminders_due: remindersDueCount, next_trip: nextTrip, garten_offen: gartenOffen, vorrat_bald_ablaufend: vorratBaldAb, counts };
+  return { date: new Date().toISOString().slice(0, 10), termine_upcoming: termineUpcoming, reminders_due: remindersDueCount, next_trip: nextTrip, garten_offen: gartenOffen, vorrat_bald_ablaufend: vorratBaldAb, abfuhr_next: abfuhrNext, counts };
 }
 
 /** Fällige Termin-Erinnerungen (heute im Fenster [date - reminder_days, date]). */

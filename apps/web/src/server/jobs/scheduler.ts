@@ -19,7 +19,7 @@ export function startScheduler(): void {
     if (!job.schedule || !cron.validate(job.schedule)) continue;
     cron.schedule(job.schedule, () => {
       runJob(job.name).catch((e) => log.error("Scheduled-Job-Absturz", { name: job.name, error: String(e) }));
-    });
+    }, job.timezone ? { timezone: job.timezone } : undefined);
     n++;
   }
   log.info("Scheduler gestartet", { geplant: n });

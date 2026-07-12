@@ -1,4 +1,6 @@
 import type BetterSqlite3 from "better-sqlite3";
+import { sendPush } from "@/server/push/apns";
+import { abfuhrCategory } from "@/server/abfuhr/abfuhr";
 
 export interface JobCtx {
   db: BetterSqlite3.Database;
@@ -9,6 +11,7 @@ export interface JobResult { messages: string[]; affected: number }
 export interface JobDef {
   name: string;
   schedule: string; // Cron (leer = nur manuell)
+  timezone?: string; // z.B. "Europe/Berlin" (sonst Server-Zeit)
   description: string;
   topic: string;
   run: (ctx: JobCtx) => Promise<JobResult>;
@@ -71,6 +74,27 @@ export const JOBS: JobDef[] = [
       const messages = rows.map((r) => `🌱 ${r.titel}`);
       if (rows.length && !ctx.dryRun) await ctx.notify("garten", "Garten diesen Monat:\n" + messages.join("\n"));
       return { messages, affected: rows.length };
+    },
+  },
+  {
+    name: "abfuhr-reminder",
+    schedule: "0 19 * * *",
+    timezone: "Europe/Berlin",
+    topic: "abfuhrkalender",
+    description: "Am Vorabend (19 Uhr) an die Abfuhr morgen erinnern (iOS-Push + Notify).",
+    async run(ctx) {
+      const rows = ctx.db.prepare(
+        "SELECT id, kategorie, summary FROM abfuhr_termine WHERE datum = date('now','+1 day')",
+      ).all() as { id: number; kategorie: string; summary: string }[];
+      if (!rows.length) return { messages: [], affected: 0 };
+      const labels = [...new Set(rows.map((r) => abfuhrCategory(r.kategorie)?.label ?? r.summary))];
+      const body = `Morgen wird abgeholt: ${labels.join(", ")}. Tonnen heute Abend rausstellen!`;
+      if (!ctx.dryRun) {
+        await sendPush({ title: "🗑️ Abfuhr morgen", body, data: { kind: "abfuhr" } }).catch(() => {});
+        await ctx.notify("abfuhrkalender", body);
+        ctx.db.prepare("UPDATE abfuhr_termine SET push_gesendet=1 WHERE datum=date('now','+1 day')").run();
+      }
+      return { messages: [body], affected: rows.length };
     },
   },
 ];

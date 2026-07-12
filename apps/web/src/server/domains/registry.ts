@@ -104,6 +104,9 @@ export const RESOURCES: Resource[] = [
   // Verarbeitungs-Log je Item (nur lesen; Writes intern über die Lifecycle-Routen).
   { key: "fotobox-processing-log", table: "fotobox_processing_log", domain: "fotobox", label: "Fotobox-Verarbeitungs-Log", sort: "ts DESC", readonly: true },
 
+  // ── Abfuhrkalender (Müll-Abfuhrtermine) ──
+  { key: "abfuhr-termine", table: "abfuhr_termine", domain: "abfuhrkalender", label: "Abfuhrtermine", sort: "datum ASC", searchable: ["kategorie", "summary"] },
+
   // ── System: Lebensbereiche-Registry (Dashboard-Steuerung) ──
   { key: "lebensbereiche", table: "lebensbereiche", domain: "system", label: "Lebensbereiche", sort: "sort ASC" },
 ];
