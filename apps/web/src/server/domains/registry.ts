@@ -97,6 +97,13 @@ export const RESOURCES: Resource[] = [
   // ── Foto-Eingang (Upload → Agent kategorisiert) ──
   { key: "foto-inbox", table: "foto_inbox", domain: "foto", label: "Foto-Eingang", image: { col: "storage_key", multi: false, area: "foto-inbox" }, sort: "id DESC", searchable: ["bereich", "notiz", "status", "zugeordnet_resource"] },
 
+  // ── Fotobox (strukturierte Foto-Queue; eigene Lifecycle-Routen überschreiben das generische CRUD) ──
+  { key: "fotobox-items", table: "fotobox_items", domain: "fotobox", label: "Fotobox-Items", sort: "created_at DESC", searchable: ["status", "domain", "intent", "target_resource", "uploaded_person", "result_summary"] },
+  // Erweiterbare Wertebereiche (Enums) — neue Labels via generischem POST /api/v1/fotobox-labels.
+  { key: "fotobox-labels", table: "fotobox_labels", domain: "fotobox", label: "Fotobox-Labels", sort: "field ASC, sort ASC, value ASC", searchable: ["field", "value", "label"] },
+  // Verarbeitungs-Log je Item (nur lesen; Writes intern über die Lifecycle-Routen).
+  { key: "fotobox-processing-log", table: "fotobox_processing_log", domain: "fotobox", label: "Fotobox-Verarbeitungs-Log", sort: "ts DESC", readonly: true },
+
   // ── System: Lebensbereiche-Registry (Dashboard-Steuerung) ──
   { key: "lebensbereiche", table: "lebensbereiche", domain: "system", label: "Lebensbereiche", sort: "sort ASC" },
 ];

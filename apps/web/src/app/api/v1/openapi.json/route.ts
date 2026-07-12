@@ -50,6 +50,20 @@ export function GET(): Response {
   };
   paths["/api/v1/auth/login"] = { post: { tags: ["auth"], summary: "Login (Familien-Passwort)", responses: okResp } };
   paths["/api/v1/auth/me"] = { get: { tags: ["auth"], summary: "Aktueller Auth-Status", responses: okResp } };
+  // Fotobox-Lifecycle (die CRUD/Schema-Pfade kommen aus der Registry-Schleife oben).
+  paths["/api/v1/fotobox-items/form-config"] = { get: { tags: ["fotobox"], summary: "Kontextabhängige Vorschlagsfelder je Domäne (für die iOS-Picker)", security: sec, parameters: [{ name: "domain", in: "query", schema: { type: "string" }, description: "auf eine Domäne einschränken" }], responses: okResp } };
+  paths["/api/v1/fotobox-items/{id}/claim"] = { post: { tags: ["fotobox"], summary: "Item für Verarbeitung locken (409 wenn belegt)", security: sec, parameters: idParam, responses: { ...okResp, "409": { description: "Bereits gelockt" } } } };
+  paths["/api/v1/fotobox-items/{id}/result"] = { post: { tags: ["fotobox"], summary: "Verarbeitungsergebnis zurückschreiben (Default status=done)", security: sec, parameters: idParam, responses: okResp } };
+  paths["/api/v1/fotobox-items/{id}/fail"] = { post: { tags: ["fotobox"], summary: "Fehlschlag/Review (status failed|needs_review|duplicate)", security: sec, parameters: idParam, responses: okResp } };
+  paths["/api/v1/fotobox-items/{id}/approve"] = { post: { tags: ["fotobox"], summary: "Review erledigt: needs_review → pending", security: sec, parameters: idParam, responses: okResp } };
+  paths["/api/v1/fotobox-items/{id}/reject"] = { post: { tags: ["fotobox"], summary: "Item verwerfen (Default status=ignored)", security: sec, parameters: idParam, responses: okResp } };
+  paths["/api/v1/fotobox-items/{id}/media"] = {
+    get: { tags: ["fotobox"], summary: "Medien eines Items auflisten", security: sec, parameters: idParam, responses: okResp },
+    post: { tags: ["fotobox"], summary: "Bild anhängen (multipart 'file' ODER JSON data_base64)", security: sec, parameters: idParam, responses: { "201": { description: "Erstellt" } } },
+  };
+  paths["/api/v1/fotobox-items/{id}/media/{media_id}"] = { get: { tags: ["fotobox"], summary: "Originalbild eines Item-Mediums", security: sec, parameters: [...idParam, { name: "media_id", in: "path", required: true, schema: { type: "string" } }], responses: okResp } };
+  paths["/api/v1/foto/upload"] = { post: { tags: ["foto"], summary: "Foto in den (einfachen) Foto-Eingang laden", security: sec, responses: { "201": { description: "Erstellt" } } } };
+
   paths["/healthz"] = { get: { tags: ["system"], summary: "Liveness", responses: okResp } };
   paths["/version"] = { get: { tags: ["system"], summary: "Version/Commit", responses: okResp } };
 
