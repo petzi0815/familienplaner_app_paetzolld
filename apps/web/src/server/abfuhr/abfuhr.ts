@@ -89,6 +89,20 @@ export async function fetchAhaICS(p: AhaParams): Promise<string> {
   return await r3.text();
 }
 
+export interface AbfuhrGroup { kategorie: string; label: string; emoji: string; color: string; termine: { datum: string; days_until: number }[] }
+
+/** Alle kommenden Termine je Kategorie gruppiert (leere Kategorien wie Bio werden weggelassen). */
+export function groupedUpcoming(db: BetterSqlite3.Database): AbfuhrGroup[] {
+  const stmt = db.prepare(
+    "SELECT datum, CAST(julianday(datum) - julianday(date('now','localtime')) AS INTEGER) AS days FROM abfuhr_termine WHERE kategorie=? AND datum >= date('now','localtime') ORDER BY datum ASC",
+  );
+  return ABFUHR_CATEGORIES.map((c) => {
+    const rows = stmt.all(c.key) as { datum: string; days: number }[];
+    return { kategorie: c.key, label: c.label, emoji: c.emoji, color: c.color,
+             termine: rows.map((r) => ({ datum: r.datum, days_until: Math.max(0, r.days) })) };
+  }).filter((g) => g.termine.length > 0);
+}
+
 /** Alle kommenden Termine (flach, ab heute). */
 export function upcoming(db: BetterSqlite3.Database, limit = 30): { kategorie: string; label: string; datum: string }[] {
   const rows = db.prepare(
