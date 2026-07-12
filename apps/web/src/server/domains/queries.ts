@@ -1,7 +1,7 @@
 import { getDb } from "@/server/db/connection";
 import { RESOURCES, pkOf, resourceByKey } from "./registry";
 import { textColumns } from "@/server/db/introspect";
-import { ftsAvailable, ftsSearch } from "@/server/db/fts";
+import { ftsAvailable, ftsSearch, ftsFuzzy } from "@/server/db/fts";
 
 // Geteilte Query-Logik — von REST-Routen UND MCP-Tools genutzt (Single Source of Truth).
 
@@ -15,13 +15,19 @@ export function searchAll(q: string, domains?: Set<string>): { query: string; en
   const db = getDb();
   if (ftsAvailable(db)) {
     try {
-      const hits = ftsSearch(db, q, 300);
-      const results = hits
-        .map((h) => ({ res: resourceByKey(h.resource), h }))
-        .filter(({ res }) => res && (!domains || domains.has(res.domain)))
-        .slice(0, 200)
-        .map(({ res, h }) => ({ resource: h.resource, domain: res!.domain, label: res!.label, id: h.entity_id, display: h.title }));
-      return { query: q, engine: "fts5", count: results.length, results };
+      const seen = new Set<string>();
+      const mapHit = (h: { resource: string; entity_id: string; title: string }): SearchHit | null => {
+        const res = resourceByKey(h.resource);
+        if (!res || (domains && !domains.has(res.domain))) return null;
+        const key = `${h.resource}#${h.entity_id}`;
+        if (seen.has(key)) return null;
+        seen.add(key);
+        return { resource: h.resource, domain: res.domain, label: res.label, id: h.entity_id, display: h.title };
+      };
+      const exact = ftsSearch(db, q, 300).map(mapHit).filter((x): x is SearchHit => x !== null);
+      const fuzzy = ftsFuzzy(db, q, 300).map(mapHit).filter((x): x is SearchHit => x !== null);
+      const results = [...exact, ...fuzzy].slice(0, 200);
+      return { query: q, engine: fuzzy.length ? "fts5+fuzzy" : "fts5", count: results.length, results };
     } catch { /* Fallback */ }
   }
   const results: SearchHit[] = [];

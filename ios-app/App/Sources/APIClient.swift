@@ -181,9 +181,12 @@ final class APIClient {
     }
 
     /// Generische Liste (Rohwerte, dynamische Spalten) — für den Bereiche-Browser.
-    func listRecords(_ resource: String, primaryKey: String, search: String? = nil, limit: Int = 200) async throws -> [GenericRecord] {
+    /// `filter` = exakte Spaltenfilter (z.B. ["trip_id": "5"]).
+    func listRecords(_ resource: String, primaryKey: String, search: String? = nil,
+                     filter: [String: String] = [:], limit: Int = 200) async throws -> [GenericRecord] {
         var q = [URLQueryItem(name: "limit", value: String(limit))]
         if let s = search, !s.isEmpty { q.append(URLQueryItem(name: "search", value: s)) }
+        for (k, v) in filter { q.append(URLQueryItem(name: k, value: v)) }
         let (data, resp) = try await Self.session.data(for: request("/\(resource)", query: q))
         try checkStatus(resp, data)
         let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any]
@@ -192,6 +195,14 @@ final class APIClient {
             let idStr = row[primaryKey].map { fieldString($0) } ?? UUID().uuidString
             return GenericRecord(id: idStr, fields: row)
         }
+    }
+
+    /// Einzelnen Datensatz laden (z.B. aus einem Suchtreffer).
+    func getRecord(_ resource: String, id: String) async throws -> GenericRecord {
+        let (data, resp) = try await Self.session.data(for: request("/\(resource)/\(id)"))
+        try checkStatus(resp, data)
+        let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+        return GenericRecord(id: id, fields: obj)
     }
 
     /// Teil-Update (Schnellaktion, z.B. Status-PATCH).

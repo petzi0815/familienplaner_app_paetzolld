@@ -16,6 +16,7 @@ final class AppState: ObservableObject {
     @Published var dashboard: DashboardToday?
     @Published var dashboardError: String?
     @Published var domains: [BereichDomain] = []
+    @Published var resources: [ResourceInfo] = []
 
     let settings: Settings
     let api: APIClient
@@ -44,8 +45,9 @@ final class AppState: ObservableObject {
 
     func loadCapabilities() async {
         guard domains.isEmpty else { return }
-        if let resources = try? await api.capabilities() {
-            domains = DomainCatalog.build(from: resources)
+        if let caps = try? await api.capabilities() {
+            resources = caps
+            domains = DomainCatalog.build(from: caps)
         }
     }
 

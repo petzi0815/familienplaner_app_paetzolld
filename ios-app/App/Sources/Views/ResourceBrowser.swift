@@ -233,3 +233,27 @@ struct ResourceDetailView: View {
         busy = false
     }
 }
+
+/// Lädt einen Datensatz per ID (z.B. aus einem Suchtreffer) und zeigt sein Detail.
+struct RecordLoaderView: View {
+    let resource: ResourceInfo
+    let id: String
+    @EnvironmentObject private var app: AppState
+    @State private var record: GenericRecord?
+    @State private var failed = false
+
+    var body: some View {
+        Group {
+            if let record {
+                ResourceDetailView(resource: resource, record: record)
+            } else if failed {
+                ContentUnavailableView("Nicht gefunden", systemImage: "questionmark.circle")
+            } else {
+                ProgressView().task {
+                    do { record = try await app.api.getRecord(resource.key, id: id) }
+                    catch { failed = true }
+                }
+            }
+        }
+    }
+}
