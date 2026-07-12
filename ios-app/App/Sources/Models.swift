@@ -149,13 +149,7 @@ struct FotoboxDomainForm: Decodable, Identifiable {
 }
 struct FotoboxFormConfig: Decodable { let domains: [FotoboxDomainForm] }
 
-// ── Bücher-Regale (elisbooks-bookshelves) — für die Regal-Auswahl beim Buch-Anlegen ──
-struct Bookshelf: Decodable, Identifiable {
-    let id: String
-    let name: String
-    let color: String?
-}
-struct BookshelfList: Decodable { let data: [Bookshelf] }
+// (Bücher-Regale: `Bookshelf` ist jetzt im nativen ElisBooks-Modul definiert — Books/BookModels.swift.)
 
 /// Ein Datensatz mit dynamischen Feldern (Rohwerte aus JSONSerialization).
 struct GenericRecord: Identifiable {

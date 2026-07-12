@@ -211,11 +211,10 @@ final class APIClient {
         _ = try await send("/\(resource)/\(id)", method: "PATCH", body: body)
     }
 
-    /// Bücher-Regale (für die Regal-Auswahl beim Buch-Anlegen).
+    /// Bücher-Regale (für die Regal-Auswahl beim Buch-Anlegen). Nutzt das Bookshelf aus dem ElisBooks-Modul.
     func bookshelves() async throws -> [Bookshelf] {
-        try await get("/elisbooks-bookshelves",
-                      query: [URLQueryItem(name: "limit", value: "100"), URLQueryItem(name: "sort", value: "name:asc")],
-                      as: BookshelfList.self).data
+        let recs = try await listRecords("elisbooks-bookshelves", primaryKey: "id", limit: 100)
+        return recs.map { Bookshelf(fields: $0.fields) }
     }
 
     // MARK: - Fotobox
