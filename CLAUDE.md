@@ -6,9 +6,19 @@
 
 ## ▶️ WIEDERAUFNAHME (nächste Session) — START HIER
 
-**Stand (2026-07-12, HEAD `611c193`): Backend LIVE (`/version`=611c193) + alle 12 bespoke Bereichsseiten 1:1 portiert + iOS Build 3 auf TestFlight.** `https://familienplaner.yagemi.app`.
+**Stand (2026-07-12, HEAD `f1700bf`): Backend LIVE + alle 12 bespoke Bereichsseiten 1:1 + Fotobox-Feature (API `5696b71` live + iOS Build 4).** `https://familienplaner.yagemi.app`.
 
-**NEU 2026-07-12 (Details: Memory [[session-2026-07-12_bespoke-ports]]):**
+**NEU 2026-07-12 — Fotobox (Details: Memory [[session-2026-07-12_fotobox]]):**
+- **Strukturierte Foto-Queue** als 2. Eingangskanal neben Telegram. Ole: `GET /api/v1/fotobox-items?status=pending`
+  → `POST /{id}/claim` → Medien via `item.media[].url` → `GET /<target_resource>/schema` → Write → `POST /{id}/result`.
+- **Erweiterbare Wertebereiche** (domain/intent/status/review_reason/target_resource) in `fotobox_labels` (kein CHECK) —
+  neue Werte via `POST /api/v1/fotobox-labels`. Item-Validierung läuft dynamisch dagegen. Migration `0007_fotobox`.
+- **iOS-Fotobox**: nach dem Foto Domäne (On-Device-KI-Vorschlag/Auswahl) + **kontextabhängige Dropdowns mit gültigen
+  Werten** je Domäne (aus `GET /fotobox-items/form-config`: enum strikt, sonst reale DISTINCT-Werte). Save → fotobox-item.
+- **OpenAPI**: `https://familienplaner.yagemi.app/api/v1/docs` (Swagger) / `/api/v1/openapi.json` — für Ole zum Testen.
+- Verifiziert: Runtime-Smoke (create/claim-409/result/label-extend→neue Domain nutzbar/media/idempotenz/schema/form-config) + iOS-Build-Check grün.
+
+**NEU 2026-07-12 — Bespoke-Ports (Details: Memory [[session-2026-07-12_bespoke-ports]]):**
 - **Alle fehlenden Original-Bereichsseiten 1:1 nachgezogen** (vorher nur generischer Browser): Samu, Garten, Geschenkplaner,
   Termine, Vorratskammer, Wunschliste, Gypsi, Reiniger, Buecher, Smart Home, Vertraege (Reisen war schon davor).
 - **Muster: Kompat-API-Layer** (`server/legacy/*-db.ts` + `app/api/<bereich>/*`) spiegelt die Original-Endpunkte
@@ -132,6 +142,23 @@ Geschenkplaner · Garten · Vorratskammer · Gypsi (Katzenfutter) · Reiniger ·
   committen; nach Push per `/version` verifizieren. Secrets nur via `.env`/Coolify.
 
 ## Dev-Log (jüngste zuerst)
+
+### Update 11 (2026-07-12) — Fotobox: strukturierte Foto-Queue + erweiterbare Enums + iOS-Picker
+- **API (`5696b71`, live):** `fotobox-items`-Queue + Lifecycle (`/claim` [409-Lock], `/result`, `/fail`, `/approve`,
+  `/reject`, `/media`(+`/{mediaId}`)), idempotente Erstellung (inline media base64), nested API-Shape (`uploaded_by`/
+  `routing`/`review`/`processing`/`result`). **Wertebereiche dynamisch** aus `fotobox_labels` → per API erweiterbar
+  (`POST /fotobox-labels`), Validierung dagegen (server/fotobox/{labels,store,lifecycle,formconfig}.ts). Migration `0007`.
+  `GET /fotobox-items/schema` = label-aware allowed + domain→target-Mapping; `GET /fotobox-items/form-config` =
+  kontextabhängige Vorschlagsfelder je Domäne (enum aus CHECK, sonst reale DISTINCT-Werte der Zielressource).
+  capabilities + OpenAPI dokumentiert.
+- **iOS (`f1700bf`, Build-Check grün):** `FotoboxView` — Foto → Domäne (On-Device Vision+FoundationModels-Vorschlag,
+  auf gültige Domänen beschränkt, oder manuell) → **kontextabhängige Dropdowns** (datengetrieben aus form-config,
+  passen sich an die Domäne an; enum strikt, suggest frei ergänzbar) → `analysis_hint` + Foto → `POST /fotobox-items`.
+  Eintrag im Erfassen-Hub. Models/APIClient erweitert.
+- **Lessons:** (1) Erweiterbare Enums NICHT als CHECK (nicht runtime-änderbar) → Label-Tabelle + dyn. Validierung.
+  (2) Explizite statische Routen (`app/api/v1/fotobox-items/*`) überschreiben das generische `[domain]` — Registry-Eintrag
+  nur für capabilities/OpenAPI; generische Writes scheitern fail-safe (TEXT-PK ohne Default). (3) form-config aus echten
+  DISTINCT-Werten hält die iOS-Dropdowns automatisch valide + aktuell.
 
 ### Update 10 (2026-07-12) — Alle 12 bespoke Bereichsseiten 1:1 portiert (Kompat-API-Layer) + iOS JSON-Felder
 - **11 Lebensbereiche 1:1 aus dem Original nachgezogen** (`92a49fd`, live `611c193`): Samu, Garten, Geschenkplaner, Termine,
