@@ -133,7 +133,7 @@ struct LibraryView: View {
     private func gridCell(_ b: Book) -> some View {
         let selected = store.selection.contains(b.id)
         return VStack(alignment: .leading, spacing: 4) {
-            BookCover(url: b.thumbnail)
+            BookCover(url: b.thumbnail, isbn: b.isbn)
                 .overlay(alignment: .topTrailing) {
                     if store.selectionMode {
                         Image(systemName: selected ? "checkmark.circle.fill" : "circle")
@@ -157,7 +157,7 @@ struct LibraryView: View {
             if store.selectionMode {
                 Image(systemName: selected ? "checkmark.circle.fill" : "circle").foregroundStyle(selected ? .blue : .secondary)
             }
-            BookCover(url: b.thumbnail).frame(width: 40, height: 56)
+            BookCover(url: b.thumbnail, isbn: b.isbn).frame(width: 40, height: 56)
             VStack(alignment: .leading, spacing: 2) {
                 Text(b.title).font(.subheadline.weight(.semibold)).lineLimit(1)
                 Text(b.authorText).font(.caption).foregroundStyle(.secondary).lineLimit(1)

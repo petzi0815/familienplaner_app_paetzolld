@@ -18,7 +18,7 @@ struct BookDetailView: View {
             Form {
                 Section {
                     HStack(alignment: .top, spacing: 14) {
-                        BookCover(url: book.thumbnail).frame(width: 110)
+                        BookCover(url: book.thumbnail, isbn: book.isbn).frame(width: 110)
                         VStack(alignment: .leading, spacing: 6) {
                             Text(book.title).font(.headline)
                             Text(book.authorText).font(.subheadline).foregroundStyle(.secondary)

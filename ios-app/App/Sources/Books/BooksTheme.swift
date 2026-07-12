@@ -1,30 +1,57 @@
 import SwiftUI
 
-// ElisBooks-Designidentität (warmes Amber/Braun) + Buch-Cover-Komponente.
+extension Color {
+    /// Farbe, die sich an Hell/Dunkel anpasst (hex je Modus).
+    static func adaptiveHex(light: String, dark: String) -> Color {
+        Color(uiColor: UIColor { trait in
+            UIColor(Color(hex: trait.userInterfaceStyle == .dark ? dark : light))
+        })
+    }
+}
+
+// ElisBooks-Designidentität (warmes Amber/Braun) — **dark-mode-tauglich** (adaptive Farben).
 enum BookTheme {
-    static let amber600 = Color(hex: "#D97706")
+    static let amber600 = Color(hex: "#D97706")       // mittleres Amber, auf beiden Modi lesbar (Verlaufsbutton)
     static let orange600 = Color(hex: "#EA580C")
-    static let amber900 = Color(hex: "#78350F")
-    static let amber700 = Color(hex: "#B45309")
+    // Markentext/Akzente: dunkelbraun in Hell, helles Amber in Dunkel.
+    static let amber900 = Color.adaptiveHex(light: "#78350F", dark: "#FCD34D")
+    static let amber700 = Color.adaptiveHex(light: "#B45309", dark: "#FBBF24")
 
     static var brandGradient: LinearGradient {
         LinearGradient(colors: [amber600, orange600], startPoint: .leading, endPoint: .trailing)
     }
+    /// Hintergrund: warmes Cremeverlauf in Hell, dunkelbraun/fast-schwarz in Dunkel.
     static var bgWash: LinearGradient {
-        LinearGradient(colors: [Color(hex: "#FFFBEB"), Color(hex: "#FFEDD5")], startPoint: .topLeading, endPoint: .bottomTrailing)
+        LinearGradient(
+            colors: [Color.adaptiveHex(light: "#FFFBEB", dark: "#1A1512"),
+                     Color.adaptiveHex(light: "#FFEDD5", dark: "#241C17")],
+            startPoint: .topLeading, endPoint: .bottomTrailing)
     }
     static func shelfColor(_ hex: String?) -> Color { Color(hex: hex?.isEmpty == false ? hex! : "#94A3B8") }
 }
 
-/// Buch-Cover (3:4). Externe URLs (Google Books / Open Library) via AsyncImage; sonst Fallback-Icon.
+/// Buch-Cover (3:4). Externe URLs via AsyncImage (http→https, da ATS http blockt);
+/// fehlt das Cover, wird als Fallback das Open-Library-Cover per ISBN versucht, sonst Icon.
 struct BookCover: View {
     let url: String?
+    var isbn: String? = nil
     var wishlist = false
     var cornerRadius: CGFloat = 8
 
+    private var effectiveURL: URL? {
+        if let u = url, u.hasPrefix("http") {
+            return URL(string: u.replacingOccurrences(of: "http://", with: "https://"))
+        }
+        if let i = isbn {
+            let clean = i.filter { $0.isNumber || $0 == "X" }
+            if clean.count >= 10 { return URL(string: "https://covers.openlibrary.org/b/isbn/\(clean)-M.jpg?default=false") }
+        }
+        return nil
+    }
+
     var body: some View {
         Group {
-            if let u = url, u.hasPrefix("http"), let link = URL(string: u) {
+            if let link = effectiveURL {
                 AsyncImage(url: link) { phase in
                     switch phase {
                     case .success(let img): img.resizable().scaledToFill()
