@@ -6,7 +6,16 @@
 
 ## ▶️ WIEDERAUFNAHME (nächste Session) — START HIER
 
-**Stand (2026-07-12, HEAD `897595b`): Backend LIVE + 12 bespoke Bereichsseiten + Fotobox + iOS-Bücher-Handoff (Build 5).** `https://familienplaner.yagemi.app`.
+**Stand (2026-07-12, HEAD `e102aee`): Backend LIVE + nativer ElisBooks-Bücherbereich in iOS (Build 6).** `https://familienplaner.yagemi.app`.
+
+**NEU 2026-07-12 — Nativer ElisBooks-Bereich in iOS (Details: [[reference-elisbooks-original-app]]):**
+- Elitas Lovable/Supabase-Bücher-App **nativ nachgebaut** (ersetzt den generischen Browser für `elisbooks`), Backend =
+  Familienplaner-v1-API. Modul `ios-app/App/Sources/Books/`: Regale-CRUD, Bibliothek (Raster/Liste, Suche, Filter,
+  Sortierung, Bulk), Detail/Bearbeiten, Scanner (einzeln/bulk), manuelle Suche, Wunschliste, Vorschläge (lokal+OpenAI), KI-Regalscan.
+- Backend v1: `POST /elisbooks/books-bulk` + `/elisbooks/ai/{shelf-ocr,recommendations}` (OpenAI, **token-gated** → 501
+  ohne `OPENAI_API_KEY`). **Lars muss `OPENAI_API_KEY` in Coolify setzen** für Regalscan + KI-Empfehlungen.
+- **Standing Order:** Fokus iOS, **PWA pausiert** ([[feedback-fokus-ios-pwa-pausiert]]). Noch offen (nächste iOS-Builds):
+  Tabellenansicht/Pagination, Multi-Source-Metadaten, KI-Cleaner/Enhancer, Dubletten-Finder, Export/PDF, Einstellungen.
 
 **NEU 2026-07-12 — iOS-Bücher-Handoff + Migrations-Parität (Details: Memory [[reference-elisbooks-original-app]]):**
 - **iOS „Buch scannen"** legt jetzt den VOLLEN Datensatz an wie die Original-Bücher-App: Google-Books-Anreicherung
