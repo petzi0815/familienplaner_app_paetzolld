@@ -119,17 +119,20 @@ struct BooksExportSheet: View {
             return v
         }
         let header = "Titel,Autoren,Verlag,Erscheinungsjahr,ISBN,Kategorien,Regal,Gelesen,Seiten,Sprache"
-        let rows = store.filteredBooks.map { b -> String in
-            let cols = [
+        let rows: [String] = store.filteredBooks.map { b in
+            let year: String = b.yearInt.map(String.init) ?? ""
+            let pages: String = b.pageCount.map(String.init) ?? ""
+            let shelf: String = store.shelf(b.bookshelfId)?.name ?? ""
+            let cols: [String] = [
                 b.title,
                 b.authors.joined(separator: ", "),
                 b.publisher ?? "",
-                b.yearInt.map(String.init) ?? "",
+                year,
                 b.isbn ?? "",
                 b.categories.joined(separator: ", "),
-                store.shelf(b.bookshelfId)?.name ?? "",
+                shelf,
                 b.isRead ? "Ja" : "Nein",
-                b.pageCount.map(String.init) ?? "",
+                pages,
                 b.language ?? "",
             ]
             return cols.map(esc).joined(separator: ",")
