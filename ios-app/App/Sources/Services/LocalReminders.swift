@@ -6,7 +6,7 @@ import UserNotifications
 enum LocalReminders {
     private static let prefix = "fp-local-"
 
-    static func reschedule(termine: [TerminShort], vorrat: [VorratShort]) {
+    static func reschedule(termine: [TerminShort], vorrat: [VorratShort], abfuhr: [AbfuhrNext] = []) {
         UNUserNotificationCenter.current().getPendingNotificationRequests { pending in
             let center = UNUserNotificationCenter.current()
             let old = pending.map(\.identifier).filter { $0.hasPrefix(prefix) }
@@ -29,6 +29,15 @@ enum LocalReminders {
                 if let r = make(id: prefix + "mhd-\(v.id)",
                                 title: "🍽️ MHD bald: \(v.name)",
                                 body: "Läuft am \(DateText.pretty(mhd)) ab.",
+                                fire: fire) { requests.append(r) }
+            }
+            for a in abfuhr {
+                guard let dt = a.datum, let day = DateText.parse(date: dt) else { continue }
+                let base = Calendar.current.date(byAdding: .day, value: -1, to: day) ?? day
+                let fire = Calendar.current.date(bySettingHour: 19, minute: 0, second: 0, of: base) ?? base
+                if let r = make(id: prefix + "abfuhr-\(a.kategorie)-\(dt)",
+                                title: "🗑️ Abfuhr morgen: \(a.label)",
+                                body: "Tonne heute Abend rausstellen (\(DateText.pretty(dt))).",
                                 fire: fire) { requests.append(r) }
             }
             for r in requests { center.add(r) }

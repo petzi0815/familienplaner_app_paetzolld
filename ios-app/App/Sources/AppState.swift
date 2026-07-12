@@ -56,7 +56,7 @@ final class AppState: ObservableObject {
             let d = try await api.dashboard()
             dashboard = d
             dashboardError = nil
-            LocalReminders.reschedule(termine: d.termineUpcoming, vorrat: d.vorratBaldAblaufend)
+            LocalReminders.reschedule(termine: d.termineUpcoming, vorrat: d.vorratBaldAblaufend, abfuhr: d.abfuhrNext ?? [])
         } catch {
             dashboardError = (error as? APIError)?.errorDescription ?? "Konnte Heute-Übersicht nicht laden."
         }

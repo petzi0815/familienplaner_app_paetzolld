@@ -14,6 +14,7 @@ struct HeuteView: View {
                 if let d = app.dashboard {
                     VStack(spacing: 20) {
                         stats(d)
+                        if let ab = d.abfuhrNext, !ab.isEmpty { abfuhr(ab) }
                         if !d.termineUpcoming.isEmpty { termine(d.termineUpcoming) }
                         if let trip = d.nextTrip { reise(trip) }
                         if !d.vorratBaldAblaufend.isEmpty { vorrat(d.vorratBaldAblaufend) }
@@ -92,6 +93,31 @@ struct HeuteView: View {
             calMessage = (e as? CalendarSync.CalError) == .denied
                 ? "Kalenderzugriff nicht erlaubt (in Einstellungen aktivieren)."
                 : "Konnte nicht eintragen."
+        }
+    }
+
+    // ── Nächste Abfuhr je Kategorie ──
+    private func abfuhr(_ items: [AbfuhrNext]) -> some View {
+        SectionCard(title: "Nächste Abfuhr", systemImage: "trash", key: "garten") {
+            ForEach(items) { a in
+                HStack(spacing: 12) {
+                    Text(a.emoji).font(.title2)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(a.label).font(.subheadline.weight(.semibold))
+                        if let dt = a.datum { Text(DateText.pretty(dt)).font(.caption).foregroundStyle(.secondary) }
+                    }
+                    Spacer()
+                    if let du = a.daysUntil {
+                        let urgent = du <= 1
+                        Text(du == 0 ? "heute" : du == 1 ? "morgen" : "in \(du) Tagen")
+                            .font(.caption.weight(.bold))
+                            .padding(.horizontal, 8).padding(.vertical, 4)
+                            .background((urgent ? Color.orange : Color(hex: a.color)).opacity(0.18), in: Capsule())
+                            .foregroundStyle(urgent ? Color.orange : Color(hex: a.color))
+                    }
+                }
+                if a.id != items.last?.id { Divider() }
+            }
         }
     }
 

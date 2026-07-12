@@ -47,7 +47,19 @@ struct DashboardToday: Decodable {
     let nextTrip: NextTrip?
     let gartenOffen: Int
     let vorratBaldAblaufend: [VorratShort]
+    let abfuhrNext: [AbfuhrNext]?
     let counts: DashboardCounts
+}
+
+// ── Abfuhrkalender (nächster Termin je Kategorie) ──
+struct AbfuhrNext: Decodable, Identifiable {
+    let kategorie: String
+    let label: String
+    let emoji: String
+    let color: String
+    let datum: String?
+    let daysUntil: Int?
+    var id: String { kategorie }
 }
 struct TerminShort: Decodable, Identifiable {
     let id: Int
