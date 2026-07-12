@@ -211,6 +211,13 @@ final class APIClient {
         _ = try await send("/\(resource)/\(id)", method: "PATCH", body: body)
     }
 
+    /// Bücher-Regale (für die Regal-Auswahl beim Buch-Anlegen).
+    func bookshelves() async throws -> [Bookshelf] {
+        try await get("/elisbooks-bookshelves",
+                      query: [URLQueryItem(name: "limit", value: "100"), URLQueryItem(name: "sort", value: "name:asc")],
+                      as: BookshelfList.self).data
+    }
+
     // MARK: - Fotobox
 
     /// Kontextabhängige Vorschlagsfelder je Domäne (für die Picker nach dem Foto).

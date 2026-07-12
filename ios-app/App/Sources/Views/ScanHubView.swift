@@ -32,11 +32,6 @@ struct ScanHubView: View {
                         tileLabel("Lebensmittel scannen", "EAN-Barcode → Vorratskammer", "carrot.fill")
                     }
                     .buttonStyle(TileButtonStyle(gradientKey: "vorratskammer"))
-
-                    Button { showCamera = true } label: {
-                        tileLabel("Foto aufnehmen", "In den Foto-Eingang", "camera.fill")
-                    }
-                    .buttonStyle(TileButtonStyle(gradientKey: "foto"))
                 }
                 .padding()
             }
@@ -73,7 +68,16 @@ struct BookScanSheet: View {
     @State private var isbn = ""
     @State private var title = ""
     @State private var author = ""
+    @State private var publisher = ""
+    @State private var publishedDate = ""
+    @State private var bookDescription = ""
+    @State private var pageCount = 0
+    @State private var categoriesJSON = "[]"
+    @State private var language = "de"
     @State private var coverURL: String?
+    @State private var shelves: [Bookshelf] = []
+    @State private var shelfId = ""
+    @State private var isRead = false
     @State private var phase: Phase = .scan
     @State private var busy = false
     @State private var message = ""
@@ -135,6 +139,20 @@ struct BookScanSheet: View {
             Section("Details") {
                 TextField("Titel", text: $title)
                 TextField("Autor(en)", text: $author)
+                TextField("Verlag", text: $publisher)
+                if pageCount > 0 {
+                    LabeledContent("Seiten", value: "\(pageCount)")
+                }
+                if !categoriesLabel.isEmpty {
+                    LabeledContent("Kategorien") { Text(categoriesLabel).multilineTextAlignment(.trailing) }
+                }
+            }
+            Section("Ins Regal") {
+                Picker("Regal", selection: $shelfId) {
+                    Text("— kein Regal —").tag("")
+                    ForEach(shelves) { s in Text(s.name).tag(s.id) }
+                }
+                Toggle("Schon gelesen", isOn: $isRead)
             }
             if !message.isEmpty {
                 Section { Text(message).foregroundStyle(.secondary).font(.footnote) }
@@ -149,6 +167,13 @@ struct BookScanSheet: View {
                 .buttonStyle(.glassProminent).disabled(busy || title.isEmpty)
             }
         }
+        .task { if shelves.isEmpty { shelves = (try? await app.api.bookshelves()) ?? [] } }
+    }
+
+    private var categoriesLabel: String {
+        guard let data = categoriesJSON.data(using: .utf8),
+              let arr = try? JSONSerialization.jsonObject(with: data) as? [String] else { return "" }
+        return arr.joined(separator: ", ")
     }
 
     private func lookup(_ code: String) async {
@@ -159,22 +184,38 @@ struct BookScanSheet: View {
         let info = await ProductLookup.book(isbn: clean)
         title = info.title ?? ""
         author = info.authors.joined(separator: ", ")
+        publisher = info.publisher ?? ""
+        publishedDate = info.publishedDate ?? ""
+        bookDescription = info.description ?? ""
+        pageCount = info.pageCount ?? 0
+        language = info.language ?? "de"
+        categoriesJSON = jsonString(info.categories)
         coverURL = info.coverURL
         message = info.title == nil ? "Nicht im Katalog gefunden – bitte Titel ergänzen." : ""
         busy = false
     }
 
+    // Legt das Buch mit dem VOLLEN Feldsatz an — wie die Bücher-App selbst (authors/categories als JSON,
+    // publisher-Fallback "Unbekannter Verlag", Regal-Zuordnung, Lesestatus). Zielressource: elisbooks-books.
     private func save() async {
         busy = true; message = ""
         let authorsArray = author.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-        let authorsJSON = (try? JSONSerialization.data(withJSONObject: authorsArray)).flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
         var fields: [String: Any] = [
-            "id": UUID().uuidString,
+            "id": UUID().uuidString.lowercased(),
             "isbn": isbn,
             "title": title,
-            "authors": authorsJSON,
+            "authors": jsonString(authorsArray),
+            "categories": categoriesJSON,
+            "language": language.isEmpty ? "de" : language,
+            "publisher": publisher.isEmpty ? "Unbekannter Verlag" : publisher,
+            "is_read": isRead ? 1 : 0,
+            "is_on_picklist": 0,
         ]
-        if let coverURL { fields["thumbnail"] = coverURL }
+        if !publishedDate.isEmpty { fields["published_date"] = publishedDate }
+        if !bookDescription.isEmpty { fields["description"] = bookDescription }
+        if pageCount > 0 { fields["page_count"] = pageCount }
+        if let coverURL, !coverURL.isEmpty { fields["thumbnail"] = coverURL }
+        if !shelfId.isEmpty { fields["bookshelf_id"] = shelfId }
         do {
             try await app.api.createRecord("elisbooks-books", fields: fields)
             UINotificationFeedbackGenerator().notificationOccurred(.success)
@@ -183,6 +224,10 @@ struct BookScanSheet: View {
             message = (error as? APIError)?.errorDescription ?? "Speichern fehlgeschlagen."
             busy = false
         }
+    }
+
+    private func jsonString(_ arr: [String]) -> String {
+        (try? JSONSerialization.data(withJSONObject: arr)).flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
     }
 }
 
