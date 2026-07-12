@@ -88,12 +88,15 @@ struct BereichTile: View {
 
 /// Bereich → Ressourcen. Reisen bleibt trip-zentriert; 1 Ressource → direkt in die Liste; mehrere → Auswahl.
 struct BereichView: View {
+    @EnvironmentObject private var app: AppState
     let domain: BereichDomain
 
     var body: some View {
         Group {
             if domain.key == "reisen" {
                 ReiseListView()
+            } else if domain.key == "elisbooks" {
+                BooksRootView(settings: app.settings)
             } else if domain.resources.count == 1 {
                 ResourceListView(resource: domain.resources[0])
             } else {
