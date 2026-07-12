@@ -6,9 +6,23 @@
 
 ## ▶️ WIEDERAUFNAHME (nächste Session) — START HIER
 
-**Stand (2026-07-11, HEAD `e5f6ddc`): Backend LIVE + native iOS-App auf TestFlight (Build 2).** `https://familienplaner.yagemi.app`.
+**Stand (2026-07-12, HEAD `611c193`): Backend LIVE (`/version`=611c193) + alle 12 bespoke Bereichsseiten 1:1 portiert + iOS Build 3 auf TestFlight.** `https://familienplaner.yagemi.app`.
 
-**NEU (Details: Memory [[session-2026-07-11_part2]] + [[familienplaner-ios-app]]):**
+**NEU 2026-07-12 (Details: Memory [[session-2026-07-12_bespoke-ports]]):**
+- **Alle fehlenden Original-Bereichsseiten 1:1 nachgezogen** (vorher nur generischer Browser): Samu, Garten, Geschenkplaner,
+  Termine, Vorratskammer, Wunschliste, Gypsi, Reiniger, Buecher, Smart Home, Vertraege (Reisen war schon davor).
+- **Muster: Kompat-API-Layer** (`server/legacy/*-db.ts` + `app/api/<bereich>/*`) spiegelt die Original-Endpunkte
+  (`?stats/?matrix/?mode=month/…`) gegen die konsolidierte **Singleton-DB** (`getDb()`, **nie `close()`**), Tabellen praefixiert;
+  Auth via `guard()` (lesen=readonly, schreiben=agent) wie v1. Seiten **verbatim** kopiert, nur Bild-URLs → `/api/v1/media/<key>`.
+  Externe KI/Netz/HA-Endpunkte → **501 `notMigrated`** (buecher search/download/retry/enrich, wunschliste enrich/scrape/pricecheck,
+  smarthome exec/ask/prompt). Portal verlinkt alle via `BESPOKE_HREF`.
+- **Verifiziert:** `next build` grün + **Runtime-Smoke 43/43 Endpunkte 200** (echter `next start` gegen Seed-DB) + Prod-Sanity
+  (401-gated, 501-Stubs, `/samu`→307). iOS: neues `FieldFormat .keyValue` rendert JSON-Objekt-Spalten (z.B. `ha-entities.attributes`)
+  als Key/Value statt Rohtext; Build-Check + TestFlight **beide success**.
+- **Lernpunkt:** Next 16 lintet NICHT mehr im `next build` (kein `eslint`-Feld im `NextConfig`-Typ) → 1:1-Legacy-Ports mit
+  `any`/`<img>` bauen sauber durch; tsc bleibt das Gate.
+
+**NEU 2026-07-11 (Details: Memory [[session-2026-07-11_part2]] + [[familienplaner-ios-app]]):**
 - **MCP-Server** `POST /api/mcp` (Streamable HTTP, gleicher Agent-Key wie REST, 14 generische Tools; `docs/MCP.md`).
 - **iOS-App komplett auf iOS 26** (Liquid Glass, Barcode-Scanner ISBN/EAN, On-Device-KI Foto-Vorschlag [Vision+FoundationModels],
   EventKit-Kalender, lokale Erinnerungen, MapKit-Reisen, Siri-Kurzbefehle, WidgetKit-Widgets) + **Bereiche-Browser**
@@ -118,6 +132,23 @@ Geschenkplaner · Garten · Vorratskammer · Gypsi (Katzenfutter) · Reiniger ·
   committen; nach Push per `/version` verifizieren. Secrets nur via `.env`/Coolify.
 
 ## Dev-Log (jüngste zuerst)
+
+### Update 10 (2026-07-12) — Alle 12 bespoke Bereichsseiten 1:1 portiert (Kompat-API-Layer) + iOS JSON-Felder
+- **11 Lebensbereiche 1:1 aus dem Original nachgezogen** (`92a49fd`, live `611c193`): Samu, Garten, Geschenkplaner, Termine,
+  Vorratskammer, Wunschliste, Gypsi, Reiniger, Buecher, Smart Home, Vertraege. Vorher hatten diese nur den generischen
+  `ResourceBrowser`; jetzt die originalgetreuen, funktionsreichen Seiten (Matrix/Stats/Kalender/GTS/Vergleiche …).
+- **Architektur „Kompat-API-Layer"** statt Seiten auf v1 umzuverdrahten: pro Bereich `server/legacy/<bereich>-db.ts`
+  (Original-Lib, aber Verbindung = geteiltes `getDb()`-Singleton, **alle `db.close()` entfernt**, Tabellen praefixiert) +
+  Kompat-Routen unter `app/api/<bereich>/*` (spiegeln die Original-Endpunkte + Spezialmodi 1:1, `guard()`-Auth). Seiten
+  **verbatim** kopiert; einzige Änderung: Bild-URLs `/api/images|/api/<bereich>/images` → `/api/v1/media/<key>`.
+  Externe KI/Netz/HA-Endpunkte → **501** (`notMigrated`, `server/legacy/compat.ts`). Vertraege = statische Seite + `data/vertraege.json`.
+- **Umsetzung:** Samu als Referenz-Port selbst gebaut + verifiziert (Blueprint), dann 9 Bereiche **parallel via Subagenten**
+  (jeder: Lib+Routen+Seite, SQL gegen Seed-DB geprüft, kein Build). 1 finaler `next build` + **Runtime-Smoke 43/43 200**
+  (echter Server gegen Seed-DB) + Prod-Sanity. **Lessons:** (1) Next 16 lintet nicht im Build → Legacy-`any`/`<img>` ok, tsc bleibt Gate.
+  (2) `getDb()` ist Singleton → Ports **dürfen nie `close()`**. (3) Original-Libs hatten teils `CREATE TABLE`-Bootstrap → entfernt
+  (konsolidierte DB ist migriert). (4) Original-Bild-Keys sind bereits `<bereich>/<datei>` → passen direkt auf `/api/v1/media`.
+- **iOS** (`611c193`): neues `FieldFormat .keyValue` + `parseJSONObject` — JSON-Objekt-Spalten (`ha-entities.attributes` u.a.)
+  werden als saubere Key/Value-Zeilen statt roher `{…}`-String gezeigt; `guessFormat` erkennt `{…}` automatisch. Build-Check + TestFlight success.
 
 ### Update 9 (2026-07-11) — MCP-Server + iOS-26-Ausbau + TestFlight LIVE + Bereiche-Browser
 - **MCP-Server** `POST /api/mcp` (`d5deae5`): dünner Adapter über crud/queries, 14 generische Tools, Auth = Agent-Key.
