@@ -49,7 +49,8 @@ export interface NextAbfuhr { kategorie: string; label: string; emoji: string; c
 /** Nächster Termin je Kategorie (ab heute). */
 export function nextPerCategory(db: BetterSqlite3.Database): NextAbfuhr[] {
   const stmt = db.prepare(
-    "SELECT datum, CAST(julianday(datum) - julianday('now','localtime') AS INTEGER) AS days FROM abfuhr_termine WHERE kategorie=? AND datum >= date('now','localtime') ORDER BY datum ASC LIMIT 1",
+    // Tages-Differenz auf Datumsgrenzen (nicht Uhrzeit) — sonst wird „morgen" fälschlich zu 0/„heute".
+    "SELECT datum, CAST(julianday(datum) - julianday(date('now','localtime')) AS INTEGER) AS days FROM abfuhr_termine WHERE kategorie=? AND datum >= date('now','localtime') ORDER BY datum ASC LIMIT 1",
   );
   return ABFUHR_CATEGORIES.map((c) => {
     const row = stmt.get(c.key) as { datum: string; days: number } | undefined;
