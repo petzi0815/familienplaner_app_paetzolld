@@ -192,4 +192,18 @@ final class BooksAPI {
         let r = try await send("/elisbooks/ai/recommendations", method: "POST", body: ["count": count, "timeframe": timeframe, "customPrompt": prompt, "books": library])
         return (r["recommendations"] as? [[String: Any]]) ?? []
     }
+    func aiCleaner(_ books: [[String: Any]]) async throws -> [[String: Any]] {
+        let r = try await send("/elisbooks/ai/metadata-cleaner", method: "POST", body: ["books": books])
+        return (r["improvements"] as? [[String: Any]]) ?? []
+    }
+    func aiEnhancer(_ books: [[String: Any]]) async throws -> [[String: Any]] {
+        let r = try await send("/elisbooks/ai/metadata-enhancer", method: "POST", body: ["books": books])
+        return (r["enhancements"] as? [[String: Any]]) ?? []
+    }
+    /// Kompakte Buch-Repräsentation für KI-Aufrufe.
+    func aiBookPayload(_ b: Book) -> [String: Any] {
+        ["id": b.id, "title": b.title, "authors": b.authors, "publisher": b.publisher ?? "",
+         "description": b.description ?? "", "categories": b.categories, "isbn": b.isbn ?? "",
+         "page_count": b.pageCount ?? 0, "published_date": b.publishedDate ?? ""]
+    }
 }

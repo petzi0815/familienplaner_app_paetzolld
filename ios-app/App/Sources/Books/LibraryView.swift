@@ -7,7 +7,15 @@ struct LibraryView: View {
     @State private var showFilter = false
     @State private var detail: Book?
     @State private var showBulkMove = false
+    @State private var showDuplicates = false
+    @State private var showExport = false
+    @State private var showSettings = false
+    @State private var showAiCleaner = false
+    @State private var showAiEnhancer = false
     private let gcols = [GridItem(.adaptive(minimum: 108), spacing: 10)]
+
+    private var selectedBooks: [Book] { store.books.filter { store.selection.contains($0.id) } }
+    private var enhancerBooks: [Book] { Array(store.books.filter { ($0.description ?? "").isEmpty || $0.categories.isEmpty }.prefix(20)) }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -18,6 +26,11 @@ struct LibraryView: View {
         }
         .sheet(isPresented: $showFilter) { FilterSheet() }
         .sheet(item: $detail) { b in BookDetailView(book: b) }
+        .sheet(isPresented: $showDuplicates) { DuplicateFinderSheet() }
+        .sheet(isPresented: $showExport) { BooksExportSheet() }
+        .sheet(isPresented: $showSettings) { BooksSettingsSheet() }
+        .sheet(isPresented: $showAiCleaner) { AiCleanerSheet(books: selectedBooks) }
+        .sheet(isPresented: $showAiEnhancer) { AiEnhancerSheet(books: enhancerBooks) }
         .confirmationDialog("Regal verschieben", isPresented: $showBulkMove, titleVisibility: .visible) {
             Button("Kein Regal") { Task { await store.bulkMove(to: nil) } }
             ForEach(store.shelves) { s in Button(s.name) { Task { await store.bulkMove(to: s.id) } } }
@@ -36,6 +49,12 @@ struct LibraryView: View {
                         .background(BookTheme.amber700.opacity(0.15), in: Capsule()).foregroundStyle(BookTheme.amber900)
                 }
                 Spacer()
+                Menu {
+                    Button { showDuplicates = true } label: { Label("Duplikate finden", systemImage: "doc.on.doc") }
+                    Button { showAiEnhancer = true } label: { Label("KI: Metadaten ergänzen", systemImage: "sparkles") }
+                    Button { showExport = true } label: { Label("Export / Backup", systemImage: "square.and.arrow.up") }
+                    Button { showSettings = true } label: { Label("Einstellungen", systemImage: "gearshape") }
+                } label: { Image(systemName: "ellipsis.circle").font(.title3) }
                 Button { store.selectionMode.toggle(); if !store.selectionMode { store.selection.removeAll() } } label: {
                     Label(store.selectionMode ? "Fertig" : "Auswählen", systemImage: "checkmark.circle")
                         .font(.subheadline.weight(.semibold))
@@ -68,6 +87,7 @@ struct LibraryView: View {
             Button { showBulkMove = true } label: { Image(systemName: "folder") }
             Button { Task { await store.bulkSetRead(true) } } label: { Image(systemName: "book.closed") }
             Button { Task { await store.bulkSetRead(false) } } label: { Image(systemName: "book") }
+            Button { showAiCleaner = true } label: { Image(systemName: "sparkles") }.foregroundStyle(.purple)
             Button(role: .destructive) { Task { await store.bulkDelete() } } label: { Image(systemName: "trash") }
             Button { store.selectAllFiltered() } label: { Image(systemName: "checkmark.circle.fill") }
         }
