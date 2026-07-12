@@ -68,7 +68,7 @@ struct ReiseListView: View {
     private func card(_ t: GenericRecord) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             AuthImage(path: recordImageURL(t.fields, res?.image))
-                .aspectRatio(4 / 3, contentMode: .fill).frame(height: 110).clipped()
+                .frame(maxWidth: .infinity).frame(height: 110).clipped()
             VStack(alignment: .leading, spacing: 2) {
                 Text(fieldString(t.fields["title"])).font(.subheadline.weight(.semibold)).lineLimit(1)
                 Text(fieldString(t.fields["destination"])).font(.caption).foregroundStyle(.secondary).lineLimit(1)
@@ -139,8 +139,8 @@ struct ReiseDetailView: View {
         Section {
             VStack(alignment: .leading, spacing: 10) {
                 if let cover = recordImageURL(f, reisenRes?.image) {
-                    AuthImage(path: cover).aspectRatio(16 / 9, contentMode: .fill)
-                        .frame(maxWidth: .infinity, maxHeight: 190).clipped()
+                    AuthImage(path: cover)
+                        .frame(maxWidth: .infinity).frame(height: 190).clipped()
                         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
                 Text(fieldString(f["title"])).font(.title3.weight(.bold))

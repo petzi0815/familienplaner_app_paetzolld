@@ -53,9 +53,8 @@ struct InboxView: View {
     }
 
     private func cell(_ item: FotoInboxItem) -> some View {
-        AuthImage(path: item.storageKeyUrl)
-            .aspectRatio(1, contentMode: .fill)
-            .frame(minHeight: 104)
+        Color.clear.aspectRatio(1, contentMode: .fit)
+            .overlay { AuthImage(path: item.storageKeyUrl) }
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay(alignment: .topTrailing) {
                 Circle().fill(statusColor(item.status))
@@ -83,8 +82,8 @@ struct FotoDetailSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    AuthImage(path: item.storageKeyUrl)
-                        .aspectRatio(contentMode: .fit)
+                    AuthImage(path: item.storageKeyUrl, contentMode: .fit)
+                        .frame(maxWidth: .infinity, maxHeight: 440)
                         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                         .shadow(color: .black.opacity(0.15), radius: 14, y: 8)
 
@@ -121,15 +120,22 @@ struct FotoDetailSheet: View {
 }
 
 /// Lädt Media auth-bewusst (Bearer-Header) und zeigt es an.
+/// `.fill` (Default) füllt die vom Aufrufer gesetzte Fläche und **clippt sich selbst** (kein Überlauf).
+/// `.fit` zeigt das ganze Bild (für Detail-Ansichten).
 struct AuthImage: View {
     let path: String?
+    var contentMode: ContentMode = .fill
     @EnvironmentObject private var app: AppState
     @State private var image: UIImage?
 
     var body: some View {
-        ZStack {
+        Group {
             if let image {
-                Image(uiImage: image).resizable().scaledToFill()
+                if contentMode == .fill {
+                    Color.clear.overlay { Image(uiImage: image).resizable().scaledToFill() }.clipped()
+                } else {
+                    Image(uiImage: image).resizable().scaledToFit()
+                }
             } else {
                 Palette.gradient(for: "foto").opacity(0.25)
                     .overlay(Image(systemName: "photo").font(.title3).foregroundStyle(.white.opacity(0.8)))

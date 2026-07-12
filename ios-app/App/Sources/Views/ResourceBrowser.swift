@@ -94,9 +94,8 @@ struct ResourceListView: View {
     }
 
     private func cell(_ rec: GenericRecord) -> some View {
-        AuthImage(path: recordImageURL(rec.fields, resource.image))
-            .aspectRatio(1, contentMode: .fill)
-            .frame(minHeight: 110)
+        Color.clear.aspectRatio(1, contentMode: .fit)
+            .overlay { AuthImage(path: recordImageURL(rec.fields, resource.image)) }
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay(alignment: .bottomLeading) {
                 Text(titleText(rec.fields, spec)).font(.caption2.weight(.bold)).lineLimit(1)
@@ -186,15 +185,14 @@ struct ResourceDetailView: View {
 
     @ViewBuilder private var hero: some View {
         if heroURLs.count == 1 {
-            AuthImage(path: heroURLs[0])
-                .aspectRatio(contentMode: .fit)
+            AuthImage(path: heroURLs[0], contentMode: .fit)
                 .frame(maxWidth: .infinity, maxHeight: 260)
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         } else {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
                     ForEach(Array(heroURLs.enumerated()), id: \.offset) { _, u in
-                        AuthImage(path: u).aspectRatio(contentMode: .fill)
+                        AuthImage(path: u)
                             .frame(width: 190, height: 190)
                             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     }
