@@ -1,6 +1,6 @@
 import type BetterSqlite3 from "better-sqlite3";
 import { sendPush } from "@/server/push/apns";
-import { abfuhrCategory } from "@/server/abfuhr/abfuhr";
+import { abfuhrCategory, fetchAhaICS, parseAbfuhrICS } from "@/server/abfuhr/abfuhr";
 
 export interface JobCtx {
   db: BetterSqlite3.Database;
@@ -95,6 +95,29 @@ export const JOBS: JobDef[] = [
         ctx.db.prepare("UPDATE abfuhr_termine SET push_gesendet=1 WHERE datum=date('now','+1 day')").run();
       }
       return { messages: [body], affected: rows.length };
+    },
+  },
+  {
+    name: "abfuhr-aha-sync",
+    schedule: "17 3 1 * *",
+    timezone: "Europe/Berlin",
+    topic: "abfuhrkalender",
+    description: "Abfuhrtermine monatlich von aha-region.de synchronisieren (nächstes Jahr automatisch).",
+    async run(ctx) {
+      const cfg = ctx.db.prepare("SELECT aha_gemeinde, aha_von, aha_strasse, aha_hausnr, aha_hausnraddon FROM abfuhr_config WHERE id=1").get() as
+        | { aha_gemeinde: string | null; aha_von: string | null; aha_strasse: string | null; aha_hausnr: string | null; aha_hausnraddon: string | null }
+        | undefined;
+      if (!cfg?.aha_gemeinde || !cfg?.aha_strasse) return { messages: ["keine aha-Adresse konfiguriert"], affected: 0 };
+      if (ctx.dryRun) return { messages: ["würde aha synchronisieren"], affected: 0 };
+      const ics = await fetchAhaICS({ gemeinde: cfg.aha_gemeinde, von: cfg.aha_von ?? "", strasse: cfg.aha_strasse, hausnr: cfg.aha_hausnr ?? "", hausnraddon: cfg.aha_hausnraddon ?? "" });
+      const events = parseAbfuhrICS(ics);
+      const upsert = ctx.db.prepare(
+        "INSERT INTO abfuhr_termine (kategorie,datum,summary,uid,quelle) VALUES (?,?,?,?,'aha') ON CONFLICT(uid) DO UPDATE SET kategorie=excluded.kategorie, datum=excluded.datum, summary=excluded.summary",
+      );
+      let n = 0;
+      for (const e of events) if (upsert.run(e.kategorie, e.datum, e.summary, e.uid).changes > 0) n++;
+      ctx.db.prepare("UPDATE abfuhr_config SET letzter_sync=datetime('now') WHERE id=1").run();
+      return { messages: [`aha-Sync: ${events.length} Termine, ${n} neu/aktualisiert`], affected: n };
     },
   },
 ];

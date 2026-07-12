@@ -58,6 +58,36 @@ export function nextPerCategory(db: BetterSqlite3.Database): NextAbfuhr[] {
   });
 }
 
+// ── aha-region.de Online-Sync (3-Schritt-Formular: Straße → ladeort → ICS) ──
+export interface AhaParams { gemeinde: string; von: string; strasse: string; hausnr: string; hausnraddon: string }
+const AHA_BASE = "https://www.aha-region.de/abholtermine/abfuhrkalender";
+
+/** Holt die Jahres-ICS von aha-region.de für die konfigurierte Adresse. */
+export async function fetchAhaICS(p: AhaParams): Promise<string> {
+  const ua = "Mozilla/5.0";
+  const base = { gemeinde: p.gemeinde, jsaus: "", von: p.von, strasse: p.strasse, hausnr: p.hausnr, hausnraddon: p.hausnraddon };
+  // Schritt 2: ladeort ermitteln (POST anzeigen=Suchen).
+  const r2 = await fetch(AHA_BASE, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded", "user-agent": ua },
+    body: new URLSearchParams({ ...base, anzeigen: "Suchen" }).toString(),
+  });
+  const cookie = (r2.headers.get("set-cookie") ?? "").split(";")[0];
+  const h2 = await r2.text();
+  let ladeort = h2.match(/name=["']ladeort["'][^>]*value=["']([^"']*)["']/i)?.[1];
+  if (!ladeort) {
+    const sel = h2.match(/<select[^>]*name=["']ladeort["'][^>]*>([\s\S]*?)<\/select>/i)?.[1];
+    ladeort = sel?.match(/<option[^>]*value=["']([^"']+)["']/i)?.[1];
+  }
+  // Schritt 3: ICS (POST ical="ICAL Jahresübersicht").
+  const r3 = await fetch(AHA_BASE, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded", "user-agent": ua, ...(cookie ? { cookie } : {}) },
+    body: new URLSearchParams({ ...base, ladeort: ladeort ?? "", ical: "ICAL Jahresübersicht" }).toString(),
+  });
+  return await r3.text();
+}
+
 /** Alle kommenden Termine (flach, ab heute). */
 export function upcoming(db: BetterSqlite3.Database, limit = 30): { kategorie: string; label: string; datum: string }[] {
   const rows = db.prepare(
