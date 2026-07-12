@@ -211,6 +211,30 @@ final class APIClient {
         _ = try await send("/\(resource)/\(id)", method: "PATCH", body: body)
     }
 
+    // MARK: - Fotobox
+
+    /// Kontextabhängige Vorschlagsfelder je Domäne (für die Picker nach dem Foto).
+    func fotoboxForms() async throws -> [FotoboxDomainForm] {
+        try await get("/fotobox-items/form-config", as: FotoboxFormConfig.self).domains
+    }
+
+    /// Erlaubte Intent-Werte (aus dem Fotobox-Schema, dynamisch aus fotobox_labels).
+    func fotoboxIntents() async throws -> [String] {
+        let (data, resp) = try await Self.session.data(for: request("/fotobox-items/schema"))
+        try checkStatus(resp, data)
+        let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let allowed = obj?["allowed"] as? [String: Any]
+        return (allowed?["intent"] as? [String]) ?? []
+    }
+
+    /// Ein Fotobox-Item anlegen (routing + analysis_hint + inline-Foto). Gibt die Server-Antwort zurück.
+    @discardableResult
+    func createFotoboxItem(_ payload: [String: Any]) async throws -> [String: Any] {
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        let data = try await send("/fotobox-items", method: "POST", body: body)
+        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+    }
+
     /// Media (Thumbnails) auth-bewusst laden — /api/v1/media/… braucht den Bearer-Header.
     func loadMedia(pathOrUrl: String) async throws -> Data {
         let full = pathOrUrl.hasPrefix("http") ? pathOrUrl : base + pathOrUrl

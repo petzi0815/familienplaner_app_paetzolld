@@ -48,6 +48,35 @@ enum PhotoBereichSuggester {
         }
     }
 
+    /// On-Device-Vorschlag der Fotobox-Domäne (nur gültige Domänen-Schlüssel). nil = kein sicherer Treffer.
+    static func suggestDomain(image: UIImage, note: String, domains: [FotoboxDomainForm]) async -> String? {
+        guard isAvailable, !domains.isEmpty else { return nil }
+        let labels = await imageLabels(image)
+        let contextParts = [
+            labels.isEmpty ? nil : "Bilderkennung: \(labels.joined(separator: ", "))",
+            note.isEmpty ? nil : "Notiz: \(note)",
+        ].compactMap { $0 }
+        guard !contextParts.isEmpty else { return nil }
+
+        let list = domains.map { "\($0.domain) (\($0.label))" }.joined(separator: ", ")
+        let prompt = """
+        Ordne ein Familienfoto genau einer Fotobox-Domäne zu.
+        Verfügbare Domänen als Schlüssel: \(list).
+        Kontext: \(contextParts.joined(separator: ". ")).
+        Antworte nur mit dem passendsten Schlüssel aus der Liste (exakt so geschrieben) oder 'unknown'.
+        """
+        do {
+            let session = LanguageModelSession {
+                "Du ordnest Familienfotos knapp und präzise einer Domäne zu."
+            }
+            let result = try await session.respond(to: prompt, generating: BereichGuess.self)
+            let guess = result.content.bereich.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            return domains.first(where: { $0.domain.lowercased() == guess })?.domain
+        } catch {
+            return nil
+        }
+    }
+
     /// Vision-Bildklassifikation (off-main). Liefert die stärksten Labels.
     private static func imageLabels(_ image: UIImage) async -> [String] {
         guard let cg = image.cgImage else { return [] }

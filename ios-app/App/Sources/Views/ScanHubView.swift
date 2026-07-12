@@ -6,6 +6,7 @@ struct ScanHubView: View {
     @EnvironmentObject private var app: AppState
     @State private var sheet: ScanSheet?
     @State private var showCamera = false
+    @State private var showFotobox = false
 
     enum ScanSheet: Identifiable { case book, food; var id: Int { hashValue } }
 
@@ -16,6 +17,11 @@ struct ScanHubView: View {
                     Text("Was möchtest du erfassen?")
                         .font(.title3.weight(.semibold))
                         .frame(maxWidth: .infinity, alignment: .leading)
+
+                    Button { showFotobox = true } label: {
+                        tileLabel("Fotobox", "Foto + gültige Werte setzen → Ole", "camera.badge.ellipsis")
+                    }
+                    .buttonStyle(TileButtonStyle(gradientKey: "foto"))
 
                     Button { sheet = .book } label: {
                         tileLabel("Buch scannen", "ISBN-Barcode → automatisch anlegen", "barcode.viewfinder")
@@ -37,6 +43,7 @@ struct ScanHubView: View {
             .background(Palette.gradient(for: "elisbooks").opacity(0.06).ignoresSafeArea())
             .navigationTitle("Erfassen")
             .navigationDestination(isPresented: $showCamera) { CameraView() }
+            .navigationDestination(isPresented: $showFotobox) { FotoboxView() }
             .onChange(of: app.openCameraTick) { _, _ in showCamera = true }
             .sheet(item: $sheet) { which in
                 switch which {

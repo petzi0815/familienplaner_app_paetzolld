@@ -129,6 +129,26 @@ struct ResourceInfo: Decodable, Identifiable {
 }
 struct Capabilities: Decodable { let resources: [ResourceInfo] }
 
+// ── Fotobox: kontextabhängige Vorschlagsfelder je Domäne (GET /fotobox-items/form-config) ──
+struct FotoboxFormField: Decodable, Identifiable {
+    let key: String
+    let label: String
+    let type: String            // "enum" (strikt) | "suggest" (Vorschlag, frei) | "bool"
+    let required: Bool
+    let options: [String]
+    var id: String { key }
+    var isStrict: Bool { type == "enum" }
+    var isBool: Bool { type == "bool" }
+}
+struct FotoboxDomainForm: Decodable, Identifiable {
+    let domain: String
+    let label: String
+    let targetResource: String?
+    let fields: [FotoboxFormField]
+    var id: String { domain }
+}
+struct FotoboxFormConfig: Decodable { let domains: [FotoboxDomainForm] }
+
 /// Ein Datensatz mit dynamischen Feldern (Rohwerte aus JSONSerialization).
 struct GenericRecord: Identifiable {
     let id: String
