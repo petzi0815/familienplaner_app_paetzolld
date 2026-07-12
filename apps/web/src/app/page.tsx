@@ -4,6 +4,8 @@ import { LogoutButton } from "@/components/LogoutButton";
 
 // Lebensbereich-Key → Registry-Domain (fast identisch; nur „buecher" → „ebooks").
 const DOMAIN_OF: Record<string, string> = { buecher: "ebooks" };
+// Bespoke, originalgetreue Bereichsseiten (statt generischem Browser); wird pro portiertem Bereich ergänzt.
+const BESPOKE_HREF: Record<string, string> = { reisen: "/reisen" };
 
 // Datengetriebenes Portal: Kacheln aus der `lebensbereiche`-Registry + Tagesübersicht aus der DB.
 // Domänen-spezifische UIs folgen in Phase 3; die REST-API (/api/v1/*) ist bereits vollständig.
@@ -81,7 +83,7 @@ export default function Portal() {
       <div className="max-w-3xl mx-auto px-3 pb-6 pt-2">
         <div className="grid grid-cols-2 gap-2.5">
           {bereiche.map((b) => (
-            <Link key={b.key} href={`/bereich/${DOMAIN_OF[b.key] ?? b.key}`} className="group relative overflow-hidden bg-white rounded-2xl shadow-sm border border-black/5 h-full active:scale-[0.97] transition-transform">
+            <Link key={b.key} href={BESPOKE_HREF[b.key] ?? `/bereich/${DOMAIN_OF[b.key] ?? b.key}`} className="group relative overflow-hidden bg-white rounded-2xl shadow-sm border border-black/5 h-full active:scale-[0.97] transition-transform">
               <div className={`absolute inset-0 bg-gradient-to-br ${GRADIENTS[b.key] ?? b.gradient ?? DEFAULT_GRADIENT} opacity-90`} />
               <div className="absolute inset-0"><div className="absolute -top-4 -right-4 w-16 h-16 bg-white rounded-full blur-2xl opacity-20" /></div>
               <div className="relative p-3 flex flex-col gap-1 min-h-[92px]">
