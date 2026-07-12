@@ -6,7 +6,7 @@
 
 ## ▶️ WIEDERAUFNAHME (nächste Session) — START HIER
 
-**Stand (2026-07-12, HEAD `e102aee`): Backend LIVE + nativer ElisBooks-Bücherbereich in iOS (Build 6).** `https://familienplaner.yagemi.app`.
+**Stand (2026-07-12, HEAD `1c0f82c`): Backend LIVE + nativer ElisBooks-Bücherbereich in iOS (Build 7, inkl. KI-Metadaten/Dubletten/Export/Einstellungen).** `https://familienplaner.yagemi.app`. **Offen:** OpenAI-Live-Check (`GET /api/v1/elisbooks/ai/status?test=1` mit Agent-Key) — Lars hat `OPENAI_API_KEY` in Coolify gesetzt; Prod-Agent-Key zum Testen fehlt mir.
 
 **NEU 2026-07-12 — Nativer ElisBooks-Bereich in iOS (Details: [[reference-elisbooks-original-app]]):**
 - Elitas Lovable/Supabase-Bücher-App **nativ nachgebaut** (ersetzt den generischen Browser für `elisbooks`), Backend =
