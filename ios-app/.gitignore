@@ -2,6 +2,8 @@
 *.xcodeproj/
 App/Info.plist
 App/Familienplaner.entitlements
+Widgets/Info.plist
+Widgets/FamilienplanerWidgets.entitlements
 
 # Build-Artefakte
 build/

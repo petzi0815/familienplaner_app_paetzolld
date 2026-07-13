@@ -1,8 +1,7 @@
 # iOS TestFlight — Familienplaner (native SwiftUI).
-# DEAKTIVIERT bis aktiviert: Datei nach `.github/workflows/ios.yml` verschieben und mit einem
-# Git-Token MIT `workflow`-Scope pushen (`gh auth refresh -s workflow`). Details: docs/IOS.md.
-# Voraussetzung: App-Record in App Store Connect existiert (Bundle-ID app.yagemi.familienplaner)
-# + Signing-Secrets als Repo-Secrets/Variables (siehe docs/IOS.md).
+# Baut auf dem self-hosted Mac-mini-iOS-Runner und lädt den signierten Build
+# nach TestFlight hoch. Voraussetzung: App-Record in App Store Connect
+# (Bundle-ID app.yagemi.familienplaner) + Signing-Secrets/Variables.
 name: iOS TestFlight
 
 on:
@@ -21,8 +20,8 @@ concurrency:
 
 jobs:
   testflight:
-    runs-on: macos-15
-    timeout-minutes: 40
+    runs-on: [self-hosted, ios, mac-mini-buero, familienplaner]
+    timeout-minutes: 60
     defaults:
       run:
         working-directory: ios-app
@@ -44,14 +43,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Xcode auswählen
-        uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: "26.0"   # iOS-26-SDK (Liquid Glass, Foundation Models). Falls das macos-15-Image
-                                  # kein Xcode 26 hat: runs-on auf macos-26 heben.
+      - name: Xcode verifizieren
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          xcode-select -p
+          xcrun --sdk iphoneos --show-sdk-version
+          xcrun simctl list runtimes
 
       - name: XcodeGen installieren
-        run: brew install xcodegen
+        run: |
+          set -euo pipefail
+          if ! command -v xcodegen >/dev/null 2>&1; then
+            brew install xcodegen
+          fi
+          xcodegen --version
 
       - name: Xcode-Projekt generieren
         run: xcodegen generate
@@ -68,11 +74,30 @@ jobs:
             exit 1
           fi
 
-      - uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: "3.3"
-          bundler-cache: true
-          working-directory: ios-app
+      - name: Ruby und Bundler vorbereiten
+        run: |
+          set -euo pipefail
+          if ! brew list ruby >/dev/null 2>&1; then
+            brew install ruby
+          fi
+          ruby_prefix="$(brew --prefix ruby)"
+          echo "$ruby_prefix/bin" >> "$GITHUB_PATH"
+          "$ruby_prefix/bin/ruby" -v
+          "$ruby_prefix/bin/gem" install bundler --no-document
+          "$ruby_prefix/bin/bundle" config set path "$RUNNER_TEMP/bundle"
+          "$ruby_prefix/bin/bundle" install --jobs 4 --retry 3
 
       - name: Build + Upload an TestFlight
-        run: bundle exec fastlane ios beta
+        run: |
+          set -euo pipefail
+          export PATH="$(brew --prefix ruby)/bin:$PATH"
+          export GYM_OUTPUT_DIRECTORY="$RUNNER_TEMP/fastlane-output"
+          export GYM_BUILD_PATH="$RUNNER_TEMP/fastlane-archives"
+          export GYM_DERIVED_DATA_PATH="$RUNNER_TEMP/Familienplaner-DerivedData"
+          bundle exec fastlane ios beta
+
+      - name: Build-Artefakte aufraeumen
+        if: always()
+        run: |
+          rm -rf "$RUNNER_TEMP/fastlane-output" "$RUNNER_TEMP/fastlane-archives" "$RUNNER_TEMP/Familienplaner-DerivedData"
+          xcrun simctl delete unavailable || true

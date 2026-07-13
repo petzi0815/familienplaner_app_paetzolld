@@ -1,0 +1,39 @@
+name: iOS Runner Test
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ios-runner-test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  diagnostics:
+    name: Mac Mini Runner Diagnostics
+    runs-on: [self-hosted, ios, mac-mini-buero, familienplaner]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Runner und Xcode pruefen
+        run: |
+          set -euo pipefail
+          hostname
+          whoami
+          sw_vers
+          df -h /System/Volumes/Data || df -h
+          xcodebuild -version
+          xcode-select -p
+          xcrun --sdk iphoneos --show-sdk-version
+          xcrun simctl list runtimes
+          xcrun simctl list devices available
+
+      - name: XcodeGen pruefen
+        working-directory: ios-app
+        run: |
+          set -euo pipefail
+          if ! command -v xcodegen >/dev/null 2>&1; then
+            brew install xcodegen
+          fi
+          xcodegen --version
+          xcodegen generate

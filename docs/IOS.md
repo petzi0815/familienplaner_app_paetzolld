@@ -59,18 +59,19 @@ Weiteres: **Siri/Spotlight-Kurzbefehle** („Was steht heute an", „Zum Vorrat 
 - `APP_PROFILE_BASE64` (`base64 -i app.mobileprovision`)
 - `WIDGET_PROFILE_BASE64` (`base64 -i widget.mobileprovision`)
 
-## Workflow aktivieren
-Der Workflow liegt deaktiviert unter `.github/workflows-disabled/ios.yml`:
-```bash
-git mv .github/workflows-disabled/ios.yml .github/workflows/ios.yml
-gh auth refresh -s workflow      # Push von workflows/ braucht workflow-Scope
-git commit -am "ci: iOS-TestFlight-Workflow aktivieren" && git push
-```
-Danach: Push auf `main` mit Änderungen unter `ios-app/**` → signierter Build (App + Widget) → internes TestFlight.
-Manuell: Actions → „iOS TestFlight" → Run workflow.
+## Workflows
+Die iOS-Workflows laufen auf dem self-hosted Mac-mini-Runner:
+`[self-hosted, ios, mac-mini-buero, familienplaner]`.
+
+- `iOS Runner Test` — manueller Diagnose-Lauf für Runner, Xcode, Simulatoren und XcodeGen.
+- `iOS Build Check` — kompiliert App + Widget ohne Signing.
+- `iOS TestFlight` — signierter Build + Upload an internes TestFlight.
+
+Push auf `main` mit Änderungen unter `ios-app/**` startet die passenden iOS-Workflows.
+Manuell: Actions → gewünschten Workflow → Run workflow.
 
 ## Versionen
-Runner `macos-15` (bei fehlendem Xcode 26 auf `macos-26` heben) · Xcode **26.0** · Ruby `3.3` ·
+Runner `mac-mini-familienplaner-ios` · Xcode **26.6** · iOS Simulator Runtime **26.5** ·
 fastlane `~> 2.226` · XcodeGen `≥ 2.38` · Deployment-Target iOS **26.0** · Signing: Manual / `Apple Distribution`.
 
 ## Push (APNs) — „Foto zugeordnet"-Benachrichtigung
