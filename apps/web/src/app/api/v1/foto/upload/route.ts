@@ -68,8 +68,8 @@ export async function POST(req: Request): Promise<Response> {
   } catch { /* ignore */ }
 
   const info = db.prepare(
-    "INSERT INTO foto_inbox (storage_key, bereich, status, notiz, quelle, bytes, mime, aufgenommen_am) VALUES (?,?, 'neu', ?,?,?,?,?)",
-  ).run(key, fields.bereich ?? null, fields.notiz ?? null, fields.quelle ?? "api", buf.length, mime ?? "image/jpeg", fields.aufgenommen_am ?? null);
+    "INSERT INTO foto_inbox (storage_key, bereich, status, notiz, quelle, bytes, mime, aufgenommen_am, owner) VALUES (?,?, 'neu', ?,?,?,?,?,?)",
+  ).run(key, fields.bereich ?? null, fields.notiz ?? null, fields.quelle ?? "api", buf.length, mime ?? "image/jpeg", fields.aufgenommen_am ?? null, auth.owner ?? null);
   const id = Number(info.lastInsertRowid);
   db.prepare("INSERT INTO event_log (actor, action, domain, entity_id, detail) VALUES (?,?,?,?,?)").run(auth.actor, "foto_upload", "foto", String(id), fields.bereich ?? null);
   const res = resourceByKey("foto-inbox"); if (res) reindexRow(db, res, id);

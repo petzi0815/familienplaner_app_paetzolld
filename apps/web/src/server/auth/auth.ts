@@ -9,6 +9,8 @@ const RANK: Record<Role, number> = { readonly: 1, agent: 2, admin: 3 };
 export interface Auth {
   role: Role;
   actor: string;
+  /** Zugeordnete Person eines Per-User-Keys ('lars' | 'elita'); NULL bei Ole/Admin/Session. */
+  owner?: string | null;
 }
 
 export function readCookie(req: Request, name: string): string | null {
@@ -27,15 +29,15 @@ export function getAuth(req: Request): Auth | null {
   const authz = req.headers.get("authorization") ?? "";
   const bearer = authz.toLowerCase().startsWith("bearer ") ? authz.slice(7).trim() : "";
   if (bearer) {
-    if (config.adminPassword && bearer === config.adminPassword) return { role: "admin", actor: "admin-token" };
+    if (config.adminPassword && bearer === config.adminPassword) return { role: "admin", actor: "admin-token", owner: null };
     try {
       const db = getDb();
-      const row = db.prepare("SELECT id,label,role,revoked FROM api_keys WHERE key_hash=?").get(sha256(bearer)) as
-        | { id: number; label: string | null; role: Role; revoked: number }
+      const row = db.prepare("SELECT id,label,role,revoked,owner FROM api_keys WHERE key_hash=?").get(sha256(bearer)) as
+        | { id: number; label: string | null; role: Role; revoked: number; owner: string | null }
         | undefined;
       if (row && !row.revoked) {
         db.prepare("UPDATE api_keys SET last_used_at=datetime('now') WHERE id=?").run(row.id);
-        return { role: row.role, actor: `key:${row.label ?? row.id}` };
+        return { role: row.role, actor: `key:${row.label ?? row.id}`, owner: row.owner };
       }
     } catch {
       /* DB evtl. nicht bereit — als nicht authentifiziert behandeln */
@@ -44,7 +46,7 @@ export function getAuth(req: Request): Auth | null {
   const cookie = readCookie(req, SESSION_COOKIE);
   if (cookie) {
     const p = verifySession(cookie);
-    if (p) return { role: "admin", actor: `session:${p.u}` };
+    if (p) return { role: "admin", actor: `session:${p.u}`, owner: null };
   }
   return null;
 }

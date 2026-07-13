@@ -14,10 +14,11 @@ export async function POST(req: Request): Promise<Response> {
   const token = String(body.token ?? "").trim();
   if (!token) return fail("no_token", "Feld 'token' erforderlich.", 400);
   const env = body.environment === "sandbox" ? "sandbox" : "production";
+  // owner = Person hinter dem Login-Key (Lars/Elita); bei Oles Shared-Key NULL → Broadcast-Fallback greift.
   getDb().prepare(
-    "INSERT INTO device_tokens (token, environment, user_label, last_seen) VALUES (?,?,?,datetime('now')) " +
-    "ON CONFLICT(token) DO UPDATE SET environment=excluded.environment, user_label=excluded.user_label, last_seen=datetime('now')",
-  ).run(token, env, body.user_label ?? auth.actor);
+    "INSERT INTO device_tokens (token, environment, user_label, owner, last_seen) VALUES (?,?,?,?,datetime('now')) " +
+    "ON CONFLICT(token) DO UPDATE SET environment=excluded.environment, user_label=excluded.user_label, owner=excluded.owner, last_seen=datetime('now')",
+  ).run(token, env, body.user_label ?? auth.actor, auth.owner ?? null);
   return ok({ ok: true });
 }
 

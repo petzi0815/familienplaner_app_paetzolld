@@ -49,16 +49,28 @@ export interface PushOptions {
   data?: Record<string, unknown>;
   sound?: string | null; // null = lautlos
   badge?: number;
+  /**
+   * Zielperson ('lars' | 'elita'). Ist er gesetzt UND besitzt diese Person registrierte Geräte,
+   * geht der Push NUR an deren Tokens; sonst Broadcast an alle (deckt Legacy-Tokens, Ole-Uploads
+   * mit owner NULL und Personen ohne registriertes Gerät ab → niemand verpasst still Meldungen).
+   */
+  owner?: string | null;
 }
 
-/** Alert-Push an alle registrierten Geräte. Best-effort, wirft nie. Tote Tokens werden entfernt. */
+/** Alert-Push an registrierte Geräte (owner-gezielt mit Broadcast-Fallback). Best-effort, wirft nie. */
 export async function sendPush(opts: PushOptions): Promise<{ sent: number; total: number }> {
   if (!apnsEnabled()) {
     log.info("APNs deaktiviert — Push übersprungen", { title: opts.title.slice(0, 40) });
     return { sent: 0, total: 0 };
   }
   const db = getDb();
-  const rows = db.prepare("SELECT id, token, environment FROM device_tokens").all() as DeviceRow[];
+  let rows: DeviceRow[] = [];
+  if (opts.owner) {
+    rows = db.prepare("SELECT id, token, environment FROM device_tokens WHERE owner=?").all(opts.owner) as DeviceRow[];
+  }
+  if (!rows.length) {
+    rows = db.prepare("SELECT id, token, environment FROM device_tokens").all() as DeviceRow[];
+  }
   if (!rows.length) return { sent: 0, total: 0 };
 
   let jwt: string;

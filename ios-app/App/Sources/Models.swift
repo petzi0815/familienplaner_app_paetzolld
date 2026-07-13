@@ -28,6 +28,23 @@ struct FotoUploadResult: Decodable {
     let url: String?
 }
 
+// ── Angemeldete Identität (GET /api/v1/auth/me) ──
+struct AuthMe: Decodable {
+    let authenticated: Bool
+    let role: String?
+    let actor: String?
+    let owner: String?   // 'lars' | 'elita' | nil (Ole/geteilt)
+
+    /// Anzeigename der angemeldeten Person.
+    var displayName: String {
+        switch owner {
+        case "lars": return "Lars"
+        case "elita": return "Elita"
+        default: return "Ole (geteilter Schlüssel)"
+        }
+    }
+}
+
 // ── ID, die als Zahl ODER String kommen kann (elisbooks nutzt TEXT-PK) ──
 struct FlexibleID: Decodable, Hashable {
     let value: String

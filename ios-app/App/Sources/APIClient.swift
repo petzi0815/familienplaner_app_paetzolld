@@ -98,6 +98,9 @@ final class APIClient {
     /// Leichter Auth-Check (für den Login).
     func ping() async throws { _ = try await get("/agent/capabilities", as: EmptyOK.self) }
 
+    /// Angemeldete Identität (Rolle + owner) — zeigt, als wer der Key gilt.
+    func authMe() async throws -> AuthMe { try await get("/auth/me", as: AuthMe.self) }
+
     func lebensbereiche() async throws -> [Lebensbereich] {
         try await get("/lebensbereiche",
                       query: [URLQueryItem(name: "limit", value: "50"), URLQueryItem(name: "sort", value: "sort:asc")],

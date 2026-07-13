@@ -100,6 +100,12 @@ struct BereichView: View {
                 BooksRootView(settings: app.settings)
             } else if domain.key == "abfuhrkalender" {
                 AbfuhrCalendarView()
+            } else if domain.key == "samu" {
+                SamuRootView(settings: app.settings)
+            } else if domain.key == "garten" {
+                GartenRootView(settings: app.settings)
+            } else if domain.key == "geschenkplaner" {
+                GeschenkRootView(settings: app.settings)
             } else if domain.resources.count == 1 {
                 ResourceListView(resource: domain.resources[0])
             } else {

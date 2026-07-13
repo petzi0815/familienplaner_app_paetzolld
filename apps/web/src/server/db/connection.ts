@@ -20,23 +20,32 @@ export function getDb(): Database.Database {
   db.pragma("foreign_keys = ON");
   runMigrations(db);
   recordBoot(db);
-  bootstrapAgentKey(db);
+  bootstrapApiKeys(db);
   ensureFtsPopulated(db);
   _db = db;
   log.info("DB verbunden", { path: config.dbPath });
   return _db;
 }
 
-/** Legt beim Boot den Bootstrap-Agent-API-Key an (gehasht), falls gesetzt & noch nicht vorhanden. */
-function bootstrapAgentKey(db: Database.Database): void {
-  const key = config.bootstrapAgentApiKey;
+/**
+ * Legt beim Boot die konfigurierten API-Keys an (gehasht), falls gesetzt & noch nicht vorhanden:
+ * - den Shared-Agent-Key „Ole" (owner NULL),
+ * - je einen Per-User-Key für Lars & Elita (owner gesetzt) — für Geräte-Zuordnung + gezielte Push.
+ */
+function bootstrapApiKeys(db: Database.Database): void {
+  ensureKey(db, "bootstrap-agent", config.bootstrapAgentApiKey, "agent", null);
+  for (const k of config.bootstrapUserKeys) {
+    ensureKey(db, k.label, k.key, k.role, k.owner);
+  }
+}
+
+/** Fügt einen API-Key idempotent ein (nur wenn gesetzt und noch nicht vorhanden). */
+function ensureKey(db: Database.Database, label: string, key: string, role: string, owner: string | null): void {
   if (!key) return;
   const hash = sha256(key);
-  const exists = db.prepare("SELECT 1 FROM api_keys WHERE key_hash=?").get(hash);
-  if (!exists) {
-    db.prepare("INSERT INTO api_keys (label, key_hash, role) VALUES ('bootstrap-agent', ?, 'agent')").run(hash);
-    log.info("Bootstrap-Agent-API-Key angelegt (Rolle agent)");
-  }
+  if (db.prepare("SELECT 1 FROM api_keys WHERE key_hash=?").get(hash)) return;
+  db.prepare("INSERT INTO api_keys (label, key_hash, role, owner) VALUES (?,?,?,?)").run(label, hash, role, owner);
+  log.info("API-Key angelegt", { label, role, owner: owner ?? "-" });
 }
 
 /**

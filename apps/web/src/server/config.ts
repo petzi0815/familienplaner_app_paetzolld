@@ -20,6 +20,16 @@ export const config = {
   adminPassword: env("ADMIN_PASSWORD"),
   sessionSecret: env("SESSION_SECRET"),
   bootstrapAgentApiKey: env("BOOTSTRAP_AGENT_API_KEY"),
+  /**
+   * Per-User-Login-Keys (Lars & Elita) — eigener Key je Person statt Oles Shared-Key.
+   * Beim Boot in `api_keys` gehasht angelegt (Rolle agent) mit gesetztem `owner` →
+   * ermöglicht Geräte→Person-Zuordnung und gezielte Push (nur an den Foto-Uploader).
+   * Werte kommen aus Coolify-ENV; ohne gesetzten Wert wird der jeweilige Key nicht angelegt.
+   */
+  bootstrapUserKeys: [
+    { label: "lars", owner: "lars", role: "agent" as const, key: env("BOOTSTRAP_LARS_API_KEY") },
+    { label: "elita", owner: "elita", role: "agent" as const, key: env("BOOTSTRAP_ELITA_API_KEY") },
+  ].filter((k) => k.key),
 
   // Observability
   sentryDsn: env("SENTRY_DSN"),

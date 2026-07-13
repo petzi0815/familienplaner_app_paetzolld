@@ -1,6 +1,7 @@
 import { resourceByKey } from "@/server/domains/registry";
 import { getRow, updateRow, deleteRow, schemaOf, createRow } from "@/server/domains/crud";
 import { getAuth, hasRole } from "@/server/auth/auth";
+import { getDb } from "@/server/db/connection";
 import { sendPush } from "@/server/push/apns";
 import { unauthorized, forbidden, notFound, fail, ok } from "@/server/http/respond";
 
@@ -57,13 +58,15 @@ export async function PATCH(req: Request, { params }: Ctx): Promise<Response> {
   if (!body) return fail("bad_json", "Ungültiger JSON-Body.", 400);
   const dry = isDry(req, body);
   const resp = updateRow(res, id, body, auth, dry);
-  // Auto-Push: wenn Ole ein Foto zuordnet → die Familie benachrichtigen (best-effort).
+  // Auto-Push: wenn Ole ein Foto zuordnet → gezielt den Uploader benachrichtigen (best-effort).
   if (!dry && resp.status < 400 && res.key === "foto-inbox" && body.status === "zugeordnet") {
     const ziel = body.zugeordnet_resource ? ` (${String(body.zugeordnet_resource)})` : "";
+    const uploader = getDb().prepare("SELECT owner FROM foto_inbox WHERE id=?").get(id) as { owner?: string | null } | undefined;
     void sendPush({
       title: "📸 Foto zugeordnet",
       body: `Ole hat ein Foto verarbeitet und einem Datensatz zugeordnet${ziel}.`,
       data: { kind: "foto_zugeordnet", resource: "foto-inbox", id },
+      owner: uploader?.owner ?? null,
     }).catch(() => {});
   }
   return resp;
