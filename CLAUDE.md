@@ -6,7 +6,21 @@
 
 ## ▶️ WIEDERAUFNAHME (nächste Session) — START HIER
 
-**Stand (2026-07-12, HEAD `312a8a8`): Backend + iOS LIVE — NEU: Abfuhrkalender (Müll-Termine) komplett + Legacy-Backup Supabase/Lovable gesichert.** `https://familienplaner.yagemi.app`.
+**Stand (2026-07-13, HEAD `7ae6414`): Backend + iOS LIVE — NEU: Samu/Garten/Geschenkplaner als native iOS-Bereiche (volle PWA-Parität, native UX) + Per-User-Login-Keys.** `https://familienplaner.yagemi.app`.
+
+**NEU 2026-07-13 — Native Bereiche + Per-User-Keys (Details: [[session-2026-07-13_native-bereiche-und-per-user-keys]]):**
+- **3 native iOS-Bereiche** ersetzen den generischen Browser: `App/Sources/Samu|Garten|Geschenke/` (Routing in
+  `Views/Bereiche.swift`). Volle Feature/Filter/Sicht-Parität zur PWA, aber **native iOS-Bedienung** (Segment-Tabs,
+  Filter-Pills/Menüs, Live-Suche, Pull-to-Refresh, Pivot-Matrizen, Garten-GTS via Swift Charts + interaktive Timelines,
+  Geschenke-Tinder-Bewerten). Geteilte Basis `App/Sources/Support/` (CompatClient=bare-array `/api`-Client, Coerce, AreaUI-Atome).
+- **Per-User-Login-Keys LIVE:** Migration `0010` (owner auf api_keys/device_tokens/foto_inbox), Bootstrap
+  `BOOTSTRAP_LARS_API_KEY`/`BOOTSTRAP_ELITA_API_KEY`, owner-gezielte Push mit Broadcast-Fallback, `/auth/me`+iOS-Settings
+  zeigen Person. **OFFEN (Lars, Coolify):** die 2 ENV-Keys setzen + Redeploy → dann Lars & Elita je eigenen Key in iOS-Login.
+- **Standing Order** (neu): native iOS-UX statt PWA-Klon MIT voller Parität; iOS-Builds sparsam bündeln (1 großer, autonom).
+  [[feedback-ios-native-not-pwa-clone]]. Lessons: Shared-UI-Atom-Namen gegen GANZE Codebasis prüfen (StatTile-Kollision);
+  `async let`-Init ohne `await`/`try?`.
+
+**Stand (2026-07-12, HEAD `312a8a8`): Backend + iOS LIVE — Abfuhrkalender (Müll-Termine) komplett + Legacy-Backup Supabase/Lovable gesichert.**
 
 **NEU 2026-07-12 — Abfuhrkalender + Legacy-Backup (Details: [[session-2026-07-12_abfuhr-und-backup]]):**
 - **Abfuhrkalender** neuer Lebensbereich: Backend (`server/abfuhr/*`, Routen `/abfuhr/{import-ics,next,sync-aha,calendar}`,
@@ -17,8 +31,7 @@
   Supabase (Daten 346/7/5/5 + 8 Migrationen + 5 Edge Functions inkl. **canopy-proxy** = nie migriert) + kompletter
   Lovable-Quellcode (264 Dateien). **Migration 1:1 verifiziert** (IDs identisch, 0 Verlust). ⚠️ `_reference/` git-ignored →
   Backup NUR lokal. **OFFEN: Lars fragen ob off-site ins Git committen** (`git add -f …`), DANN darf er löschen.
-- **OFFEN (nur Todo, NICHT umsetzen bis Lars startet):** Per-User-Login-Keys für Lars & Elita statt Oles Shared-Key
-  → Geräte-Zuordnung + gezielte Push (nur an Foto-Uploader). Spec: [[todo-per-user-login-keys]].
+- Per-User-Login-Keys: ✅ umgesetzt am 2026-07-13 (siehe NEU-Block oben).
 
 **Stand (2026-07-12, HEAD `1c0f82c`): Backend LIVE + nativer ElisBooks-Bücherbereich in iOS (Build 7, inkl. KI-Metadaten/Dubletten/Export/Einstellungen).** OpenAI live verifiziert (recommendations/cleaner ok); Menü-Config-Gating gebaut.
 
