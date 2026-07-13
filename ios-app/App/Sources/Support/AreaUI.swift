@@ -154,7 +154,8 @@ struct InfoRow: View {
 }
 
 /// Kennzahl-Kachel (Zahl groß + Label). Für Stats-Leisten.
-struct StatTile: View {
+/// (Name bewusst `AreaStatTile` — `StatTile` ist in HeuteView.swift bereits belegt.)
+struct AreaStatTile: View {
     let value: String
     let label: String
     var color: Color = Theme.accent

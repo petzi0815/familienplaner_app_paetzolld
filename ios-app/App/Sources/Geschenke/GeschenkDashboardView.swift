@@ -24,9 +24,9 @@ struct GeschenkDashboardView: View {
     // ── Stats ──
     private func stats(_ d: GDashboard) -> some View {
         HStack(spacing: 10) {
-            StatTile(value: "\(d.statsKinder)", label: "Kinder", color: GStyle.accent)
-            StatTile(value: "\(d.statsEreignisse)", label: "Ereignisse", color: GStyle.accent)
-            StatTile(value: GStyle.eur(d.geplantSumme), label: "Geplant", color: GStyle.accent)
+            AreaStatTile(value: "\(d.statsKinder)", label: "Kinder", color: GStyle.accent)
+            AreaStatTile(value: "\(d.statsEreignisse)", label: "Ereignisse", color: GStyle.accent)
+            AreaStatTile(value: GStyle.eur(d.geplantSumme), label: "Geplant", color: GStyle.accent)
         }
     }
 

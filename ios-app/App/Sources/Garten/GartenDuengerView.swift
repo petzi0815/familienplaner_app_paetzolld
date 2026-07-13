@@ -88,9 +88,9 @@ struct GartenDuengerView: View {
     @ViewBuilder private var statsBar: some View {
         if let s = store.stats {
             HStack(spacing: 10) {
-                StatTile(value: "\(s.duengerGesamt)", label: "Gesamt", color: brown)
-                StatTile(value: "\(s.duengerVorraetig)", label: "Vorrätig", color: Color(hex: "16A34A"))
-                StatTile(value: "\(s.duengerFehlend)", label: "Bedarf fehlt", color: Color(hex: "EA580C"))
+                AreaStatTile(value: "\(s.duengerGesamt)", label: "Gesamt", color: brown)
+                AreaStatTile(value: "\(s.duengerVorraetig)", label: "Vorrätig", color: Color(hex: "16A34A"))
+                AreaStatTile(value: "\(s.duengerFehlend)", label: "Bedarf fehlt", color: Color(hex: "EA580C"))
             }
             .padding(.horizontal, 14)
         }

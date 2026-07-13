@@ -60,8 +60,8 @@ struct GeschenkEinkaufView: View {
 
     private var stats: some View {
         HStack(spacing: 10) {
-            StatTile(value: "\(ausgewaehlt.count)", label: "Ausgewählt", color: Theme.accent)
-            StatTile(value: GStyle.eur(totalPreis), label: "Gesamt", color: Theme.accent)
+            AreaStatTile(value: "\(ausgewaehlt.count)", label: "Ausgewählt", color: Theme.accent)
+            AreaStatTile(value: GStyle.eur(totalPreis), label: "Gesamt", color: Theme.accent)
         }
     }
 
