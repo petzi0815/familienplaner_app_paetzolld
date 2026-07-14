@@ -57,9 +57,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
     });
   }
 
-  // ── Reisen (ganztägig, Start→Ende) ──
+  // ── Reisen (ganztägig, Start→Ende) — Recherche-/Ideen-Trips (status='idee') NICHT in den Kalender ──
   const reisen = safe(() => db.prepare(
-    "SELECT id,title,destination,start_date,end_date FROM reisen_trips WHERE start_date IS NOT NULL AND start_date<>'' AND COALESCE(NULLIF(end_date,''), start_date) >= date('now','-90 days') ORDER BY start_date ASC",
+    "SELECT id,title,destination,start_date,end_date FROM reisen_trips WHERE start_date IS NOT NULL AND start_date<>'' AND COALESCE(status,'')<>'idee' AND COALESCE(NULLIF(end_date,''), start_date) >= date('now','-90 days') ORDER BY start_date ASC",
   ).all() as ReiseRow[], []);
   for (const r of reisen) {
     events.push({

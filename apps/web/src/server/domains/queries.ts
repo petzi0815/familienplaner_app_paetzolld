@@ -124,9 +124,9 @@ export function agenda(days = 21, owner?: string | null): AgendaItem[] {
     });
   }
 
-  // ── Reisen ──
+  // ── Reisen (Recherche-/Ideen-Trips status='idee' ausblenden) ──
   for (const r of safeDb(() => db.prepare(
-    "SELECT id,title,destination,start_date,end_date FROM reisen_trips WHERE start_date IS NOT NULL AND start_date<>'' AND start_date >= date('now','localtime') AND start_date <= date('now','localtime',@win) ORDER BY start_date ASC",
+    "SELECT id,title,destination,start_date,end_date FROM reisen_trips WHERE start_date IS NOT NULL AND start_date<>'' AND COALESCE(status,'')<>'idee' AND start_date >= date('now','localtime') AND start_date <= date('now','localtime',@win) ORDER BY start_date ASC",
   ).all({ win }) as Record<string, unknown>[], [])) {
     items.push({
       source: "reise", domain: "reisen", id: `reise-${r.id}`, ref_id: Number(r.id),
@@ -180,7 +180,7 @@ export function dashboardToday(owner?: string | null): Record<string, unknown> {
   const remindersDueCount = remindersDue(owner).count;
 
   const nextTrip = safe(() => {
-    const trip = db.prepare("SELECT id,title,destination,start_date, CAST(julianday(start_date)-julianday('now') AS INTEGER) AS days_until FROM reisen_trips WHERE start_date>=date('now') ORDER BY start_date ASC LIMIT 1").get() as Record<string, unknown> | undefined;
+    const trip = db.prepare("SELECT id,title,destination,start_date, CAST(julianday(start_date)-julianday('now') AS INTEGER) AS days_until FROM reisen_trips WHERE start_date>=date('now') AND COALESCE(status,'')<>'idee' ORDER BY start_date ASC LIMIT 1").get() as Record<string, unknown> | undefined;
     return trip ?? null;
   }, null);
 
