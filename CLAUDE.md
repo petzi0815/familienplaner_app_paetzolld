@@ -30,7 +30,7 @@
   (kein Host-Leak). Live-Smoke 8/8.
 - **OFFEN (Lars, extern):** (1) fürs Update-Banner GH-Variable `FAMILIENPLANER_BASE_URL=https://familienplaner.yagemi.app` + Secret `FAMILIENPLANER_DEPLOY_KEY` (Agent-Key) setzen. (2) `APNS_*` in Coolify (bekannt offen) → sonst kein Per-User-Push. (3) Coolify muss `bookdl.yagemi.synology.me:1443` erreichen (sonst Shelfmark-Suche 502). `SHELFMARK_BASE_URL` optional. (4) **Calibre**: `CWA_URL`/`CWA_USERNAME`/`CWA_PASSWORD` in Coolify setzen (sonst Bibliothek-Tab 501; empfohlen: eigener CWA-Nutzer statt admin), Coolify muss `books.yagemi.synology.me:1443` erreichen.
 
-**Stand (2026-07-14, HEAD `9733200`): Backend + iOS LIVE — ALLE Lebensbereiche nativ in iOS + XCUITest-GUI-Tests (5/5, inkl. datengetriebenem Fixture-Test) + CI auf self-hosted Mac mini.** `https://familienplaner.yagemi.app`.
+**Stand (2026-07-14 Abend, HEAD `1e718fe`, CI 3/3 grün): Backend + iOS LIVE — ALLE Lebensbereiche nativ + Kalender-Abo + generisches Anstehendes + Per-User-Termine + E-Books komplett (Shelfmark-Suche/Download, Wunschlisten-Cover + Retry, Calibre-Web-Bibliothek mit Detail/Sort/Regale) + Update-Banner. Deployment vollständig konfiguriert (Coolify + GitHub).** `https://familienplaner.yagemi.app`.
 
 **NEU 2026-07-14 (Nachtrag) — 2 Geschenkplaner-Bugs gefixt (`9733200`, Details: [[feedback-swiftui-runtime-bugs]]):**
 Nav: Event→Detail ging nicht (value-basierte NavigationLink in gepushter View flaky → closure-basiert wie Reisen).
