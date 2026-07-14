@@ -48,6 +48,8 @@ platform :ios do
     ).to_i
     build_number = [requested_build_number, latest_build_number + 1].max.to_s
     UI.message("Using TestFlight build number #{build_number}")
+    # Tatsächliche Buildnummer für den CI-Schritt herausschreiben (Update-Banner im Backend melden).
+    File.write(File.join(ENV["RUNNER_TEMP"] || ".", "fp_build_number.txt"), build_number)
 
     build_app(
       project: "Familienplaner.xcodeproj",

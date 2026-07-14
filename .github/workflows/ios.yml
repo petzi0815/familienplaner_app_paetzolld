@@ -96,6 +96,25 @@ jobs:
           export GYM_DERIVED_DATA_PATH="$RUNNER_TEMP/Familienplaner-DerivedData"
           bundle exec fastlane ios beta
 
+      - name: Neueste Buildnummer ans Backend melden (Update-Banner)
+        if: success()
+        env:
+          FP_BASE_URL: ${{ vars.FAMILIENPLANER_BASE_URL }}
+          FP_DEPLOY_KEY: ${{ secrets.FAMILIENPLANER_DEPLOY_KEY }}
+        run: |
+          set -uo pipefail
+          if [ -z "$FP_BASE_URL" ] || [ -z "$FP_DEPLOY_KEY" ]; then
+            echo "FAMILIENPLANER_BASE_URL (Variable) / FAMILIENPLANER_DEPLOY_KEY (Secret) nicht gesetzt — Update-Banner-Meldung übersprungen."
+            exit 0
+          fi
+          NUM="$(cat "$RUNNER_TEMP/fp_build_number.txt" 2>/dev/null || echo "")"
+          if [ -z "$NUM" ]; then echo "keine Buildnummer gefunden — übersprungen."; exit 0; fi
+          curl -fsS -X POST "$FP_BASE_URL/api/v1/app/version" \
+            -H "Authorization: Bearer $FP_DEPLOY_KEY" \
+            -H "Content-Type: application/json" \
+            -d "{\"latest_build\": $NUM}" && echo "Buildnummer $NUM ans Backend gemeldet." \
+            || echo "Meldung fehlgeschlagen (nicht fatal)."
+
       - name: Build-Artefakte aufraeumen
         if: always()
         run: |
