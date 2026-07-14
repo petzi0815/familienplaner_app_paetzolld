@@ -219,6 +219,7 @@ final class FamilienplanerUITests: XCTestCase {
         app.buttons["calibre-book-5356"].tap()
         XCTAssertTrue(app.staticTexts["Test Verlag"].waitForExistence(timeout: 8), "Buch-Detail zeigt keine Metadaten")
         XCTAssertTrue(app.buttons["calibre-detail-shelf-2"].waitForExistence(timeout: 6), "Regal-Zuordnung im Detail fehlt")
+        XCTAssertTrue(app.buttons["calibre-download-epub"].waitForExistence(timeout: 6), "EPUB-Download-Button fehlt")
     }
 
     /// DATENGETRIEBEN (Fixture): Geschenkplaner-Event antippen → Detail öffnet sich → Zurück.

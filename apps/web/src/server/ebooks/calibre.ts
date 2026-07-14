@@ -160,12 +160,15 @@ export async function shelfBooks(shelfId: number): Promise<CalibreBook[]> {
 
 /** Detail eines Buchs: aktuell zugeordnete Regal-IDs (data-shelf-action="remove") + Voll-Metadaten.
  *  Metadaten via Titel-Suche in listbooks (CWA-Web-Suche kennt kein `id:`), nach id gefiltert. */
-export async function bookDetail(id: number, title?: string): Promise<{ shelfIds: number[]; book: CalibreBook | null }> {
+export async function bookDetail(id: number, title?: string): Promise<{ shelfIds: number[]; book: CalibreBook | null; formats: string[] }> {
   const html = (await authed(`/book/${id}`)).body.toString();
   const shelfIds = new Set<number>();
   for (const m of html.matchAll(/\/shelf\/add\/(\d+)\/\d+"[\s\S]{0,160}?data-shelf-action="(add|remove)"/g)) {
     if (m[2] === "remove") shelfIds.add(Number(m[1]));
   }
+  // Herunterladbare Formate aus den Download-Links der Detailseite (/download/<id>/<format>/…).
+  const formats = new Set<string>();
+  for (const m of html.matchAll(/\/download\/\d+\/([a-z0-9]+)\//gi)) formats.add(m[1].toLowerCase());
   let book: CalibreBook | null = null;
   if (title && title.trim()) {
     try {
@@ -173,7 +176,25 @@ export async function bookDetail(id: number, title?: string): Promise<{ shelfIds
       book = res.rows.find((b) => b.id === id) ?? null;
     } catch { /* Metadaten optional */ }
   }
-  return { shelfIds: [...shelfIds], book };
+  return { shelfIds: [...shelfIds], book, formats: [...formats] };
+}
+
+/** Buch-Datei in einem Format herunterladen (CWA: /download/<id>/<format>/<name>). Bytes + Dateiname. */
+export async function downloadBook(
+  id: number,
+  format: string,
+): Promise<{ contentType: string; bytes: Buffer; filename: string } | null> {
+  const fmt = format.toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (!fmt) return null;
+  const res = await authed(`/download/${id}/${fmt}/${id}.${fmt}`);
+  if (res.status !== 200) return null;
+  // Dateiname bewusst ASCII-sicher (`<id>.<fmt>`) — CWAs Content-Disposition kann typografische/Nicht-Latin1-
+  // Zeichen enthalten, die als HTTP-Header werfen würden. Der Client benennt die Datei ohnehin nach dem Titel.
+  return {
+    contentType: String(res.headers["content-type"] ?? "application/octet-stream"),
+    bytes: res.body,
+    filename: `${id}.${fmt}`,
+  };
 }
 
 /** Buch auf ein Regal legen/entfernen (POST mit CSRF — Token wird in authed() frisch gesetzt). */

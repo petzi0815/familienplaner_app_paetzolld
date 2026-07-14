@@ -13,7 +13,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const title = new URL(request.url).searchParams.get('title') || undefined;
   try {
     const d = await bookDetail(parseInt(id), title);
-    return NextResponse.json({ shelf_ids: d.shelfIds, book: d.book });
+    return NextResponse.json({ shelf_ids: d.shelfIds, book: d.book, formats: d.formats });
   } catch (error) {
     return NextResponse.json({ error: `Calibre nicht erreichbar: ${error instanceof Error ? error.message : 'Fehler'}` }, { status: 502 });
   }

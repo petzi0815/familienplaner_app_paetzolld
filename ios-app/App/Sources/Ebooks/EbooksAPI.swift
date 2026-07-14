@@ -107,14 +107,20 @@ final class EbooksAPI {
         return (Coerce.int(obj["total"]) ?? rows.count, rows)
     }
 
-    /// Detail: zugeordnete Regal-IDs + (soweit ermittelbar) Voll-Metadaten.
-    func calibreBookDetail(id: Int, title: String?) async throws -> (shelfIds: [Int], book: CalibreBook?) {
+    /// Detail: zugeordnete Regal-IDs + (soweit ermittelbar) Voll-Metadaten + herunterladbare Formate.
+    func calibreBookDetail(id: Int, title: String?) async throws -> (shelfIds: [Int], book: CalibreBook?, formats: [String]) {
         var q: [URLQueryItem] = []
         if let t = title, !t.isEmpty { q.append(.init(name: "title", value: t)) }
         let obj = try await c.getObject("/buecher/calibre/book/\(id)", query: q)
         let ids = (obj["shelf_ids"] as? [Any])?.compactMap { Coerce.int($0) } ?? []
         let book = (obj["book"] as? [String: Any]).map(CalibreBook.init(fields:))
-        return (ids, book)
+        let formats = (obj["formats"] as? [Any])?.compactMap { Coerce.str($0) } ?? []
+        return (ids, book, formats)
+    }
+
+    /// Buch-Datei (epub/…) aus Calibre laden — Roh-Bytes zum Speichern/Teilen (→ Apple Books).
+    func calibreDownload(id: Int, format: String) async throws -> Data {
+        try await c.downloadData("/buecher/calibre/download/\(id)", query: [.init(name: "format", value: format)])
     }
 
     @discardableResult

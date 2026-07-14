@@ -64,6 +64,13 @@ final class CompatClient {
         return []
     }
 
+    /// Roh-Bytes eines Endpunkts (Datei-Download, z.B. epub aus Calibre). Wirft bei != 2xx.
+    func downloadData(_ path: String, query: [URLQueryItem] = []) async throws -> Data {
+        let (data, resp) = try await Self.session.data(for: req(path, query: query))
+        try check(resp, data)
+        return data
+    }
+
     /// Objekt-Antwort (`{…}` — z.B. ?stats=true, /gts, /dashboard, Einzel-GET).
     func getObject(_ path: String, query: [URLQueryItem] = []) async throws -> [String: Any] {
         if let fixture = UITestFixtures.object(path) { return fixture }   // UI-Test: deterministische Daten

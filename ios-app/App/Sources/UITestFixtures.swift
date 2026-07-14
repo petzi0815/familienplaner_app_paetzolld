@@ -149,6 +149,7 @@ enum UITestFixtures {
     ]
     private static let calibreBookDetail: [String: Any] = [
         "shelf_ids": [2],
+        "formats": ["epub"],
         "book": ["id": 5356, "title": "UITEST Bibliotheksbuch", "authors": "Test Autor", "has_cover": false, "tags": ["Roman"], "series": NSNull(), "isbn": "9781234567890", "read_status": false, "description": "Eine ausführliche Testbeschreibung des Buches.", "publisher": "Test Verlag", "published": "2024", "languages": "Deutsch", "rating": NSNull()],
     ]
 
