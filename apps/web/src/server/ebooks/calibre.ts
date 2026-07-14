@@ -89,10 +89,21 @@ export interface CalibreBook {
   has_cover: boolean;
   isbn: string | null;
   read_status: boolean;
+  description: string | null;   // Calibre `comments` (HTML → Klartext)
+  publisher: string | null;
+  published: string | null;     // Erscheinungsjahr
+  rating: string | null;
+  languages: string | null;
 }
+
+const stripHtml = (s: string) => s.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
 
 function mapBook(r: Record<string, unknown>): CalibreBook {
   const tags = typeof r.tags === "string" ? (r.tags as string).split(",").map((t) => t.trim()).filter(Boolean) : [];
+  const comments = r.comments ? stripHtml(String(r.comments)) : "";
+  const pub = r.pubdate ? String(r.pubdate) : "";
+  const rawYear = /^\d{4}/.test(pub) ? pub.slice(0, 4) : null;
+  const year = rawYear && rawYear >= "1000" ? rawYear : null; // Calibre-Sentinel (0101 / <1000) verwerfen
   return {
     id: Number(r.id),
     title: String(r.title ?? ""),
@@ -102,6 +113,11 @@ function mapBook(r: Record<string, unknown>): CalibreBook {
     has_cover: !!r.has_cover,
     isbn: r.isbn ? String(r.isbn) : null,
     read_status: !!r.read_status,
+    description: comments || null,
+    publisher: r.publishers ? String(r.publishers) : null,
+    published: year,
+    rating: r.ratings ? String(r.ratings) : null,
+    languages: r.languages ? String(r.languages) : null,
   };
 }
 
@@ -134,12 +150,30 @@ export async function shelfBooks(shelfId: number): Promise<CalibreBook[]> {
   const push = (id: number, title: string) => {
     if (!id || seen.has(id)) return;
     seen.add(id);
-    books.push({ id, title: title || `#${id}`, authors: "", series: null, tags: [], has_cover: true, isbn: null, read_status: false });
+    books.push({ id, title: title || `#${id}`, authors: "", series: null, tags: [], has_cover: true, isbn: null, read_status: false, description: null, publisher: null, published: null, rating: null, languages: null });
   };
   // CWA-Regal-Karte: <a href="/book/<id>" …> <span class="img" title="<Titel>">
   for (const m of html.matchAll(/\/book\/(\d+)"[\s\S]{0,300}?class="img"\s+title="([^"]*)"/g)) push(Number(m[1]), m[2].trim());
   if (!books.length) for (const m of html.matchAll(/\/book\/(\d+)/g)) push(Number(m[1]), "");
   return books;
+}
+
+/** Detail eines Buchs: aktuell zugeordnete Regal-IDs (data-shelf-action="remove") + Voll-Metadaten.
+ *  Metadaten via Titel-Suche in listbooks (CWA-Web-Suche kennt kein `id:`), nach id gefiltert. */
+export async function bookDetail(id: number, title?: string): Promise<{ shelfIds: number[]; book: CalibreBook | null }> {
+  const html = (await authed(`/book/${id}`)).body.toString();
+  const shelfIds = new Set<number>();
+  for (const m of html.matchAll(/\/shelf\/add\/(\d+)\/\d+"[\s\S]{0,160}?data-shelf-action="(add|remove)"/g)) {
+    if (m[2] === "remove") shelfIds.add(Number(m[1]));
+  }
+  let book: CalibreBook | null = null;
+  if (title && title.trim()) {
+    try {
+      const res = await listBooks({ search: title.trim(), limit: 25 });
+      book = res.rows.find((b) => b.id === id) ?? null;
+    } catch { /* Metadaten optional */ }
+  }
+  return { shelfIds: [...shelfIds], book };
 }
 
 /** Buch auf ein Regal legen/entfernen (POST mit CSRF — Token wird in authed() frisch gesetzt). */
