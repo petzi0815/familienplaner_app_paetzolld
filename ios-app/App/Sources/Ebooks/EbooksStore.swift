@@ -24,6 +24,10 @@ final class EbooksStore: ObservableObject {
     @Published var searchError: String?
     @Published var downloadingID: String?
 
+    // Wunschlisten-Retry
+    @Published var checkingID: Int?
+    @Published var bulkChecking = false
+
     // Calibre-Bibliothek
     @Published var calibreBooks: [CalibreBook] = []
     @Published var calibreShelves: [CalibreShelf] = []
@@ -168,6 +172,44 @@ final class EbooksStore: ObservableObject {
         do {
             let res = try await api.download(r.raw, addOnly: addOnly)
             notify((res["message"] as? String) ?? (addOnly ? "Zur Wunschliste hinzugefügt" : "Download gestartet"))
+            await reloadItems(); await reloadOptions()
+        } catch { notify(errText(error), error: true) }
+    }
+
+    // MARK: - Wunschlisten-Retry (Shelfmark)
+
+    /// Ein Buch prüfen + laden; Status/attempts aktualisieren.
+    func checkBook(_ item: EbookItem) async {
+        checkingID = item.id
+        defer { checkingID = nil }
+        do {
+            let r = try await api.wishlistCheck(item.id)
+            if Coerce.bool(r["downloaded"]) {
+                notify("„\(item.title)“ heruntergeladen")
+            } else {
+                notify("„\(item.title)“: \((r["message"] as? String) ?? "kein Treffer")", error: true)
+            }
+            await reloadItems()
+        } catch { notify(errText(error), error: true) }
+    }
+
+    /// Alle gesuchten Bücher im Hintergrund prüfen, danach neu laden.
+    func checkAllWishlist() async {
+        bulkChecking = true
+        defer { bulkChecking = false }
+        do {
+            let pending = try await api.wishlistCheckAll()
+            notify("Prüfe \(pending) Bücher im Hintergrund …")
+            try? await Task.sleep(nanoseconds: 8_000_000_000)
+            await reloadItems(); await reloadOptions()
+        } catch { notify(errText(error), error: true) }
+    }
+
+    /// Erfolgreich heruntergeladene Bücher aus der Wunschliste entfernen.
+    func cleanupDownloaded() async {
+        do {
+            let n = try await api.wishlistCleanup()
+            notify("\(n) fertige Bücher entfernt")
             await reloadItems(); await reloadOptions()
         } catch { notify(errText(error), error: true) }
     }

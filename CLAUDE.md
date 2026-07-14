@@ -21,8 +21,13 @@
   **+ Detailseite** (`Ebooks/CalibreBookDetail.swift`, Route `/api/buecher/calibre/book/[id]`): Metadaten + Beschreibung
   + Regale zuordnen/entfernen (data-shelf-action="remove" = Mitgliedschaft). **+ Sortierung**: Neueste zuerst (Default) /
   Autor A–Z / Z–A. LERNPUNKT: CWA `/ajax/listbooks` ignoriert sort für id/timestamp/title (Titel-Sort nur mit Suche),
-  nur `author_sort` greift zuverlässig → „alphabetisch" = Autor. **OFFEN/NÄCHSTES:** Wunschlisten-Retry (Task #13):
-  pro-Buch + „Alle prüfen" + „Fertige löschen" via Shelfmark.
+  nur `author_sort` greift zuverlässig → „alphabetisch" = Autor. LERNPUNKT 2: antippbare Grid-Zelle MUSS ein `Button`
+  sein (VStack+onTapGesture ist in XCUITest nicht `app.buttons` → Test rot; App lief trotzdem).
+- **E-Book-Wunschlisten-Retry** (`server/ebooks/wishlist.ts`, live): pro-Buch „Jetzt suchen & laden" + Bulk „Alle prüfen"
+  (fire-and-forget) + „Fertige löschen" + Wochen-Job `buecher-wishlist-retry`. Shelfmark searchReleases→pickBest
+  (de+epub)→startDownload, attempts/last_attempt vermerkt, bei Erfolg status=heruntergeladen. Routen
+  `/api/buecher/wishlist-check|-check-all|-cleanup`. iOS-Buttons in EbooksWishlistView/EbookCard. Netzfehler → generisch
+  (kein Host-Leak). Live-Smoke 8/8.
 - **OFFEN (Lars, extern):** (1) fürs Update-Banner GH-Variable `FAMILIENPLANER_BASE_URL=https://familienplaner.yagemi.app` + Secret `FAMILIENPLANER_DEPLOY_KEY` (Agent-Key) setzen. (2) `APNS_*` in Coolify (bekannt offen) → sonst kein Per-User-Push. (3) Coolify muss `bookdl.yagemi.synology.me:1443` erreichen (sonst Shelfmark-Suche 502). `SHELFMARK_BASE_URL` optional. (4) **Calibre**: `CWA_URL`/`CWA_USERNAME`/`CWA_PASSWORD` in Coolify setzen (sonst Bibliothek-Tab 501; empfohlen: eigener CWA-Nutzer statt admin), Coolify muss `books.yagemi.synology.me:1443` erreichen.
 
 **Stand (2026-07-14, HEAD `9733200`): Backend + iOS LIVE — ALLE Lebensbereiche nativ in iOS + XCUITest-GUI-Tests (5/5, inkl. datengetriebenem Fixture-Test) + CI auf self-hosted Mac mini.** `https://familienplaner.yagemi.app`.

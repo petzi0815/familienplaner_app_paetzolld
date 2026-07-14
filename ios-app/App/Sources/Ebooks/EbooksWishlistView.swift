@@ -10,6 +10,7 @@ struct EbooksWishlistView: View {
         ScrollView {
             VStack(spacing: 10) {
                 statsPills
+                bulkRow
                 AreaSearchField(placeholder: "In Wunschliste suchen …", text: $store.filters.search)
                 statusPills
                 dropdownRow
@@ -34,6 +35,29 @@ struct EbooksWishlistView: View {
     private var deleteTitle: String {
         guard let t = deleteTarget else { return "Wirklich löschen?" }
         return "\(t.title) wirklich löschen?"
+    }
+
+    // ── Bulk-Aktionen: alle prüfen / fertige löschen ──
+    private var bulkRow: some View {
+        HStack(spacing: 10) {
+            Button { Task { await store.checkAllWishlist() } } label: {
+                if store.bulkChecking { ProgressView() }
+                else { Label("Alle prüfen", systemImage: "arrow.down.circle").font(.footnote.weight(.semibold)) }
+            }
+            .buttonStyle(.bordered).tint(EbookStyle.amber)
+            .disabled(store.bulkChecking || store.statGesucht == 0)
+            .accessibilityIdentifier("wishlist-check-all")
+
+            Button { Task { await store.cleanupDownloaded() } } label: {
+                Label("Fertige löschen", systemImage: "trash").font(.footnote.weight(.semibold))
+            }
+            .buttonStyle(.bordered).tint(.red)
+            .disabled(store.statGeladen == 0)
+            .accessibilityIdentifier("wishlist-cleanup")
+
+            Spacer()
+        }
+        .padding(.horizontal, 14)
     }
 
     // ── Stat-Pillen (aus den geladenen, gefilterten Items) ──
@@ -114,7 +138,11 @@ struct EbooksWishlistView: View {
         } else {
             LazyVStack(spacing: 12) {
                 ForEach(store.items) { item in
-                    EbookCard(item: item, onOpen: { detail = item }, onDelete: { deleteTarget = item })
+                    EbookCard(item: item,
+                              onOpen: { detail = item },
+                              onDelete: { deleteTarget = item },
+                              onCheck: { Task { await store.checkBook(item) } },
+                              checking: store.checkingID == item.id)
                 }
             }
             .padding(.horizontal, 14).padding(.top, 4)
@@ -131,7 +159,7 @@ struct EbookStatPill: View {
     let color: Color
     var body: some View {
         VStack(spacing: 1) {
-            Text("\(emoji) \(value)").font(.subheadline.weight(.bold))
+            Text("\(emoji) \(String(value))").font(.subheadline.weight(.bold))
             Text(label.uppercased()).font(.caption2)
         }
         .frame(maxWidth: .infinity)

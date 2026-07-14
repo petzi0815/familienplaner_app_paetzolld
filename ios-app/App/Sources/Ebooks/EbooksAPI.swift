@@ -66,6 +66,27 @@ final class EbooksAPI {
         try await c.send("/buecher/download", method: "POST", body: ["release": raw, "addOnly": addOnly])
     }
 
+    // MARK: - Wunschlisten-Retry (Shelfmark)
+
+    /// Ein Buch prüfen + laden. Antwort: { found, downloaded, message }.
+    @discardableResult
+    func wishlistCheck(_ id: Int) async throws -> [String: Any] {
+        try await c.send("/buecher/wishlist-check", method: "POST", body: ["id": id])
+    }
+
+    /// Alle „gesucht"-Bücher im Hintergrund prüfen. Gibt die Anzahl offener zurück.
+    func wishlistCheckAll() async throws -> Int {
+        let r = try await c.send("/buecher/wishlist-check-all", method: "POST")
+        return Coerce.int(r["pending"]) ?? 0
+    }
+
+    /// Erfolgreich heruntergeladene Bücher entfernen. Gibt die Anzahl gelöschter zurück.
+    @discardableResult
+    func wishlistCleanup() async throws -> Int {
+        let r = try await c.send("/buecher/wishlist-cleanup", method: "POST")
+        return Coerce.int(r["deleted"]) ?? 0
+    }
+
     // MARK: - Calibre-Web (Bibliothek)
 
     func calibreShelves() async throws -> [CalibreShelf] {

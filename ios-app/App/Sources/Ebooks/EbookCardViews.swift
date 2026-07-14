@@ -27,6 +27,8 @@ struct EbookCard: View {
     let item: EbookItem
     var onOpen: () -> Void
     var onDelete: () -> Void
+    var onCheck: () -> Void = {}
+    var checking: Bool = false
     @State private var expanded = false
 
     private var canExpand: Bool { (item.descriptionText?.count ?? 0) > 100 }
@@ -100,9 +102,12 @@ struct EbookCard: View {
     private var actionRow: some View {
         HStack(spacing: 12) {
             if item.status == "gesucht" {
-                // Externe Shelfmark-Suche ist 501 → als deaktiviert kennzeichnen.
-                Label("Jetzt suchen (nicht verfügbar)", systemImage: "magnifyingglass")
-                    .font(.caption2).foregroundStyle(.tertiary)
+                Button { onCheck() } label: {
+                    if checking { ProgressView() }
+                    else { Label("Jetzt suchen & laden", systemImage: "arrow.down.circle").font(.caption.weight(.semibold)) }
+                }
+                .buttonStyle(.plain).foregroundStyle(EbookStyle.amber).disabled(checking)
+                .accessibilityIdentifier("ebook-check-\(item.id)")
             }
             Spacer(minLength: 0)
             Button(role: .destructive) { onDelete() } label: {

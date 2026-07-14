@@ -81,16 +81,18 @@ struct CalibreView: View {
     }
 
     private func bookCell(_ b: CalibreBook) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            cover(b)
-            Text(b.title).font(.caption.weight(.semibold)).lineLimit(2)
-            if !b.authors.isEmpty {
-                Text(b.authors).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+        Button { selectedBook = b } label: {
+            VStack(alignment: .leading, spacing: 4) {
+                cover(b)
+                Text(b.title).font(.caption.weight(.semibold)).lineLimit(2)
+                if !b.authors.isEmpty {
+                    Text(b.authors).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .contentShape(Rectangle())
-        .onTapGesture { selectedBook = b }
+        .buttonStyle(.plain)
         .accessibilityIdentifier("calibre-book-\(b.id)")
     }
 
