@@ -1,5 +1,6 @@
 import { config } from "@/server/config";
 import { haConfigured } from "./client";
+import { hlsMasterProxyUrl } from "./hls-proxy";
 
 // Kameras der Familie über Home Assistant (UniFi Protect ist in HA integriert). HA liefert sowohl
 // Schnappschüsse (`/api/camera_proxy/<entity>`) als auch Live-HLS (WebSocket `camera/stream`) —
@@ -58,7 +59,8 @@ export async function cameraHlsUrl(entity: string): Promise<string> {
   if (!haConfigured()) throw new Error("Home Assistant ist nicht konfiguriert.");
   if (!isKnownCamera(entity)) throw new Error("Unbekannte Kamera.");
   const path = await haCameraStreamPath(entity);
-  return `${config.homeAssistant.url}${path}`;
+  // NICHT die direkte HA-URL (DuckDNS:8123 — vom Handy oft nicht erreichbar), sondern die Backend-Proxy-URL.
+  return hlsMasterProxyUrl(path);
 }
 
 function haWebsocketUrl(): string {

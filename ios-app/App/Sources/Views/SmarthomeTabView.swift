@@ -323,11 +323,23 @@ struct CameraLiveView: View {
 
     private func start() async {
         errorText = nil
+        player = nil
         do {
             let url = try await app.api.cameraStreamURL(entity: camera.entity)
-            let p = AVPlayer(url: url)
+            let item = AVPlayerItem(url: url)
+            let p = AVPlayer(playerItem: item)
             p.play()
             player = p
+            // Auf readyToPlay/failed warten → bei Fehler die ECHTE Ursache zeigen (statt AVKit-Standardsymbol).
+            for _ in 0..<24 {
+                if item.status == .failed {
+                    errorText = item.error?.localizedDescription ?? "Stream konnte nicht geladen werden."
+                    player = nil
+                    return
+                }
+                if item.status == .readyToPlay { return }
+                try? await Task.sleep(nanoseconds: 500_000_000)
+            }
         } catch {
             errorText = (error as? APIError)?.errorDescription ?? "Live-Stream nicht verfügbar."
         }
