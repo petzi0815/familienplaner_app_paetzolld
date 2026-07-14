@@ -206,6 +206,30 @@ final class APIClient {
         _ = try await send("/smarthome/script", method: "POST", body: body)
     }
 
+    /// Kuratierte Kameraliste (über Home Assistant).
+    func cameras() async throws -> CameraList {
+        if let data = UITestFixtures.camerasData {
+            return try Self.decoder.decode(CameraList.self, from: data)
+        }
+        return try await get("/smarthome/cameras", as: CameraList.self)
+    }
+
+    /// Aktueller Kamera-Schnappschuss (JPEG, auth-bewusst; Cache-Buster erzwingt frisches Bild).
+    func cameraSnapshot(entity: String) async throws -> Data {
+        let ts = String(Int(Date().timeIntervalSince1970))
+        let req = try request("/smarthome/cameras/\(entity)/snapshot", query: [URLQueryItem(name: "t", value: ts)])
+        let (data, resp) = try await Self.session.data(for: req)
+        try checkStatus(resp, data)
+        return data
+    }
+
+    /// Live-HLS-URL einer Kamera (direkt von HA abspielbar → AVPlayer).
+    func cameraStreamURL(entity: String) async throws -> URL {
+        let s = try await get("/smarthome/cameras/\(entity)/stream", as: CameraStream.self)
+        guard let u = URL(string: s.url) else { throw APIError(status: 0, message: "Ungültige Stream-URL") }
+        return u
+    }
+
     /// Neuester bekannter iOS-Build (TestFlight) — fürs Update-Banner.
     func appVersion() async throws -> AppVersionInfo {
         if let data = UITestFixtures.appVersionData {

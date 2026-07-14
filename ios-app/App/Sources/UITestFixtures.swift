@@ -58,6 +58,17 @@ enum UITestFixtures {
             ],
         ])
     }
+    /// Kameraliste (Smart-Home-Tab): 2 Kameras (Snapshots/Streams treffen im Test kein Backend → Platzhalter).
+    static var camerasData: Data? {
+        guard UITestMode.isActive else { return nil }
+        return try? JSONSerialization.data(withJSONObject: [
+            "configured": true,
+            "cameras": [
+                ["entity": "camera.einfahrt_high", "name": "Einfahrt"],
+                ["entity": "camera.wohnzimmer_high", "name": "Wohnzimmer"],
+            ],
+        ])
+    }
 
     /// Bare-Array-Antwort für einen Pfad.
     static func array(_ path: String) -> [[String: Any]]? {

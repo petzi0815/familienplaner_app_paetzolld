@@ -168,6 +168,9 @@ final class FamilienplanerUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Raffstores"].waitForExistence(timeout: 8), "Raffstore-Sektion fehlt")
         XCTAssertTrue(app.staticTexts["Küche"].waitForExistence(timeout: 8), "Raffstore 'Küche' fehlt")
         XCTAssertTrue(app.buttons["script-script.raffstore_putzen"].waitForExistence(timeout: 8), "Szenen-Button 'Putzen' fehlt")
+        // Kameras: Sektion + eine Kamera-Kachel (Snapshot trifft im Test kein Backend, Kachel existiert trotzdem).
+        XCTAssertTrue(app.staticTexts["Kameras"].waitForExistence(timeout: 8), "Kamera-Sektion fehlt")
+        XCTAssertTrue(app.buttons["camera-camera.einfahrt_high"].waitForExistence(timeout: 8), "Kamera-Kachel 'Einfahrt' fehlt")
     }
 
     /// KPI-Kachel „Anstehende Termine" tippen → springt in den Termine-Bereich.

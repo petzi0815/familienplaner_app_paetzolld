@@ -73,6 +73,15 @@ struct HouseData: Decodable {
     let scripts: [HouseScript]
 }
 
+// ── Kameras (GET /api/v1/smarthome/cameras) — über Home Assistant ──
+struct Camera: Decodable, Identifiable, Hashable {
+    let entity: String
+    let name: String
+    var id: String { entity }
+}
+struct CameraList: Decodable { let configured: Bool; let cameras: [Camera] }
+struct CameraStream: Decodable { let url: String }
+
 // ── Alarmanlage „Alarmo" (Home Assistant, GET/POST /api/v1/alarmo) ──
 // Der PIN liegt serverseitig — die App sendet nur die Aktion (arm_away|arm_home|arm_night|disarm).
 struct AlarmoStatus: Decodable {
@@ -83,6 +92,8 @@ struct AlarmoStatus: Decodable {
     let nextState: String?
     let changedBy: String?
     let friendlyName: String?
+    /// Offene Sensoren (Tür/Fenster) als Klarnamen — verhindern das Scharfschalten.
+    let openSensors: [String]?
 
     /// Scharf (irgendein armed_*-Zustand).
     var isArmed: Bool { (state ?? "").hasPrefix("armed") }

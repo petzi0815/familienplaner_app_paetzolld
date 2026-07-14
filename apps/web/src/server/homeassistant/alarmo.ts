@@ -26,7 +26,8 @@ export interface AlarmoStatus {
   next_state: string | null;
   changed_by: string | null;
   friendly_name: string | null;
-  open_sensors: unknown;
+  /** Offene Sensoren (Tür/Fenster) als Klarnamen — verhindern das Scharfschalten. */
+  open_sensors: string[];
   error?: string;
 }
 
@@ -39,9 +40,27 @@ function offline(configured: boolean, error?: string): AlarmoStatus {
     next_state: null,
     changed_by: null,
     friendly_name: null,
-    open_sensors: null,
+    open_sensors: [],
     ...(error ? { error } : {}),
   };
+}
+
+/** Offene-Sensoren-Dict (entity_id → state) zu Klarnamen auflösen (Friendly-Name je Sensor). */
+async function resolveOpenSensors(open: unknown): Promise<string[]> {
+  if (!open || typeof open !== "object") return [];
+  const ids = Object.keys(open as Record<string, unknown>);
+  if (ids.length === 0) return [];
+  const names = await Promise.all(
+    ids.map(async (id) => {
+      try {
+        const s = await getEntityState(id);
+        return (s.attributes?.friendly_name as string) || id;
+      } catch {
+        return id;
+      }
+    }),
+  );
+  return names.sort();
 }
 
 /** Aktuellen Alarmo-Status lesen. Fehlt HA oder ist es nicht erreichbar → `reachable:false` (kein Throw). */
@@ -58,7 +77,7 @@ export async function alarmoStatus(): Promise<AlarmoStatus> {
       next_state: (a.next_state as string) ?? null,
       changed_by: (a.changed_by as string) ?? null,
       friendly_name: (a.friendly_name as string) ?? null,
-      open_sensors: a.open_sensors ?? null,
+      open_sensors: await resolveOpenSensors(a.open_sensors),
     };
   } catch (e) {
     return offline(true, (e as Error).message);

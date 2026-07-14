@@ -1,13 +1,19 @@
 import SwiftUI
+import AVKit
 
-/// „Smarthome"-Tab (Schnellzugriff): Alarmanlage + Raffstore-Steuerung (Höhe & Lamellen-Neigung) + Szenen.
+/// „Smarthome"-Tab (Schnellzugriff): Alarmanlage + Kameras + Raffstore-Steuerung (Höhe & Lamellen) + Szenen.
 struct SmarthomeTabView: View {
     @EnvironmentObject private var app: AppState
+    @State private var liveCamera: Camera?
 
     private let scriptCols = [
         GridItem(.flexible(), spacing: 12),
         GridItem(.flexible(), spacing: 12),
         GridItem(.flexible(), spacing: 12),
+    ]
+    private let cameraCols = [
+        GridItem(.flexible(), spacing: 10),
+        GridItem(.flexible(), spacing: 10),
     ]
 
     var body: some View {
@@ -15,6 +21,7 @@ struct SmarthomeTabView: View {
             ScrollView {
                 VStack(spacing: 20) {
                     if app.alarmo?.configured != false { AlarmoTile() }
+                    kamerasSection
                     raffstoreSection
                     szenenSection
                 }
@@ -22,10 +29,25 @@ struct SmarthomeTabView: View {
             }
             .background(Palette.gradient(for: "smarthome").opacity(0.06).ignoresSafeArea())
             .navigationTitle("Smarthome")
-            .refreshable { await app.loadAlarmo(); await app.loadHouse() }
+            .refreshable { await app.loadAlarmo(); await app.loadHouse(); await app.loadCameras() }
             .task { if !app.houseLoaded { await app.loadHouse() } }
+            .task { if !app.camerasLoaded { await app.loadCameras() } }
             .task { if app.alarmo == nil { await app.loadAlarmo() } }
             .areaToast($app.houseMessage, isError: app.houseMessageIsError)
+            .fullScreenCover(item: $liveCamera) { cam in CameraLiveView(camera: cam) }
+        }
+    }
+
+    // ── Kameras (Schnappschuss-Raster, Tap → Live-Stream) ──
+    @ViewBuilder private var kamerasSection: some View {
+        if !app.cameras.isEmpty {
+            SectionCard(title: "Kameras", systemImage: "video.fill", key: "smarthome") {
+                LazyVGrid(columns: cameraCols, spacing: 10) {
+                    ForEach(app.cameras) { cam in
+                        CameraThumb(camera: cam) { liveCamera = cam }
+                    }
+                }
+            }
         }
     }
 
@@ -206,5 +228,108 @@ struct BlindGlyph: View {
         .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(Color.secondary.opacity(0.25)))
         .animation(.easeInOut(duration: 0.25), value: position)
         .accessibilityHidden(true)
+    }
+}
+
+/// Kamera-Kachel mit automatisch aktualisierendem Schnappschuss (Tap → Live-Stream).
+/// Polling nur, solange die App aktiv ist (scenePhase-gekoppelter Task).
+struct CameraThumb: View {
+    let camera: Camera
+    let onTap: () -> Void
+    @EnvironmentObject private var app: AppState
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var image: UIImage?
+    @State private var failed = false
+
+    private var taskKey: String { "\(camera.entity)-\(scenePhase == .active)" }
+
+    var body: some View {
+        Button(action: onTap) {
+            ZStack(alignment: .bottomLeading) {
+                Rectangle().fill(Color(.secondarySystemBackground))
+                if let image {
+                    Image(uiImage: image).resizable().aspectRatio(contentMode: .fill)
+                } else if failed {
+                    Image(systemName: "video.slash.fill").font(.title2).foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+                LinearGradient(colors: [.black.opacity(0.55), .clear], startPoint: .bottom, endPoint: .center)
+                    .allowsHitTesting(false)
+                HStack(spacing: 5) {
+                    Image(systemName: "play.circle.fill")
+                    Text(camera.name).font(.caption.weight(.semibold)).lineLimit(1)
+                }
+                .foregroundStyle(.white)
+                .padding(8)
+            }
+            .frame(height: 104)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("camera-\(camera.entity)")
+        .task(id: taskKey) {
+            guard scenePhase == .active else { return }
+            await refreshLoop()
+        }
+    }
+
+    private func refreshLoop() async {
+        while !Task.isCancelled {
+            if let data = try? await app.api.cameraSnapshot(entity: camera.entity), let img = UIImage(data: data) {
+                image = img; failed = false
+            } else if image == nil {
+                failed = true
+            }
+            try? await Task.sleep(nanoseconds: 6_000_000_000)
+        }
+    }
+}
+
+/// Vollbild-Live-Ansicht einer Kamera (HLS über AVPlayer; Stream-URL kommt frisch vom Backend/HA).
+struct CameraLiveView: View {
+    let camera: Camera
+    @EnvironmentObject private var app: AppState
+    @Environment(\.dismiss) private var dismiss
+    @State private var player: AVPlayer?
+    @State private var errorText: String?
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color.black.ignoresSafeArea()
+                if let player {
+                    VideoPlayer(player: player).ignoresSafeArea(edges: .bottom)
+                } else if let errorText {
+                    VStack(spacing: 12) {
+                        Image(systemName: "video.slash.fill").font(.largeTitle).foregroundStyle(.white.opacity(0.85))
+                        Text(errorText).font(.callout).foregroundStyle(.white.opacity(0.85)).multilineTextAlignment(.center)
+                        Button("Erneut") { Task { await start() } }.buttonStyle(.borderedProminent)
+                    }.padding()
+                } else {
+                    ProgressView().tint(.white)
+                }
+            }
+            .navigationTitle(camera.name)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) { Button("Fertig") { dismiss() } }
+            }
+            .task { await start() }
+            .onDisappear { player?.pause(); player = nil }
+        }
+    }
+
+    private func start() async {
+        errorText = nil
+        do {
+            let url = try await app.api.cameraStreamURL(entity: camera.entity)
+            let p = AVPlayer(url: url)
+            p.play()
+            player = p
+        } catch {
+            errorText = (error as? APIError)?.errorDescription ?? "Live-Stream nicht verfügbar."
+        }
     }
 }

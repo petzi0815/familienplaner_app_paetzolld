@@ -52,6 +52,10 @@ final class AppState: ObservableObject {
     @Published var houseMessage: String?
     @Published var houseMessageIsError = false
 
+    /// Kameras (über Home Assistant) für den Smart-Home-Tab.
+    @Published var cameras: [Camera] = []
+    @Published var camerasLoaded = false
+
     let settings: Settings
     let api: APIClient
 
@@ -74,26 +78,48 @@ final class AppState: ObservableObject {
         alarmo = try? await api.alarmoStatus()
     }
 
-    /// Alarmo scharf/unscharf schalten. Der Server nutzt den hinterlegten PIN; danach kurz nachpollen,
-    /// um den „arming"→„armed_*"-Übergang (Ausgangs-Verzögerung) einzufangen.
+    /// Alarmo scharf/unscharf schalten. Der Server nutzt den hinterlegten PIN. Danach wird bis zum
+    /// ENDZUSTAND beobachtet (Ausgangs-/Eingangsverzögerung kann bis ~1 Min dauern) — sonst bliebe die
+    /// Kachel bei „Wird aktiviert …" hängen. Schlägt die Aktivierung fehl (z.B. offene Tür), Grund melden.
     func alarmoAction(_ action: String) async {
+        let requestedArm = action != "disarm"
         alarmoBusy = true
-        defer { alarmoBusy = false }
         do {
-            alarmo = try await api.alarmoAction(action)
-            // Ausgangs-/Eingangs-Verzögerung: noch ein-, zweimal nachziehen bis der Zielzustand steht.
-            for _ in 0..<2 where alarmo?.isArming == true || alarmo?.state == "pending" {
-                try? await Task.sleep(nanoseconds: 1_500_000_000)
-                if let s = try? await api.alarmoStatus() { alarmo = s }
+            var status = try await api.alarmoAction(action)
+            alarmo = status
+            // Befehl ist abgesetzt → ab jetzt nur beobachten (kein Dauer-Spinner während der Verzögerung;
+            // die Kachel zeigt „Wird aktiviert …" mit „Deaktivieren" zum Abbrechen).
+            alarmoBusy = false
+            var waited = 0.0
+            while (status.isArming || status.state == "pending"), waited < 90 {
+                try? await Task.sleep(nanoseconds: 2_500_000_000)
+                waited += 2.5
+                guard let s = try? await api.alarmoStatus() else { break }
+                status = s
+                alarmo = s
+            }
+            // Aktivierung angefordert, aber Panel ist (wieder) unscharf → fehlgeschlagen.
+            if requestedArm && status.isDisarmed {
+                if let open = status.openSensors, !open.isEmpty {
+                    alarmoError = "Aktivierung fehlgeschlagen – offen: \(open.joined(separator: ", "))"
+                } else {
+                    alarmoError = "Aktivierung fehlgeschlagen (Sensor offen?)."
+                }
             }
         } catch {
-            // Fehler sichtbar machen, aber alten Status behalten; frisch nachladen.
+            alarmoBusy = false
             alarmoError = (error as? APIError)?.errorDescription ?? "Schalten fehlgeschlagen."
             await loadAlarmo()
         }
     }
 
     // ── Haus-Steuerung ──
+
+    /// Kameraliste laden (Snapshots/Streams werden pro Kachel bei Bedarf geholt).
+    func loadCameras() async {
+        if let list = try? await api.cameras() { cameras = list.cameras }
+        camerasLoaded = true
+    }
 
     /// Raffstore-Zustände + Szenen-Scripts laden.
     func loadHouse() async {

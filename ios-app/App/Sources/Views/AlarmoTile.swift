@@ -14,6 +14,11 @@ struct AlarmoTile: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text("Alarmanlage").font(.headline)
                 Text(statusText).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                // Offene Tür/Fenster verhindern das Scharfschalten → proaktiv anzeigen (nur wenn unscharf).
+                if let open = status?.openSensors, !open.isEmpty, status?.isDisarmed == true {
+                    Label("Offen: \(open.joined(separator: ", "))", systemImage: "door.left.hand.open")
+                        .font(.caption2).foregroundStyle(.orange).lineLimit(2)
+                }
                 if let err = app.alarmoError {
                     Text(err).font(.caption2).foregroundStyle(.red).lineLimit(2)
                 }
