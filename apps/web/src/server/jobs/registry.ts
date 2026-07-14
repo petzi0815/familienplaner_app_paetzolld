@@ -2,6 +2,7 @@ import type BetterSqlite3 from "better-sqlite3";
 import { sendPush } from "@/server/push/apns";
 import { abfuhrCategory, fetchAhaICS, parseAbfuhrICS } from "@/server/abfuhr/abfuhr";
 import { enrichMissingCovers, countMissingCovers } from "@/server/ebooks/covers";
+import { retryAll, pendingCount } from "@/server/ebooks/wishlist";
 
 export interface JobCtx {
   db: BetterSqlite3.Database;
@@ -83,6 +84,20 @@ export const JOBS: JobDef[] = [
         }
       }
       return { messages, affected };
+    },
+  },
+  {
+    name: "buecher-wishlist-retry",
+    schedule: "0 5 * * 1",
+    timezone: "Europe/Berlin",
+    topic: "ebooks",
+    description: "Gesuchte E-Book-Wunschbücher wöchentlich via Shelfmark prüfen + herunterladen.",
+    async run(ctx) {
+      const pending = pendingCount();
+      if (ctx.dryRun) return { messages: [`${pending} gesuchte Bücher`], affected: 0 };
+      if (pending === 0) return { messages: ["keine gesuchten Bücher"], affected: 0 };
+      const { checked, downloaded } = await retryAll();
+      return { messages: [`Wunschliste-Retry: ${checked} geprüft, ${downloaded} heruntergeladen`], affected: downloaded };
     },
   },
   {
