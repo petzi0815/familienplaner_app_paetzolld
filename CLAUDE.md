@@ -6,7 +6,20 @@
 
 ## ▶️ WIEDERAUFNAHME (nächste Session) — START HIER
 
-**Stand (2026-07-13, HEAD `7ae6414`): Backend + iOS LIVE — NEU: Samu/Garten/Geschenkplaner als native iOS-Bereiche (volle PWA-Parität, native UX) + Per-User-Login-Keys.** `https://familienplaner.yagemi.app`.
+**Stand (2026-07-14, HEAD `7aae84a`): Backend + iOS LIVE — ALLE Lebensbereiche jetzt nativ in iOS + XCUITest-GUI-Tests + CI auf self-hosted Mac mini.** `https://familienplaner.yagemi.app`.
+
+**NEU 2026-07-14 — Restliche Bereiche nativ + XCUITest (Details: [[session-2026-07-14_restliche-bereiche-und-xcuitest]]):**
+- **Letzte 8 Bereiche nativ** (`App/Sources/{Termine,Vorrat,Wunschliste,Gypsi,Reiniger,Ebooks,SmartHome,Vertraege}/`) →
+  **kein generischer Browser mehr**. Volle PWA-Parität, native UX. Ebooks=E-Book-Wunschliste (domain `ebooks`, API `/api/buecher`);
+  Vertraege nutzt v1 `/api/v1/vertraege` (Envelope). 501-Aktionen angezeigt aber deaktiviert.
+- **XCUITest-GUI-Suite** (`ios-app/UITests/`, Target nur `test`-Action) + `.github/workflows/ios-uitest.yml`: Login-Bypass
+  (`UITestMode`) + statische Bereiche (`DomainCatalog.buildStatic`) → offline testbar. Prüft Tabs, jede Kachel navigiert +
+  Zurück, Segment-Tabs. Standing Order [[feedback-ios-xcuitest-gui]].
+- **CI auf self-hosted Mac mini** (Runner `[self-hosted, ios, mac-mini-buero, familienplaner]`, von Jenna `598d4c2`
+  vorbereitet) statt GitHub-hosted — build/uitest/testflight. **Vor Push `git fetch`+rebase (shared Runner/Repo)!**
+- Ergebnis: Build Check ✓ + TestFlight ✓ (App mit allen Bereichen hochgeladen), XCUITest 4/4.
+
+**Stand (2026-07-13, HEAD `7ae6414`): Backend + iOS LIVE — Samu/Garten/Geschenkplaner als native iOS-Bereiche + Per-User-Login-Keys.**
 
 **NEU 2026-07-13 — Native Bereiche + Per-User-Keys (Details: [[session-2026-07-13_native-bereiche-und-per-user-keys]]):**
 - **3 native iOS-Bereiche** ersetzen den generischen Browser: `App/Sources/Samu|Garten|Geschenke/` (Routing in
