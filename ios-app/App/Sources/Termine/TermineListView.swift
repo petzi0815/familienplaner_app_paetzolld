@@ -5,25 +5,51 @@ struct TermineListView: View {
     @EnvironmentObject private var store: TermineStore
 
     var body: some View {
-        ScrollView {
-            LazyVStack(spacing: 12) {
-                if store.upcomingItems.isEmpty && store.allPastItems.isEmpty {
+        Group {
+            if store.upcomingItems.isEmpty && store.allPastItems.isEmpty {
+                ScrollView {
                     AreaEmptyState(emoji: "🗓️", title: "Noch keine Termine", hint: "Lege den ersten Termin an!")
-                        .frame(minHeight: 260)
-                } else {
+                        .frame(maxWidth: .infinity).frame(minHeight: 320)
+                }
+                .refreshable { await store.reloadList(); await store.reloadMonth() }
+            } else {
+                // List statt ScrollView → native Wisch-Aktionen; Karten-Look via clear rows.
+                List {
                     if !store.upcomingItems.isEmpty {
-                        sectionHeader("Anstehend")
-                        ForEach(store.upcomingItems) { TerminCard(termin: $0) }
+                        Section {
+                            ForEach(store.upcomingItems) { row($0) }
+                        } header: { sectionHeader("Anstehend") }
+                        .textCase(nil)
                     }
                     if !store.allPastItems.isEmpty {
-                        pastHeader
-                        ForEach(store.visiblePastItems) { TerminCard(termin: $0) }
+                        Section {
+                            ForEach(store.visiblePastItems) { row($0) }
+                        } header: { pastHeader }
+                        .textCase(nil)
                     }
                 }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .refreshable { await store.reloadList(); await store.reloadMonth() }
             }
-            .padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 28)
         }
-        .refreshable { await store.reloadList(); await store.reloadMonth() }
+    }
+
+    /// Termin-Karte als List-Zeile (transparente Zeile) mit nativen Wisch-Aktionen (Erledigen + Löschen).
+    private func row(_ t: Termin) -> some View {
+        TerminCard(termin: t)
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets(top: 6, leading: 14, bottom: 6, trailing: 14))
+            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                Button(role: .destructive) { store.deleteTarget = t } label: {
+                    Label("Löschen", systemImage: "trash")
+                }
+                Button { Task { await store.toggleStatus(t) } } label: {
+                    Label(t.isDone ? "Offen" : "Erledigt", systemImage: t.isDone ? "arrow.uturn.left" : "checkmark.circle.fill")
+                }
+                .tint(t.isDone ? .orange : .green)
+            }
     }
 
     private func sectionHeader(_ t: String) -> some View {
@@ -38,7 +64,7 @@ struct TermineListView: View {
         Button { withAnimation(.snappy(duration: 0.2)) { store.showPast.toggle() } } label: {
             HStack(spacing: 6) {
                 Image(systemName: store.showPast ? "chevron.down" : "chevron.right").font(.caption.weight(.bold))
-                Text("Vergangen / Erledigt (\(store.allPastItems.count))").font(.caption.weight(.bold))
+                Text("Vergangen / Erledigt (\(String(store.allPastItems.count)))").font(.caption.weight(.bold))
                 Spacer()
             }
             .foregroundStyle(.secondary)

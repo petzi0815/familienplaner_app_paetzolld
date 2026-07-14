@@ -47,22 +47,30 @@ struct VorratVorratView: View {
     @State private var deleteTarget: VorratItem?
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 14) {
-                toolbar
-                if store.groupedItems.isEmpty {
+        VStack(spacing: 0) {
+            toolbar.padding(.top, 8).padding(.bottom, 6)
+            if store.groupedItems.isEmpty {
+                ScrollView {
                     AreaEmptyState(emoji: "🗄️", title: "Noch keine Lebensmittel erfasst",
                                    hint: "Tippe auf + Neu, um etwas hinzuzufügen.")
-                        .frame(minHeight: 260)
-                } else {
+                        .frame(maxWidth: .infinity).frame(minHeight: 260)
+                }
+                .refreshable { await store.loadAll() }
+            } else {
+                // List statt ScrollView → native Wisch-Aktionen (Verbraucht/Löschen); Karten-Look via clear rows.
+                List {
                     ForEach(store.groupedItems, id: \.kategorie) { group in
-                        section(group.kategorie, group.items)
+                        Section {
+                            ForEach(group.items) { item in row(item) }
+                        } header: { sectionHeader(group.kategorie, group.items.count) }
+                        .textCase(nil)
                     }
                 }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .refreshable { await store.loadAll() }
             }
-            .padding(.bottom, 24)
         }
-        .refreshable { await store.loadAll() }
         .task(id: store.filters.search) {
             try? await Task.sleep(nanoseconds: 350_000_000)
             if !Task.isCancelled { await store.applySearch() }
@@ -90,19 +98,30 @@ struct VorratVorratView: View {
         }
     }
 
-    private func section(_ kat: String, _ items: [VorratItem]) -> some View {
+    private func sectionHeader(_ kat: String, _ count: Int) -> some View {
         let info = VorratKat.info(kat)
-        return VStack(alignment: .leading, spacing: 8) {
-            Text("\(info.emoji) \(info.label) (\(items.count))")
-                .font(.caption.weight(.bold)).textCase(.uppercase).foregroundStyle(.secondary)
-            ForEach(items) { item in
-                VorratItemCard(item: item,
-                               onConsume: { Task { await store.consume(item) } },
-                               onEdit: { editItem = item },
-                               onDelete: { deleteTarget = item })
+        return Text("\(info.emoji) \(info.label) (\(String(count)))")
+            .font(.caption.weight(.bold)).textCase(.uppercase).foregroundStyle(.secondary)
+    }
+
+    /// Item-Karte als List-Zeile (transparente Zeile) mit nativen Wisch-Aktionen (Verbraucht + Löschen).
+    private func row(_ item: VorratItem) -> some View {
+        VorratItemCard(item: item,
+                       onConsume: { Task { await store.consume(item) } },
+                       onEdit: { editItem = item },
+                       onDelete: { deleteTarget = item })
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets(top: 5, leading: 14, bottom: 5, trailing: 14))
+            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                Button(role: .destructive) { deleteTarget = item } label: {
+                    Label("Löschen", systemImage: "trash")
+                }
+                Button { Task { await store.consume(item) } } label: {
+                    Label("Verbraucht", systemImage: "checkmark.circle.fill")
+                }
+                .tint(Color(hex: "F97316"))
             }
-        }
-        .padding(.horizontal, 14)
     }
 }
 
