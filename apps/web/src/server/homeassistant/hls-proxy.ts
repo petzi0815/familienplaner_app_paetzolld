@@ -64,19 +64,31 @@ function rewriteRef(ref: string, basePath: string, expMs: number): string {
   return haPath ? proxyUrlFor(haPath, expMs) : ref;
 }
 
-/** Alle URIs einer m3u8 auf Proxy-URLs umschreiben (bare Zeilen + URI="…" in Tags). */
+// Low-Latency-HLS-Tags: HA liefert LL-HLS (blockierende Playlist-Reloads via `_HLS_msn/_HLS_part`).
+// Über den Proxy funktioniert das nicht zuverlässig (AVPlayer hängt) → diese Zeilen entfernen, damit
+// eine STANDARD-HLS-Playlist übrig bleibt (normale Reloads, etwas höhere Latenz, dafür stabil).
+const LL_HLS_TAGS = [
+  "#EXT-X-PART", // deckt auch #EXT-X-PART-INF ab (Präfix)
+  "#EXT-X-PRELOAD-HINT",
+  "#EXT-X-SERVER-CONTROL",
+  "#EXT-X-RENDITION-REPORT",
+  "#EXT-X-SKIP",
+];
+
+/** Alle URIs einer m3u8 auf Proxy-URLs umschreiben (bare Zeilen + URI="…" in Tags); LL-HLS entfernen. */
 function rewritePlaylist(text: string, basePath: string, expMs: number): string {
-  return text
-    .split("\n")
-    .map((line) => {
-      const t = line.trim();
-      if (t === "") return line;
-      if (t.startsWith("#")) {
-        return line.replace(/URI="([^"]+)"/g, (_m, uri) => `URI="${rewriteRef(uri, basePath, expMs)}"`);
-      }
-      return rewriteRef(t, basePath, expMs);
-    })
-    .join("\n");
+  const out: string[] = [];
+  for (const line of text.split("\n")) {
+    const t = line.trim();
+    if (t === "") { out.push(line); continue; }
+    if (t.startsWith("#")) {
+      if (LL_HLS_TAGS.some((tag) => t.startsWith(tag))) continue; // LL-HLS → Standard-HLS
+      out.push(line.replace(/URI="([^"]+)"/g, (_m, uri) => `URI="${rewriteRef(uri, basePath, expMs)}"`));
+    } else {
+      out.push(rewriteRef(t, basePath, expMs));
+    }
+  }
+  return out.join("\n");
 }
 
 /** Einen HA-HLS-Pfad proxyn: Playlist → Referenzen umschreiben; Segment/Init → Bytes durchreichen. */
