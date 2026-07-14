@@ -13,6 +13,8 @@ enum UITestFixtures {
         case "/geschenkplaner/dashboard": return dashboard
         case "/geschenkplaner/ereignisse/1": return ereignis1
         case "/buecher/search": return shelfmarkSearch
+        case "/buecher/calibre/shelves": return calibreShelves
+        case "/buecher/calibre/books": return calibreBooks
         default: return nil
         }
     }
@@ -95,6 +97,18 @@ enum UITestFixtures {
         "vorrat_bald_ablaufend": [],
         "abfuhr_next": [],
         "counts": ["samu_items": 0, "geschenke_offen": 6, "buecher": 0, "vertraege": 0, "foto_inbox_neu": 2],
+    ]
+
+    // ── Calibre-Web (Bibliothek) ──
+    private static let calibreShelves: [String: Any] = [
+        "shelves": [["id": 2, "name": "To Do"], ["id": 3, "name": "Lars"], ["id": 8, "name": "Romane"]],
+    ]
+    private static let calibreBooks: [String: Any] = [
+        "total": 2,
+        "rows": [
+            ["id": 5356, "title": "UITEST Bibliotheksbuch", "authors": "Test Autor", "has_cover": false, "tags": [], "series": NSNull(), "isbn": NSNull(), "read_status": false],
+            ["id": 5355, "title": "Zweites Testbuch", "authors": "Andere Autorin", "has_cover": false, "tags": [], "series": NSNull(), "isbn": NSNull(), "read_status": false],
+        ],
     ]
 
     // ── Externe Buchsuche (Shelfmark) ──

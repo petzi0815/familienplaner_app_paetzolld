@@ -16,6 +16,7 @@ struct EbooksRootView: View {
     private var tabs: [(tab: EbookTab, label: String, systemImage: String?)] {
         [
             (.wunschliste, "Wunschliste", "list.star"),
+            (.bibliothek, "Bibliothek", "books.vertical.fill"),
             (.suche, "Buch suchen", "magnifyingglass"),
         ]
     }
@@ -40,6 +41,7 @@ struct EbooksRootView: View {
         } else {
             switch store.tab {
             case .wunschliste: EbooksWishlistView()
+            case .bibliothek: CalibreView()
             case .suche: EbooksSearchView()
             }
         }

@@ -170,6 +170,20 @@ final class FamilienplanerUITests: XCTestCase {
                       "Externe Suche liefert kein Ergebnis (Fixture nicht geladen?)")
     }
 
+    /// DATENGETRIEBEN (Fixture): E-Books „Bibliothek"-Tab (Calibre) zeigt Regale + Bücher.
+    func testCalibreLibraryTab() {
+        openBereiche()
+        let tileEl = tile("ebooks")
+        guard tileEl.waitForExistence(timeout: 8) else { XCTFail("E-Books-Kachel fehlt"); return }
+        tileEl.tap()
+        let seg = app.buttons["segment-Bibliothek"]
+        XCTAssertTrue(seg.waitForExistence(timeout: 8), "Segment 'Bibliothek' fehlt")
+        seg.tap()
+        XCTAssertTrue(app.staticTexts["UITEST Bibliotheksbuch"].waitForExistence(timeout: 8),
+                      "Calibre-Bibliothek zeigt kein Buch (Fixture nicht geladen?)")
+        XCTAssertTrue(app.buttons["calibre-shelf-2"].waitForExistence(timeout: 4), "Regal-Filter fehlt")
+    }
+
     /// DATENGETRIEBEN (Fixture): Geschenkplaner-Event antippen → Detail öffnet sich → Zurück.
     /// Fängt den Navigations-Bug (Tap „verschluckt") UND die Jahres-Formatierung (2.026 statt 2026).
     func testGeschenkplanerEventNavigation() {

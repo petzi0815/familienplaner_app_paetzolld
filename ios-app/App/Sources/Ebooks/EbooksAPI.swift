@@ -65,4 +65,27 @@ final class EbooksAPI {
     func download(_ raw: [String: Any], addOnly: Bool) async throws -> [String: Any] {
         try await c.send("/buecher/download", method: "POST", body: ["release": raw, "addOnly": addOnly])
     }
+
+    // MARK: - Calibre-Web (Bibliothek)
+
+    func calibreShelves() async throws -> [CalibreShelf] {
+        let obj = try await c.getObject("/buecher/calibre/shelves")
+        return ((obj["shelves"] as? [[String: Any]]) ?? []).compactMap(CalibreShelf.init)
+    }
+
+    /// Bücher listen/suchen ODER (shelf gesetzt) Regal-Inhalt.
+    func calibreBooks(search: String?, shelf: Int?, offset: Int, limit: Int = 60) async throws -> (total: Int, rows: [CalibreBook]) {
+        var q: [URLQueryItem] = [.init(name: "offset", value: String(offset)), .init(name: "limit", value: String(limit))]
+        if let s = search, !s.isEmpty { q.append(.init(name: "search", value: s)) }
+        if let sh = shelf { q.append(.init(name: "shelf", value: String(sh))) }
+        let obj = try await c.getObject("/buecher/calibre/books", query: q)
+        let rows = ((obj["rows"] as? [[String: Any]]) ?? []).map(CalibreBook.init(fields:))
+        return (Coerce.int(obj["total"]) ?? rows.count, rows)
+    }
+
+    @discardableResult
+    func calibreShelfAction(bookId: Int, shelfId: Int, action: String) async throws -> Bool {
+        let r = try await c.send("/buecher/calibre/shelf", method: "POST", body: ["book_id": bookId, "shelf_id": shelfId, "action": action])
+        return Coerce.bool(r["success"])
+    }
 }

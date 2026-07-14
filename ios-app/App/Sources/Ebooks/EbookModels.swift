@@ -148,6 +148,40 @@ struct ShelfmarkResult: Identifiable {
     }
 }
 
+// MARK: - Calibre-Web (Bibliothek)
+
+struct CalibreShelf: Identifiable, Equatable {
+    let id: Int
+    let name: String
+    init?(_ f: [String: Any]) {
+        guard let i = Coerce.int(f["id"]) else { return nil }
+        id = i; name = Coerce.str(f["name"]) ?? "Regal \(i)"
+    }
+}
+
+struct CalibreBook: Identifiable, Equatable {
+    let id: Int
+    let title: String
+    let authors: String
+    let series: String?
+    let tags: [String]
+    let hasCover: Bool
+    let isbn: String?
+
+    init(fields f: [String: Any]) {
+        id = Coerce.int(f["id"]) ?? 0
+        title = Coerce.str(f["title"]) ?? "Ohne Titel"
+        authors = Coerce.str(f["authors"]) ?? ""
+        series = Coerce.str(f["series"])
+        tags = Coerce.stringArray(f["tags"])
+        hasCover = Coerce.bool(f["has_cover"])
+        isbn = Coerce.str(f["isbn"])
+    }
+
+    /// Cover über den Backend-Proxy (AuthImage lädt mit Bearer). nil → Emoji-Fallback.
+    var coverPath: String? { hasCover ? "/api/buecher/calibre/cover/\(id)" : nil }
+}
+
 // MARK: - Tabs
 
-enum EbookTab: Hashable { case wunschliste, suche }
+enum EbookTab: Hashable { case wunschliste, suche, bibliothek }

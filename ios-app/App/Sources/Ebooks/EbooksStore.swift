@@ -24,6 +24,16 @@ final class EbooksStore: ObservableObject {
     @Published var searchError: String?
     @Published var downloadingID: String?
 
+    // Calibre-Bibliothek
+    @Published var calibreBooks: [CalibreBook] = []
+    @Published var calibreShelves: [CalibreShelf] = []
+    @Published var calibreShelf: Int? = nil
+    @Published var calibreSearch = ""
+    @Published var calibreLoading = false
+    @Published var calibreLoadingMore = false
+    @Published var calibreTotal = 0
+    private var calibreSearchTask: Task<Void, Never>?
+
     init(settings: Settings) { api = EbooksAPI(settings: settings) }
 
     private static let ymd: DateFormatter = {
@@ -158,6 +168,54 @@ final class EbooksStore: ObservableObject {
             let res = try await api.download(r.raw, addOnly: addOnly)
             notify((res["message"] as? String) ?? (addOnly ? "Zur Wunschliste hinzugefügt" : "Download gestartet"))
             await reloadItems(); await reloadOptions()
+        } catch { notify(errText(error), error: true) }
+    }
+
+    // MARK: - Calibre-Bibliothek
+
+    func loadCalibre() async {
+        if calibreShelves.isEmpty { calibreShelves = (try? await api.calibreShelves()) ?? [] }
+        await calibreReload()
+    }
+
+    func calibreReload() async {
+        calibreLoading = true
+        do {
+            let r = try await api.calibreBooks(search: calibreSearch, shelf: calibreShelf, offset: 0)
+            calibreBooks = r.rows; calibreTotal = r.total
+        } catch { notify(errText(error), error: true) }
+        calibreLoading = false
+    }
+
+    /// Weitere Seite (nur in der Gesamtliste, nicht im Regal-Filter).
+    func calibreLoadMore() async {
+        guard !calibreLoadingMore, calibreShelf == nil, calibreBooks.count < calibreTotal else { return }
+        calibreLoadingMore = true
+        if let r = try? await api.calibreBooks(search: calibreSearch, shelf: nil, offset: calibreBooks.count) {
+            let seen = Set(calibreBooks.map(\.id))
+            calibreBooks.append(contentsOf: r.rows.filter { !seen.contains($0.id) })
+        }
+        calibreLoadingMore = false
+    }
+
+    func setCalibreShelf(_ id: Int?) async {
+        calibreShelf = (calibreShelf == id) ? nil : id
+        await calibreReload()
+    }
+
+    func calibreSearchChanged() {
+        calibreSearchTask?.cancel()
+        calibreSearchTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            guard let self, !Task.isCancelled else { return }
+            await self.calibreReload()
+        }
+    }
+
+    func addToShelf(_ book: CalibreBook, shelf: CalibreShelf) async {
+        do {
+            _ = try await api.calibreShelfAction(bookId: book.id, shelfId: shelf.id, action: "add")
+            notify("Auf Regal „\(shelf.name)“ gelegt")
         } catch { notify(errText(error), error: true) }
     }
 
