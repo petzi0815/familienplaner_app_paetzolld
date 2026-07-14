@@ -51,6 +51,51 @@ struct AppVersionInfo: Decodable {
     let testflightUrl: String?
 }
 
+// ── Haus-Steuerung (GET /api/v1/smarthome/house) — Raffstores + Szenen-Scripts ──
+struct RaffstoreCover: Decodable, Identifiable {
+    let entity: String
+    let name: String
+    let reachable: Bool
+    let state: String?       // open | closed | opening | closing
+    let position: Int?       // 0..100 (100 = offen)
+    let tilt: Int?           // 0..100 (Lamellen-Neigung)
+    var id: String { entity }
+}
+struct HouseScript: Decodable, Identifiable {
+    let entity: String
+    let name: String
+    let icon: String         // SF-Symbol
+    var id: String { entity }
+}
+struct HouseData: Decodable {
+    let configured: Bool
+    let covers: [RaffstoreCover]
+    let scripts: [HouseScript]
+}
+
+// ── Alarmanlage „Alarmo" (Home Assistant, GET/POST /api/v1/alarmo) ──
+// Der PIN liegt serverseitig — die App sendet nur die Aktion (arm_away|arm_home|arm_night|disarm).
+struct AlarmoStatus: Decodable {
+    let configured: Bool
+    let reachable: Bool
+    let state: String?          // disarmed | arming | pending | triggered | armed_away | armed_home | armed_night | armed_vacation | unavailable
+    let armMode: String?
+    let nextState: String?
+    let changedBy: String?
+    let friendlyName: String?
+
+    /// Scharf (irgendein armed_*-Zustand).
+    var isArmed: Bool { (state ?? "").hasPrefix("armed") }
+    /// Wird gerade scharf geschaltet (Ausgangs-Verzögerung).
+    var isArming: Bool { state == "arming" }
+    /// Ausgelöst bzw. Eingangs-Verzögerung läuft.
+    var isTriggered: Bool { state == "triggered" || state == "pending" }
+    /// Unscharf.
+    var isDisarmed: Bool { state == "disarmed" }
+    /// Zustand grundsätzlich bekannt (nicht unavailable/unknown/nil).
+    var isKnown: Bool { let s = state ?? ""; return !s.isEmpty && s != "unavailable" && s != "unknown" }
+}
+
 // ── ID, die als Zahl ODER String kommen kann (elisbooks nutzt TEXT-PK) ──
 struct FlexibleID: Decodable, Hashable {
     let value: String

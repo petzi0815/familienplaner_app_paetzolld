@@ -63,6 +63,17 @@ export const config = {
     password: env("CWA_PASSWORD"),
   },
 
+  // Home Assistant — aktuell für die „Alarmo"-Alarmanlage (Status lesen + scharf/unscharf schalten).
+  // Token/URL kommen aus Coolify-ENV. Der Alarmo-PIN ist SERVERSEITIG hinterlegt (Default 4578,
+  // via ALARMO_PIN überschreibbar), damit in der App KEIN Code eingegeben werden muss (Wunsch Lars).
+  // Wer den PIN nicht im Repo haben will, setzt `ALARMO_PIN` in Coolify — dann greift der Default nicht.
+  homeAssistant: {
+    url: env("HOME_ASSISTANT_URL").replace(/\/+$/, ""),
+    token: env("HOME_ASSISTANT_TOKEN"),
+    alarmoEntity: env("ALARMO_ENTITY_ID", "alarm_control_panel.alarmo"),
+    alarmoCode: env("ALARMO_PIN", "4578"),
+  },
+
   // Integrationen (optional)
   openaiApiKey: env("OPENAI_API_KEY"),
   telegram: {

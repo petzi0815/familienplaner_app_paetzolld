@@ -7,6 +7,7 @@ import UIKit
 struct HeuteView: View {
     @EnvironmentObject private var app: AppState
     @State private var calMessage = ""
+    @State private var showSearch = false
 
     private let statCols = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
 
@@ -15,7 +16,7 @@ struct HeuteView: View {
             ScrollView {
                 if let d = app.dashboard {
                     VStack(spacing: 20) {
-                        searchBar
+                        if app.alarmo?.configured != false { AlarmoTile() }
                         if let b = app.updateBuild { updateBanner(b) }
                         if let next = (d.agenda ?? []).first { nextHighlight(next) }
                         kpiGrid(d.kpis ?? [])
@@ -36,8 +37,18 @@ struct HeuteView: View {
             }
             .background(Palette.gradient(for: "termine").opacity(0.06).ignoresSafeArea())
             .navigationTitle(greetingTitle)
-            .refreshable { await app.loadDashboard() }
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showSearch = true } label: {
+                        Image(systemName: "magnifyingglass")
+                    }
+                    .accessibilityIdentifier("home-search")
+                }
+            }
+            .sheet(isPresented: $showSearch) { SearchView() }
+            .refreshable { await app.loadDashboard(); await app.loadAlarmo() }
             .task { if app.dashboard == nil { await app.loadDashboard() } }
+            .task { if app.alarmo == nil { await app.loadAlarmo() } }
         }
     }
 
@@ -49,21 +60,6 @@ struct HeuteView: View {
     private var greetingTitle: String {
         if let o = app.me?.owner, o == "lars" || o == "elita" { return "\(greeting), \(app.me!.displayName)" }
         return greeting
-    }
-
-    // ── Globale Suche: Einstieg auf „Heute" → springt in den Suchen-Tab ──
-    private var searchBar: some View {
-        Button { app.selectedTab = .search } label: {
-            HStack(spacing: 10) {
-                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                Text("Alles durchsuchen …").foregroundStyle(.secondary)
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 16).padding(.vertical, 12)
-            .background(Color(.secondarySystemBackground), in: Capsule())
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("home-search")
     }
 
     // ── „Als Nächstes" — hervorgehobenes nächstes Anstehendes über den KPI-Kacheln ──

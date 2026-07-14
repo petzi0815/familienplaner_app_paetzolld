@@ -15,7 +15,8 @@ struct RootView: View {
     }
 }
 
-/// iOS-26-Tab-Bar mit Liquid Glass: minimiert beim Scrollen, eigene Such-Rolle (schwebender Button).
+/// iOS-26-Tab-Bar mit Liquid Glass (minimiert beim Scrollen): Heute · Bereiche · Erfassen · Inbox · Smarthome.
+/// Die globale Suche liegt als Toolbar-Button oben rechts auf „Heute" (kein eigener Such-Tab mehr).
 struct MainTabView: View {
     @EnvironmentObject private var app: AppState
 
@@ -35,8 +36,8 @@ struct MainTabView: View {
             }
             .badge(app.inboxNeu)
 
-            Tab("Suchen", systemImage: "magnifyingglass", value: AppState.MainTab.search, role: .search) {
-                SearchView()
+            Tab("Smarthome", systemImage: "blinds.horizontal.closed", value: AppState.MainTab.smarthome) {
+                SmarthomeTabView()
             }
         }
         .tabBarMinimizeBehavior(.onScrollDown)

@@ -75,7 +75,7 @@ final class FamilienplanerUITests: XCTestCase {
 
     /// Jeder Tab ist antippbar und die App bleibt am Leben.
     func testTabBarNavigation() {
-        for label in ["Heute", "Bereiche", "Erfassen", "Inbox", "Suchen"] {
+        for label in ["Heute", "Bereiche", "Erfassen", "Inbox", "Smarthome"] {
             let b = tabButton(label)
             XCTAssertTrue(b.waitForExistence(timeout: 8), "Tab '\(label)' fehlt")
             b.tap()
@@ -140,6 +140,34 @@ final class FamilienplanerUITests: XCTestCase {
         XCTAssertTrue(app.buttons["calendar-subscribe"].waitForExistence(timeout: 8), "Abonnieren-Button fehlt")
         XCTAssertTrue(app.staticTexts["UITEST Zahnarzt"].waitForExistence(timeout: 8), "Agenda-Eintrag fehlt")
         XCTAssertTrue(app.buttons["update-banner"].waitForExistence(timeout: 10), "Update-Banner fehlt")
+    }
+
+    /// DATENGETRIEBEN (Fixture): Home zeigt die Alarmanlage-Kachel (Alarmo, unscharf) mit „Aktivieren"-Menü.
+    func testHomeShowsAlarmoTile() {
+        XCTAssertTrue(tabButton("Heute").waitForExistence(timeout: 15), "Heute-Tab fehlt")
+        tabButton("Heute").tap()
+        XCTAssertTrue(app.staticTexts["Alarmanlage"].waitForExistence(timeout: 10), "Alarmanlage-Kachel fehlt")
+        XCTAssertTrue(app.buttons["alarmo-arm"].waitForExistence(timeout: 6), "„Aktivieren"-Steuerung fehlt (Zustand disarmed)")
+    }
+
+    /// Suche ist oben rechts auf „Heute" erreichbar (Toolbar-Button öffnet die Such-Ansicht als Sheet).
+    func testHomeSearchButtonOpensSearch() {
+        tabButton("Heute").tap()
+        let search = app.buttons["home-search"]
+        XCTAssertTrue(search.waitForExistence(timeout: 10), "Such-Button oben rechts fehlt")
+        search.tap()
+        XCTAssertTrue(app.navigationBars["Suchen"].waitForExistence(timeout: 8), "Such-Ansicht öffnet nicht")
+    }
+
+    /// DATENGETRIEBEN (Fixture): der Smart-Home-Tab zeigt Alarmanlage, Raffstores und Szenen-Buttons.
+    func testSmarthomeTabShowsControls() {
+        let tab = tabButton("Smarthome")
+        XCTAssertTrue(tab.waitForExistence(timeout: 15), "Smarthome-Tab fehlt")
+        tab.tap()
+        XCTAssertTrue(app.staticTexts["Alarmanlage"].waitForExistence(timeout: 10), "Alarmanlage-Kachel fehlt im Smarthome-Tab")
+        XCTAssertTrue(app.staticTexts["Raffstores"].waitForExistence(timeout: 8), "Raffstore-Sektion fehlt")
+        XCTAssertTrue(app.staticTexts["Küche"].waitForExistence(timeout: 8), "Raffstore 'Küche' fehlt")
+        XCTAssertTrue(app.buttons["script-script.raffstore_putzen"].waitForExistence(timeout: 8), "Szenen-Button 'Putzen' fehlt")
     }
 
     /// KPI-Kachel „Anstehende Termine" tippen → springt in den Termine-Bereich.

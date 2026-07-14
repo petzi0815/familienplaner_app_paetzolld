@@ -1,8 +1,9 @@
 import SwiftUI
+import UIKit
 
 @MainActor
 final class AppState: ObservableObject {
-    enum MainTab: Hashable { case heute, bereiche, scan, inbox, search }
+    enum MainTab: Hashable { case heute, bereiche, scan, inbox, smarthome }
 
     @Published var selectedTab: MainTab = .heute
     /// Navigationspfad des Bereiche-Tabs (Deep-Link von den Home-KPI-Kacheln).
@@ -35,6 +36,22 @@ final class AppState: ObservableObject {
     @Published var updateBuild: Int?
     @Published var testflightURL: String?
 
+    /// Status der Alarmo-Alarmanlage (Home Assistant). nil = noch nicht geladen.
+    @Published var alarmo: AlarmoStatus?
+    /// Läuft gerade ein Schaltvorgang (scharf/unscharf) → Steuerung sperren + Spinner.
+    @Published var alarmoBusy = false
+    /// Kurzlebige Fehlermeldung eines fehlgeschlagenen Schaltvorgangs (für den Toast in der Kachel).
+    @Published var alarmoError: String?
+
+    // ── Haus-Steuerung (Smart-Home-Tab): Raffstores + Szenen-Scripts ──
+    @Published var houseConfigured = true
+    @Published var houseCovers: [RaffstoreCover] = []
+    @Published var houseScripts: [HouseScript] = []
+    @Published var houseLoaded = false
+    /// Kurzlebiger Toast der Haus-Steuerung.
+    @Published var houseMessage: String?
+    @Published var houseMessageIsError = false
+
     let settings: Settings
     let api: APIClient
 
@@ -49,6 +66,78 @@ final class AppState: ObservableObject {
         Task { await loadDashboard() }
         Task { await checkForUpdate() }
         Task { await loadMe() }
+        Task { await loadAlarmo() }
+    }
+
+    /// Alarmo-Status laden (unabhängig vom Dashboard, damit ein unerreichbares HA das Home nicht blockiert).
+    func loadAlarmo() async {
+        alarmo = try? await api.alarmoStatus()
+    }
+
+    /// Alarmo scharf/unscharf schalten. Der Server nutzt den hinterlegten PIN; danach kurz nachpollen,
+    /// um den „arming"→„armed_*"-Übergang (Ausgangs-Verzögerung) einzufangen.
+    func alarmoAction(_ action: String) async {
+        alarmoBusy = true
+        defer { alarmoBusy = false }
+        do {
+            alarmo = try await api.alarmoAction(action)
+            // Ausgangs-/Eingangs-Verzögerung: noch ein-, zweimal nachziehen bis der Zielzustand steht.
+            for _ in 0..<2 where alarmo?.isArming == true || alarmo?.state == "pending" {
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                if let s = try? await api.alarmoStatus() { alarmo = s }
+            }
+        } catch {
+            // Fehler sichtbar machen, aber alten Status behalten; frisch nachladen.
+            alarmoError = (error as? APIError)?.errorDescription ?? "Schalten fehlgeschlagen."
+            await loadAlarmo()
+        }
+    }
+
+    // ── Haus-Steuerung ──
+
+    /// Raffstore-Zustände + Szenen-Scripts laden.
+    func loadHouse() async {
+        do {
+            let d = try await api.houseState()
+            houseConfigured = d.configured
+            houseCovers = d.covers
+            houseScripts = d.scripts
+        } catch {
+            houseMessage = (error as? APIError)?.errorDescription ?? "Haus-Steuerung nicht erreichbar."
+            houseMessageIsError = true
+        }
+        houseLoaded = true
+    }
+
+    /// Ein Raffstore-Kommando senden; danach kurz nachladen (Cover fahren verzögert).
+    func coverAction(entity: String, action: String, value: Int? = nil) async {
+        do {
+            let d = try await api.coverAction(entity: entity, action: action, value: value)
+            houseCovers = d.covers
+            houseScripts = d.scripts
+            // Cover bewegen sich langsam → nach kurzer Zeit den echten Zustand nachziehen.
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            if let fresh = try? await api.houseState() { houseCovers = fresh.covers }
+        } catch {
+            houseMessage = (error as? APIError)?.errorDescription ?? "Aktion fehlgeschlagen."
+            houseMessageIsError = true
+            await loadHouse()
+        }
+    }
+
+    /// Ein Szenen-Script ausführen; danach nachladen.
+    func runScript(_ script: HouseScript) async {
+        do {
+            try await api.runScript(entity: script.entity)
+            houseMessage = "„\(script.name)“ ausgeführt."
+            houseMessageIsError = false
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            if let fresh = try? await api.houseState() { houseCovers = fresh.covers }
+        } catch {
+            houseMessage = (error as? APIError)?.errorDescription ?? "Script fehlgeschlagen."
+            houseMessageIsError = true
+        }
     }
 
     /// Angemeldete Identität laden (Rolle + Person) — für die Begrüßung.

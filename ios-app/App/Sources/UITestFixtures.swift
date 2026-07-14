@@ -33,6 +33,31 @@ enum UITestFixtures {
         guard UITestMode.isActive else { return nil }
         return try? JSONSerialization.data(withJSONObject: ["latest_build": 999, "testflight_url": "itms-beta://"])
     }
+    /// Alarmo-Status (unscharf, erreichbar) → die Alarmanlage-Kachel zeigt das „Aktivieren"-Menü.
+    static var alarmoData: Data? {
+        guard UITestMode.isActive else { return nil }
+        return try? JSONSerialization.data(withJSONObject: [
+            "configured": true, "reachable": true, "state": "disarmed",
+            "arm_mode": NSNull(), "next_state": "disarmed", "changed_by": "UITest",
+            "friendly_name": "Alarmo", "open_sensors": NSNull(),
+        ])
+    }
+    /// Haus-Steuerung (Smart-Home-Tab): 2 Raffstores + 3 Szenen.
+    static var houseData: Data? {
+        guard UITestMode.isActive else { return nil }
+        return try? JSONSerialization.data(withJSONObject: [
+            "configured": true,
+            "covers": [
+                ["entity": "cover.raffstore_kueche_invert", "name": "Küche", "reachable": true, "state": "open", "position": 100, "tilt": 61],
+                ["entity": "cover.raffstore_fernseher_invert", "name": "TV", "reachable": true, "state": "closed", "position": 0, "tilt": 61],
+            ],
+            "scripts": [
+                ["entity": "script.raffstore_putzen", "name": "Putzen", "icon": "sparkles"],
+                ["entity": "script.raffstore_verdunkeln", "name": "Dunkel", "icon": "moon.fill"],
+                ["entity": "script.raffstore_sichtschutz", "name": "Sicht", "icon": "eye.slash.fill"],
+            ],
+        ])
+    }
 
     /// Bare-Array-Antwort für einen Pfad.
     static func array(_ path: String) -> [[String: Any]]? {

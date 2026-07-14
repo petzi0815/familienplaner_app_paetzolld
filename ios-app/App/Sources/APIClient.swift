@@ -164,6 +164,48 @@ final class APIClient {
         return try await get("/feed/subscribe", as: FeedSubscribeInfo.self)
     }
 
+    /// Status der Alarmo-Alarmanlage (Home Assistant). Nie-erreichbar → reachable:false (kein Throw serverseitig).
+    func alarmoStatus() async throws -> AlarmoStatus {
+        if let data = UITestFixtures.alarmoData {
+            return try Self.decoder.decode(AlarmoStatus.self, from: data)
+        }
+        return try await get("/alarmo", as: AlarmoStatus.self)
+    }
+
+    /// Alarmo scharf/unscharf schalten (PIN liegt serverseitig). action = arm_away|arm_home|arm_night|arm_vacation|disarm.
+    /// Gibt den frisch gelesenen Status nach der Aktion zurück.
+    @discardableResult
+    func alarmoAction(_ action: String) async throws -> AlarmoStatus {
+        let body = try JSONSerialization.data(withJSONObject: ["action": action])
+        let data = try await send("/alarmo", method: "POST", body: body)
+        return try Self.decoder.decode(AlarmoStatus.self, from: data)
+    }
+
+    /// Haus-Steuerung: Raffstore-Zustände + Szenen-Scripts (Home Assistant, kuratiert).
+    func houseState() async throws -> HouseData {
+        if let data = UITestFixtures.houseData {
+            return try Self.decoder.decode(HouseData.self, from: data)
+        }
+        return try await get("/smarthome/house", as: HouseData.self)
+    }
+
+    /// Raffstore steuern. action = open|close|stop|set_position|set_tilt|open_tilt|close_tilt|stop_tilt.
+    /// value (0–100) nur bei set_position/set_tilt. Gibt den frisch gelesenen Haus-Zustand zurück.
+    @discardableResult
+    func coverAction(entity: String, action: String, value: Int? = nil) async throws -> HouseData {
+        var payload: [String: Any] = ["entity": entity, "action": action]
+        if let value { payload["value"] = value }
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        let data = try await send("/smarthome/cover", method: "POST", body: body)
+        return try Self.decoder.decode(HouseData.self, from: data)
+    }
+
+    /// Szenen-Script starten (bringt alle Raffstores in eine Position).
+    func runScript(entity: String) async throws {
+        let body = try JSONSerialization.data(withJSONObject: ["entity": entity])
+        _ = try await send("/smarthome/script", method: "POST", body: body)
+    }
+
     /// Neuester bekannter iOS-Build (TestFlight) — fürs Update-Banner.
     func appVersion() async throws -> AppVersionInfo {
         if let data = UITestFixtures.appVersionData {
