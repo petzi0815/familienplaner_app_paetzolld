@@ -62,7 +62,8 @@ enum DomainCatalog {
 struct BereicheHubView: View {
     @EnvironmentObject private var app: AppState
     @State private var showSettings = false
-    private let cols = [GridItem(.adaptive(minimum: 150), spacing: 14)]
+    // Kompaktes Raster: mehr Bereiche pro Bildschirm (≈3 Spalten auf dem iPhone) ohne Scrollen.
+    private let cols = [GridItem(.adaptive(minimum: 104), spacing: 10)]
 
     var body: some View {
         NavigationStack(path: $app.bereichePath) {
@@ -70,7 +71,7 @@ struct BereicheHubView: View {
                 if app.domains.isEmpty {
                     ProgressView("Lädt Bereiche …").padding(.top, 80)
                 } else {
-                    LazyVGrid(columns: cols, spacing: 14) {
+                    LazyVGrid(columns: cols, spacing: 10) {
                         ForEach(app.domains) { d in
                             NavigationLink(value: d.key) { BereichTile(domain: d) }
                                 .buttonStyle(.plain)
@@ -109,17 +110,17 @@ struct BereicheHubView: View {
 struct BereichTile: View {
     let domain: BereichDomain
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(domain.emoji).font(.system(size: 34))
+        VStack(alignment: .leading, spacing: 6) {
+            Text(domain.emoji).font(.system(size: 30))
             Spacer(minLength: 0)
-            Text(domain.title).font(.headline).foregroundStyle(.white).lineLimit(1)
-            Text("\(domain.resources.count) \(domain.resources.count == 1 ? "Liste" : "Listen")")
-                .font(.caption).foregroundStyle(.white.opacity(0.9))
+            Text(domain.title)
+                .font(.subheadline.weight(.semibold)).foregroundStyle(.white)
+                .lineLimit(1).minimumScaleFactor(0.75)
         }
-        .frame(maxWidth: .infinity, minHeight: 120, alignment: .leading)
-        .padding(16)
-        .background(Palette.gradient(for: domain.key), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .shadow(color: Palette.colors(for: domain.key).first!.opacity(0.35), radius: 10, y: 5)
+        .frame(maxWidth: .infinity, minHeight: 82, alignment: .leading)
+        .padding(12)
+        .background(Palette.gradient(for: domain.key), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .shadow(color: Palette.colors(for: domain.key).first!.opacity(0.3), radius: 7, y: 4)
     }
 }
 
