@@ -64,6 +64,11 @@ export const RESOURCES: Resource[] = [
   { key: "geschenk-anlaesse", table: "geschenk_anlass_config", domain: "geschenkplaner", label: "Anlass-Konfig" },
   { key: "geschenk-vergangene", table: "geschenk_vergangene_geschenke", domain: "geschenkplaner", label: "Vergangene Geschenke" },
 
+  // ── Trauerkarten (digitalisierte Trauerkarten + Kostenübersicht, migriert aus Lovable/Supabase) ──
+  { key: "trauerkarten-personen", table: "trauerkarten_personen", domain: "trauerkarten", label: "Trauerkarten-Personen", sort: "id ASC" },
+  { key: "trauerkarten", table: "trauerkarten", domain: "trauerkarten", label: "Trauerkarten", image: { col: "foto_key", multi: false, area: "trauerkarten" }, searchable: ["name", "trauertext"], sort: "created_at ASC" },
+  { key: "trauerkarten-kosten", table: "trauerkarten_kosten", domain: "trauerkarten", label: "Trauer-Kostenübersicht", image: { col: "beleg_key", multi: false, area: "trauerkarten" }, sort: "datum DESC" },
+
   // ── Garten ──
   { key: "garten-pflanzen", table: "garten_pflanzen", domain: "garten", label: "Pflanzen", image: { col: "bild_pfade", multi: true, area: "garten" }, sort: "name ASC" },
   { key: "garten-samen", table: "garten_samen", domain: "garten", label: "Samen", image: { col: "bild_pfade", multi: true, area: "garten" }, sort: "name ASC" },
