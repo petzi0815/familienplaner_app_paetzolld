@@ -84,7 +84,7 @@ enum UITestFixtures {
             ["key": "reminders", "icon": "bell.badge.fill", "label": "Erinnerungen", "value": 1, "domain": "termine", "target": "heute"],
             ["key": "vorrat", "icon": "clock.badge.exclamationmark", "label": "Bald ablaufend", "value": 4, "domain": "vorratskammer", "target": "bereich:vorratskammer"],
             ["key": "nachkaufen", "icon": "cart.fill", "label": "Nachkaufen", "value": 5, "domain": "reiniger", "target": "bereich:reiniger"],
-            ["key": "geschenke", "icon": "gift.fill", "label": "Geschenke", "value": 6, "domain": "geschenkplaner", "target": "bereich:geschenkplaner"],
+            ["key": "geschenke", "icon": "gift.fill", "label": "Geschenk-Anlässe", "value": 2, "domain": "geschenkplaner", "target": "bereich:geschenkplaner"],
         ],
         "agenda": [
             ["source": "termin", "domain": "termine", "id": "termin-1", "ref_id": 1, "title": "UITEST Zahnarzt", "subtitle": "Samu", "date": "2099-09-09", "time": "10:00", "days_until": 9999, "read": false, "notify": false],

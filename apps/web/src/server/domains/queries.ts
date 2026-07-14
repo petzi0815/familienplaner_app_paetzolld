@@ -193,7 +193,11 @@ export function dashboardToday(owner?: string | null): Record<string, unknown> {
   const vorratAblaufend = num("SELECT COUNT(*) c FROM vorrat_lebensmittel WHERE mhd IS NOT NULL AND mhd<>'' AND mhd<=date('now','+14 days') AND COALESCE(status,'')<>'verbraucht'");
   const reinigerNachkauf = num("SELECT COUNT(*) c FROM reiniger_produkte WHERE status IN ('leer','nachkaufen')");
   const vorratNachkauf = num("SELECT COUNT(*) c FROM vorrat_lebensmittel WHERE COALESCE(restock,0)=1");
-  // Geschenke: nur offene Ideen für ZUKÜNFTIGE Anlässe (behebt die aufgeblähte „458").
+  // Geschenke-KPI: anstehende Anlässe der nächsten 3 Monate (aussagekräftiger als die reine Ideen-Zahl).
+  const geschenkAnlaesse3M = num(
+    "SELECT COUNT(*) c FROM geschenk_ereignisse WHERE datum>=date('now') AND datum<=date('now','+3 months')",
+  );
+  // Offene Geschenk-Ideen für zukünftige Anlässe (nur noch für counts.geschenke_offen; keine KPI-Kachel mehr).
   const geschenkeZukunft = num(
     "SELECT COUNT(*) c FROM geschenk_geschenke g JOIN geschenk_ereignisse e ON g.ereignis_id=e.id WHERE COALESCE(g.status,'')<>'vergeben' AND e.datum>=date('now')",
   );
@@ -214,7 +218,7 @@ export function dashboardToday(owner?: string | null): Record<string, unknown> {
     { key: "reminders", icon: "bell.badge.fill", label: "Erinnerungen", value: remindersDueCount, domain: "termine", target: "heute" },
     { key: "vorrat", icon: "clock.badge.exclamationmark", label: "Bald ablaufend", value: vorratAblaufend, domain: "vorratskammer", target: "bereich:vorratskammer" },
     { key: "nachkaufen", icon: "cart.fill", label: "Nachkaufen", value: reinigerNachkauf + vorratNachkauf, domain: "reiniger", target: "bereich:reiniger" },
-    { key: "geschenke", icon: "gift.fill", label: "Geschenke", value: geschenkeZukunft, domain: "geschenkplaner", target: "bereich:geschenkplaner" },
+    { key: "geschenke", icon: "gift.fill", label: "Geschenk-Anlässe", value: geschenkAnlaesse3M, domain: "geschenkplaner", target: "bereich:geschenkplaner" },
   ];
 
   return {
