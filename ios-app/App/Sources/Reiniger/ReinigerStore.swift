@@ -3,7 +3,7 @@ import SwiftUI
 /// Zentraler Zustand des Reiniger-Bereichs: Produkte, Anwendungen, Stats, Suche, Tab.
 /// Alle drei Datensaetze werden gemeinsam geladen; Suche filtert Produkte + Anwendungen serverseitig.
 @MainActor
-final class ReinigerStore: ObservableObject {
+final class ReinigerStore: ObservableObject, NotifiableStore {
     let api: ReinigerAPI
 
     @Published var items: [ReinigerProdukt] = []
@@ -109,8 +109,5 @@ final class ReinigerStore: ObservableObject {
         catch { notify(errText(error), error: true); return false }
     }
 
-    // MARK: - Helfer
-
-    func notify(_ text: String, error: Bool = false) { message = text; messageIsError = error }
-    private func errText(_ e: Error) -> String { (e as? APIError)?.errorDescription ?? "Fehler" }
+    // notify(_:error:) und errText(_:) kommen aus NotifiableStore.
 }

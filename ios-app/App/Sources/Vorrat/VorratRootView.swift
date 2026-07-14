@@ -25,17 +25,12 @@ struct VorratRootView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            AreaHeader(gradientKey: "vorratskammer", systemImage: "fork.knife", title: "Vorratskammer", subtitle: subtitle)
-            SegmentBar(tabs: tabs, selection: $store.tab, gradientKey: "vorratskammer")
-            Divider()
-            content
-        }
-        .background(Palette.gradient(for: "vorratskammer").opacity(0.05).ignoresSafeArea())
-        .navigationBarTitleDisplayMode(.inline)
-        .task { if store.loading && store.items.isEmpty { await store.loadAll() } }
-        .environmentObject(store)
-        .overlay(alignment: .bottom) { toast }
+        AreaScaffold(gradientKey: "vorratskammer", systemImage: "fork.knife", title: "Vorratskammer", subtitle: subtitle,
+                     toast: $store.message, toastIsError: store.messageIsError,
+                     controls: { SegmentBar(tabs: tabs, selection: $store.tab, gradientKey: "vorratskammer") },
+                     content: { content })
+            .task { if store.loading && store.items.isEmpty { await store.loadAll() } }
+            .environmentObject(store)
     }
 
     @ViewBuilder private var content: some View {
@@ -48,13 +43,6 @@ struct VorratRootView: View {
             case .ablaufend: VorratAblaufendView()
             case .rezepte:   VorratRezepteView()
             }
-        }
-    }
-
-    @ViewBuilder private var toast: some View {
-        if let m = store.message {
-            AreaToast(message: m, isError: store.messageIsError)
-                .task { try? await Task.sleep(nanoseconds: 2_500_000_000); store.message = nil }
         }
     }
 }

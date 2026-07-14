@@ -265,7 +265,7 @@ struct GeschenkKindView: View {
             ])
             store.notify("Profil gespeichert ✅")
             await store.loadKinder()
-        } catch { store.notify(store.err(error), error: true) }
+        } catch { store.notify(store.errText(error), error: true) }
     }
 
     private func confirmProfil() async {
@@ -274,7 +274,7 @@ struct GeschenkKindView: View {
             store.notify("Profil bestätigt ✅")
             await load()
             await store.loadKinder(); await store.loadDashboard()
-        } catch { store.notify(store.err(error), error: true) }
+        } catch { store.notify(store.errText(error), error: true) }
     }
 
     private func saveAnlaesse() async {
@@ -291,7 +291,7 @@ struct GeschenkKindView: View {
             _ = try await store.api.putAnlaesse(kindID, configs: configs)
             store.notify("Anlass-Konfiguration gespeichert ✅")
             await store.loadKinder()
-        } catch { store.notify(store.err(error), error: true) }
+        } catch { store.notify(store.errText(error), error: true) }
     }
 
     private func deleteVergangenes(_ v: GVergangenes) async {
@@ -300,6 +300,6 @@ struct GeschenkKindView: View {
             store.notify("Gelöscht")
             await load()
             await store.loadArchiv()
-        } catch { store.notify(store.err(error), error: true) }
+        } catch { store.notify(store.errText(error), error: true) }
     }
 }

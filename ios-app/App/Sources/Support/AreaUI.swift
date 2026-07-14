@@ -227,6 +227,83 @@ extension View {
     }
 }
 
+/// Einheitliches Grundgerüst eines nativen Lebensbereichs: Verlaufs-Kopf (optional mit Trailing-Slot)
+/// + optionale Steuerleiste (Segmente/Suche/Chips) + Trenner + Inhalt, auf dem zart eingefärbten
+/// Bereichs-Verlauf, mit vereinheitlichtem Toast am unteren Rand.
+///
+/// Ersetzt das pro Bereich kopierte Muster
+/// `VStack { AreaHeader … [SegmentBar] Divider; content }.background(gradient).navBar(.inline).overlay { toast }`.
+/// Bereichsspezifische Modifikatoren (`.task`, `.environmentObject`, `.sheet`, `.toolbar`, …) bleiben
+/// beim aufrufenden Root-View und werden einfach an das Scaffold gehängt.
+///
+/// Drei Initializer decken die Bereiche ab: mit Trailing+Steuerleiste (Garten/Verträge/Wunschliste),
+/// nur Steuerleiste (Samu/Geschenke/Vorrat/Reiniger/E-Books/Smart Home) und nur Inhalt (Gypsi).
+struct AreaScaffold<Trailing: View, Controls: View, Content: View>: View {
+    let gradientKey: String
+    let systemImage: String
+    let title: String
+    var subtitle: String?
+    @Binding var toast: String?
+    var toastIsError: Bool
+    var toastSeconds: Double
+    @ViewBuilder let trailing: () -> Trailing
+    @ViewBuilder let controls: () -> Controls
+    @ViewBuilder let content: () -> Content
+
+    init(gradientKey: String, systemImage: String, title: String, subtitle: String? = nil,
+         toast: Binding<String?>, toastIsError: Bool, toastSeconds: Double = 2.5,
+         @ViewBuilder trailing: @escaping () -> Trailing,
+         @ViewBuilder controls: @escaping () -> Controls,
+         @ViewBuilder content: @escaping () -> Content) {
+        self.gradientKey = gradientKey
+        self.systemImage = systemImage
+        self.title = title
+        self.subtitle = subtitle
+        self._toast = toast
+        self.toastIsError = toastIsError
+        self.toastSeconds = toastSeconds
+        self.trailing = trailing
+        self.controls = controls
+        self.content = content
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            AreaHeader(gradientKey: gradientKey, systemImage: systemImage, title: title,
+                       subtitle: subtitle, trailing: trailing)
+            controls()
+            Divider()
+            content()
+        }
+        .background(Palette.gradient(for: gradientKey).opacity(0.05).ignoresSafeArea())
+        .navigationBarTitleDisplayMode(.inline)
+        .areaToast($toast, isError: toastIsError, seconds: toastSeconds)
+    }
+}
+
+/// Ohne Header-Trailing — Steuerleiste (Segmente/Suche) + Inhalt.
+extension AreaScaffold where Trailing == EmptyView {
+    init(gradientKey: String, systemImage: String, title: String, subtitle: String? = nil,
+         toast: Binding<String?>, toastIsError: Bool, toastSeconds: Double = 2.5,
+         @ViewBuilder controls: @escaping () -> Controls,
+         @ViewBuilder content: @escaping () -> Content) {
+        self.init(gradientKey: gradientKey, systemImage: systemImage, title: title, subtitle: subtitle,
+                  toast: toast, toastIsError: toastIsError, toastSeconds: toastSeconds,
+                  trailing: { EmptyView() }, controls: controls, content: content)
+    }
+}
+
+/// Weder Trailing noch Steuerleiste — nur Inhalt (z. B. Gypsi).
+extension AreaScaffold where Trailing == EmptyView, Controls == EmptyView {
+    init(gradientKey: String, systemImage: String, title: String, subtitle: String? = nil,
+         toast: Binding<String?>, toastIsError: Bool, toastSeconds: Double = 2.5,
+         @ViewBuilder content: @escaping () -> Content) {
+        self.init(gradientKey: gradientKey, systemImage: systemImage, title: title, subtitle: subtitle,
+                  toast: toast, toastIsError: toastIsError, toastSeconds: toastSeconds,
+                  trailing: { EmptyView() }, controls: { EmptyView() }, content: content)
+    }
+}
+
 /// Leerzustand mit Emoji-Titel + Hinweis (statt SF-Symbol) — passt zum verspielten Bereichs-Look.
 struct AreaEmptyState: View {
     let emoji: String

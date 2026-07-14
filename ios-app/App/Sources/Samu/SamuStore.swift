@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Zentraler Zustand des Samu-Inventars (Items, Marken, Bedarf, Stats, Matrix, Filter).
 @MainActor
-final class SamuStore: ObservableObject {
+final class SamuStore: ObservableObject, NotifiableStore {
     let api: SamuAPI
 
     @Published var items: [SamuItem] = []
@@ -154,9 +154,7 @@ final class SamuStore: ObservableObject {
         do { try await api.deleteBedarf(b.id) } catch { await reloadBedarf() }
     }
 
-    // MARK: - Helfer
-    func notify(_ text: String, error: Bool = false) { message = text; messageIsError = error }
-    private func errText(_ e: Error) -> String { (e as? APIError)?.errorDescription ?? "Fehler" }
+    // notify(_:error:) und errText(_:) kommen aus NotifiableStore.
 }
 
 enum SamuTab: Hashable { case inventar, uebersicht, bedarf }

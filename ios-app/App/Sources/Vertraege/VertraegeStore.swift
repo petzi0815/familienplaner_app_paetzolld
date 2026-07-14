@@ -4,7 +4,7 @@ import UIKit
 /// Zentraler Zustand des Verträge-Bereichs: Rohzeilen laden, clientseitig gruppieren/rechnen,
 /// Filter/Sortierung für die Listenansicht, Mutationen (agent-gated → 403 wird als Toast gezeigt).
 @MainActor
-final class VertraegeStore: ObservableObject {
+final class VertraegeStore: ObservableObject, NotifiableStore {
     let api: VertraegeAPI
 
     @Published var vertraege: [Vertrag] = []
@@ -123,8 +123,5 @@ final class VertraegeStore: ObservableObject {
         notify("Kopiert!")
     }
 
-    // MARK: - Helfer
-
-    func notify(_ text: String, error: Bool = false) { message = text; messageIsError = error }
-    private func errText(_ e: Error) -> String { (e as? APIError)?.errorDescription ?? "Fehler" }
+    // notify(_:error:) und errText(_:) kommen aus NotifiableStore.
 }

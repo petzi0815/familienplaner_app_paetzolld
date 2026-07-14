@@ -22,17 +22,12 @@ struct EbooksRootView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            AreaHeader(gradientKey: "ebooks", systemImage: "books.vertical.fill", title: "E-Books", subtitle: subtitle)
-            SegmentBar(tabs: tabs, selection: $store.tab, gradientKey: "ebooks")
-            Divider()
-            content
-        }
-        .background(Palette.gradient(for: "ebooks").opacity(0.05).ignoresSafeArea())
-        .navigationBarTitleDisplayMode(.inline)
-        .task { if store.items.isEmpty && store.loading { await store.loadAll() } }
-        .environmentObject(store)
-        .overlay(alignment: .bottom) { toast }
+        AreaScaffold(gradientKey: "ebooks", systemImage: "books.vertical.fill", title: "E-Books", subtitle: subtitle,
+                     toast: $store.message, toastIsError: store.messageIsError,
+                     controls: { SegmentBar(tabs: tabs, selection: $store.tab, gradientKey: "ebooks") },
+                     content: { content })
+            .task { if store.items.isEmpty && store.loading { await store.loadAll() } }
+            .environmentObject(store)
     }
 
     @ViewBuilder private var content: some View {
@@ -44,13 +39,6 @@ struct EbooksRootView: View {
             case .bibliothek: CalibreView()
             case .suche: EbooksSearchView()
             }
-        }
-    }
-
-    @ViewBuilder private var toast: some View {
-        if let m = store.message {
-            AreaToast(message: m, isError: store.messageIsError)
-                .task { try? await Task.sleep(nanoseconds: 2_500_000_000); store.message = nil }
         }
     }
 }

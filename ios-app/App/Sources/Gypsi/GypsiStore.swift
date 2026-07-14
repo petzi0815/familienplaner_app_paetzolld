@@ -3,7 +3,7 @@ import SwiftUI
 /// Zentraler Zustand des Gypsi-Futters (volle Liste + clientseitige Filter/Stats/Optionen).
 /// Native UX: die Liste wird EINmal geladen, Filter wirken sofort (kein Refetch pro Filterklick).
 @MainActor
-final class GypsiStore: ObservableObject {
+final class GypsiStore: ObservableObject, NotifiableStore {
     let api: GypsiAPI
 
     @Published var all: [GypsiFutter] = []              // serverseitig `erfasst_am DESC`
@@ -96,8 +96,5 @@ final class GypsiStore: ObservableObject {
         busyIDs.remove(f.id)
     }
 
-    // MARK: - Helfer
-
-    func notify(_ text: String, error: Bool = false) { message = text; messageIsError = error }
-    private func errText(_ e: Error) -> String { (e as? APIError)?.errorDescription ?? "Fehler" }
+    // notify(_:error:) und errText(_:) kommen aus NotifiableStore.
 }

@@ -18,26 +18,20 @@ struct WunschlisteRootView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            AreaHeader(gradientKey: "wunschliste", systemImage: "gift.fill",
-                       title: "Samus Wunschliste", subtitle: subtitle) {
-                addMenu
+        AreaScaffold(gradientKey: "wunschliste", systemImage: "gift.fill",
+                     title: "Samus Wunschliste", subtitle: subtitle,
+                     toast: $store.message, toastIsError: store.messageIsError,
+                     trailing: { addMenu },
+                     controls: { WunschEventChipBar(store: store) },
+                     content: { content })
+            .task { if store.events.isEmpty && store.loading { await store.loadAll() } }
+            .environmentObject(store)
+            .sheet(isPresented: $showAddItem) {
+                WunschItemFormSheet(defaultEventID: store.selectedEventID).environmentObject(store)
             }
-            WunschEventChipBar(store: store)
-            Divider()
-            content
-        }
-        .background(Palette.gradient(for: "wunschliste").opacity(0.05).ignoresSafeArea())
-        .navigationBarTitleDisplayMode(.inline)
-        .task { if store.events.isEmpty && store.loading { await store.loadAll() } }
-        .environmentObject(store)
-        .overlay(alignment: .bottom) { toast }
-        .sheet(isPresented: $showAddItem) {
-            WunschItemFormSheet(defaultEventID: store.selectedEventID).environmentObject(store)
-        }
-        .sheet(isPresented: $showAddEvent) {
-            WunschEventFormSheet().environmentObject(store)
-        }
+            .sheet(isPresented: $showAddEvent) {
+                WunschEventFormSheet().environmentObject(store)
+            }
     }
 
     // ── „+"-Menü (Event immer, Geschenk wenn Anlässe existieren) + deaktivierte 501-Aktion ──
@@ -70,13 +64,6 @@ struct WunschlisteRootView: View {
         } else {
             WunschItemsView(onAddItem: { showAddItem = true })
                 .environmentObject(store)
-        }
-    }
-
-    @ViewBuilder private var toast: some View {
-        if let m = store.message {
-            AreaToast(message: m, isError: store.messageIsError)
-                .task { try? await Task.sleep(nanoseconds: 2_500_000_000); store.message = nil }
         }
     }
 }

@@ -244,7 +244,7 @@ struct GeschenkEreignisView: View {
             await load()
             await store.loadDashboard()
         } catch {
-            store.notify(store.err(error), error: true)
+            store.notify(store.errText(error), error: true)
             reminderOn = e.erinnerungenAktiv != 0
         }
     }
@@ -255,7 +255,7 @@ struct GeschenkEreignisView: View {
             store.notify("Profil bestätigt ✅")
             await load()
             await store.loadDashboard()
-        } catch { store.notify(store.err(error), error: true) }
+        } catch { store.notify(store.errText(error), error: true) }
     }
 
     private func cycleStatus(_ g: GGeschenk) async {
@@ -266,7 +266,7 @@ struct GeschenkEreignisView: View {
             store.notify("Status → \(GStyle.statusLabel(next))")
             await load()
             await store.loadDashboard(); await store.loadEinkauf()
-        } catch { store.notify(store.err(error), error: true) }
+        } catch { store.notify(store.errText(error), error: true) }
     }
 
     private func vergeben(_ g: GGeschenk) async {
@@ -275,7 +275,7 @@ struct GeschenkEreignisView: View {
             store.notify("Vergeben & archiviert 🎉")
             await load()
             await store.loadDashboard(); await store.loadEinkauf()
-        } catch { store.notify(store.err(error), error: true) }
+        } catch { store.notify(store.errText(error), error: true) }
     }
 
     private func schonGeschenkt(_ g: GGeschenk) async {
@@ -284,7 +284,7 @@ struct GeschenkEreignisView: View {
             store.notify("Als schon geschenkt markiert & entfernt 🔄")
             await load()
             await store.loadDashboard(); await store.loadEinkauf()
-        } catch { store.notify(store.err(error), error: true) }
+        } catch { store.notify(store.errText(error), error: true) }
     }
 
     private func deleteGift(_ g: GGeschenk) async {
@@ -293,7 +293,7 @@ struct GeschenkEreignisView: View {
             store.notify("Gelöscht")
             await load()
             await store.loadDashboard(); await store.loadEinkauf()
-        } catch { store.notify(store.err(error), error: true) }
+        } catch { store.notify(store.errText(error), error: true) }
     }
 
     private func vote(_ g: GGeschenk, _ delta: Int) async {
@@ -301,7 +301,7 @@ struct GeschenkEreignisView: View {
         do {
             try await store.api.updateGeschenk(g.id, ["ranking": newRanking])
             await load()
-        } catch { store.notify(store.err(error), error: true) }
+        } catch { store.notify(store.errText(error), error: true) }
     }
 }
 

@@ -4,7 +4,7 @@ import SwiftUI
 /// Filter). Alle clientseitig abgeleiteten Felder (Gruppen/Regular-Split, Raum-Gruppierung,
 /// Beziehungs-Gruppierung, Log-Kennzahlen) werden hier berechnet — das Backend liefert sie nicht.
 @MainActor
-final class SmartHomeStore: ObservableObject {
+final class SmartHomeStore: ObservableObject, NotifiableStore {
     let api: SmartHomeAPI
 
     @Published var tab: SmartHomeTab = .geraete
@@ -213,10 +213,7 @@ final class SmartHomeStore: ObservableObject {
         catch { notify(errText(error), error: true) }
     }
 
-    // MARK: - Helfer
-
-    func notify(_ text: String, error: Bool = false) { message = text; messageIsError = error }
-    private func errText(_ e: Error) -> String { (e as? APIError)?.errorDescription ?? "Fehler" }
+    // notify(_:error:) und errText(_:) kommen aus NotifiableStore.
 }
 
 enum SmartHomeTab: Hashable { case geraete, beziehungen, log }

@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Zentraler Zustand des Garten-Bereichs (Pflanzen, Samen, Aufgaben, Dünger, Stats, GTS, Filter).
 @MainActor
-final class GartenStore: ObservableObject {
+final class GartenStore: ObservableObject, NotifiableStore {
     let api: GartenAPI
 
     @Published var tab: GartenTab = .pflanzen
@@ -118,8 +118,5 @@ final class GartenStore: ObservableObject {
         catch { notify(errText(error), error: true) }
     }
 
-    // MARK: - Helfer
-
-    func notify(_ text: String, error: Bool = false) { message = text; messageIsError = error }
-    private func errText(_ e: Error) -> String { (e as? APIError)?.errorDescription ?? "Fehler" }
+    // notify(_:error:) und errText(_:) kommen aus NotifiableStore.
 }

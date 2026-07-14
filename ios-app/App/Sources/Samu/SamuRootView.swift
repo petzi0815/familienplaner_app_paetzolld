@@ -23,17 +23,12 @@ struct SamuRootView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            AreaHeader(gradientKey: "samu", systemImage: "teddybear.fill", title: "Samu", subtitle: subtitle)
-            SegmentBar(tabs: tabs, selection: $store.tab, gradientKey: "samu")
-            Divider()
-            content
-        }
-        .background(Palette.gradient(for: "samu").opacity(0.05).ignoresSafeArea())
-        .navigationBarTitleDisplayMode(.inline)
-        .task { if store.items.isEmpty && store.loading { await store.loadAll() } }
-        .environmentObject(store)
-        .overlay(alignment: .bottom) { toast }
+        AreaScaffold(gradientKey: "samu", systemImage: "teddybear.fill", title: "Samu", subtitle: subtitle,
+                     toast: $store.message, toastIsError: store.messageIsError,
+                     controls: { SegmentBar(tabs: tabs, selection: $store.tab, gradientKey: "samu") },
+                     content: { content })
+            .task { if store.items.isEmpty && store.loading { await store.loadAll() } }
+            .environmentObject(store)
     }
 
     @ViewBuilder private var content: some View {
@@ -45,13 +40,6 @@ struct SamuRootView: View {
             case .uebersicht: SamuMatrixView()
             case .bedarf: SamuBedarfView()
             }
-        }
-    }
-
-    @ViewBuilder private var toast: some View {
-        if let m = store.message {
-            AreaToast(message: m, isError: store.messageIsError)
-                .task { try? await Task.sleep(nanoseconds: 2_500_000_000); store.message = nil }
         }
     }
 }

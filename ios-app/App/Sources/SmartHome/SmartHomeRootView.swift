@@ -22,17 +22,12 @@ struct SmartHomeRootView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            AreaHeader(gradientKey: "smarthome", systemImage: "house.fill", title: "Smart Home", subtitle: subtitle)
-            SegmentBar(tabs: tabs, selection: $store.tab, gradientKey: "smarthome")
-            Divider()
-            content
-        }
-        .background(Palette.gradient(for: "smarthome").opacity(0.05).ignoresSafeArea())
-        .navigationBarTitleDisplayMode(.inline)
-        .task { if !store.loaded { await store.loadAll() } }
-        .environmentObject(store)
-        .overlay(alignment: .bottom) { toast }
+        AreaScaffold(gradientKey: "smarthome", systemImage: "house.fill", title: "Smart Home", subtitle: subtitle,
+                     toast: $store.message, toastIsError: store.messageIsError,
+                     controls: { SegmentBar(tabs: tabs, selection: $store.tab, gradientKey: "smarthome") },
+                     content: { content })
+            .task { if !store.loaded { await store.loadAll() } }
+            .environmentObject(store)
     }
 
     @ViewBuilder private var content: some View {
@@ -44,13 +39,6 @@ struct SmartHomeRootView: View {
             case .beziehungen: SmartHomeRelationsView()
             case .log: SmartHomeLogView()
             }
-        }
-    }
-
-    @ViewBuilder private var toast: some View {
-        if let m = store.message {
-            AreaToast(message: m, isError: store.messageIsError)
-                .task { try? await Task.sleep(nanoseconds: 2_500_000_000); store.message = nil }
         }
     }
 }

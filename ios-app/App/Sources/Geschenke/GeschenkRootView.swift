@@ -18,17 +18,12 @@ struct GeschenkRootView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            AreaHeader(gradientKey: "geschenkplaner", systemImage: "gift.fill",
-                       title: "Geschenkplaner", subtitle: "Geschenke für jeden Anlass")
-            SegmentBar(tabs: tabs, selection: $store.tab, gradientKey: "geschenkplaner")
-            Divider()
-            content
-        }
-        .background(Palette.gradient(for: "geschenkplaner").opacity(0.05).ignoresSafeArea())
-        .navigationBarTitleDisplayMode(.inline)
-        .environmentObject(store)
-        .overlay(alignment: .bottom) { toast }
+        AreaScaffold(gradientKey: "geschenkplaner", systemImage: "gift.fill",
+                     title: "Geschenkplaner", subtitle: "Geschenke für jeden Anlass",
+                     toast: $store.message, toastIsError: store.messageIsError,
+                     controls: { SegmentBar(tabs: tabs, selection: $store.tab, gradientKey: "geschenkplaner") },
+                     content: { content })
+            .environmentObject(store)
     }
 
     @ViewBuilder private var content: some View {
@@ -37,13 +32,6 @@ struct GeschenkRootView: View {
         case .einkauf: GeschenkEinkaufView()
         case .kinder: GeschenkKinderView()
         case .archiv: GeschenkArchivView()
-        }
-    }
-
-    @ViewBuilder private var toast: some View {
-        if let m = store.message {
-            AreaToast(message: m, isError: store.messageIsError)
-                .task { try? await Task.sleep(nanoseconds: 2_500_000_000); store.message = nil }
         }
     }
 }

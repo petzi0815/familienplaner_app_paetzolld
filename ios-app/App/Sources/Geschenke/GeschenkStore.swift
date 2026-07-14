@@ -3,7 +3,7 @@ import SwiftUI
 /// Zentraler Zustand des Geschenkplaners (Dashboard, Kinder, Einkauf, Archiv, Toast).
 /// Detailansichten (Ereignis, Kind) laden ihren eigenen lokalen Zustand ueber `store.api`.
 @MainActor
-final class GeschenkStore: ObservableObject {
+final class GeschenkStore: ObservableObject, NotifiableStore {
     let api: GeschenkAPI
 
     @Published var tab: GeschenkTab = .uebersicht
@@ -60,7 +60,7 @@ final class GeschenkStore: ObservableObject {
 
     func confirmProfil(_ kindId: Int) async {
         do { try await api.confirmProfil(kindId); notify("Profil bestätigt ✅"); await loadDashboard() }
-        catch { notify(err(error), error: true) }
+        catch { notify(errText(error), error: true) }
     }
 
     func setGeschenkStatus(_ id: Int, _ status: String) async {
@@ -68,12 +68,12 @@ final class GeschenkStore: ObservableObject {
             try await api.updateGeschenk(id, ["status": status])
             notify("Status → \(GStyle.statusLabel(status))")
             await loadEinkauf()
-        } catch { notify(err(error), error: true) }
+        } catch { notify(errText(error), error: true) }
     }
 
     func deleteKind(_ k: GKind) async {
         do { try await api.deleteKind(k.id); notify("Kind gelöscht"); await loadKinder() }
-        catch { notify(err(error), error: true) }
+        catch { notify(errText(error), error: true) }
     }
 
     func createKind(name: String, geburtsdatum: String, profil: String, negativliste: String) async -> Bool {
@@ -86,7 +86,7 @@ final class GeschenkStore: ObservableObject {
             notify("Kind angelegt ✅")
             await loadKinder()
             return true
-        } catch { notify(err(error), error: true); return false }
+        } catch { notify(errText(error), error: true); return false }
     }
 
     /// Matrix speichern: fuer jedes Kind Anlaesse als PUT, dann Ereignisse generieren.
@@ -98,7 +98,7 @@ final class GeschenkStore: ObservableObject {
             try await api.generieren()
             notify("Matrix gespeichert ✅")
             await loadKinder()
-        } catch { notify(err(error), error: true) }
+        } catch { notify(errText(error), error: true) }
     }
 
     func createVergangenes(kindId: Int, titel: String, anlass: String, jahr: Int?, notizen: String) async -> Bool {
@@ -111,17 +111,15 @@ final class GeschenkStore: ObservableObject {
             notify("Eingetragen ✅")
             await loadArchiv()
             return true
-        } catch { notify(err(error), error: true); return false }
+        } catch { notify(errText(error), error: true); return false }
     }
 
     func deleteVergangenes(_ id: Int) async {
         do { try await api.deleteVergangenes(id); notify("Gelöscht"); await loadArchiv() }
-        catch { notify(err(error), error: true) }
+        catch { notify(errText(error), error: true) }
     }
 
-    // MARK: - Helfer
-    func notify(_ text: String, error: Bool = false) { message = text; messageIsError = error }
-    func err(_ e: Error) -> String { (e as? APIError)?.errorDescription ?? "Fehler" }
+    // notify(_:error:) und errText(_:) kommen aus NotifiableStore.
 }
 
 enum GeschenkTab: Hashable { case uebersicht, einkauf, kinder, archiv }

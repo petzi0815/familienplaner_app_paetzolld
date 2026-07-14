@@ -4,7 +4,7 @@ import SwiftUI
 /// Nach jeder Mutation werden die vier zusammenhängenden Listen + Stats frisch geladen
 /// (keine optimistische UI — genau wie die Original-Seite, aber ohne globalen Blocker).
 @MainActor
-final class VorratStore: ObservableObject {
+final class VorratStore: ObservableObject, NotifiableStore {
     let api: VorratAPI
 
     @Published var items: [VorratItem] = []          // aktive Lebensmittel (server-gefiltert)
@@ -70,40 +70,37 @@ final class VorratStore: ObservableObject {
 
     func consume(_ item: VorratItem) async {
         do { try await api.update(item.id, ["status": "verbraucht"]); await refresh(); notify("Als verbraucht markiert") }
-        catch { notify(err(error), error: true) }
+        catch { notify(errText(error), error: true) }
     }
 
     func delete(_ item: VorratItem) async {
         do { try await api.delete(item.id); await refresh(); notify("Gelöscht") }
-        catch { notify(err(error), error: true) }
+        catch { notify(errText(error), error: true) }
     }
 
     /// „Wieder da!" — zurück in den Vorrat, `verbraucht_am` explizit auf NULL.
     func wiederDa(_ item: VorratItem) async {
         do { try await api.update(item.id, ["status": "aktiv", "verbraucht_am": NSNull()]); await refresh(); notify("Wieder im Vorrat") }
-        catch { notify(err(error), error: true) }
+        catch { notify(errText(error), error: true) }
     }
 
     /// „Kein Restock" — bleibt verbraucht, verschwindet von der Einkaufsliste.
     func keinRestock(_ item: VorratItem) async {
         do { try await api.update(item.id, ["restock": 0]); await refresh(); notify("Von der Einkaufsliste entfernt") }
-        catch { notify(err(error), error: true) }
+        catch { notify(errText(error), error: true) }
     }
 
     @discardableResult
     func createItem(_ fields: [String: Any]) async -> Bool {
         do { _ = try await api.create(fields); await refresh(); notify("Hinzugefügt"); return true }
-        catch { notify(err(error), error: true); return false }
+        catch { notify(errText(error), error: true); return false }
     }
 
     @discardableResult
     func updateItem(_ id: Int, _ fields: [String: Any]) async -> Bool {
         do { try await api.update(id, fields); await refresh(); notify("Gespeichert"); return true }
-        catch { notify(err(error), error: true); return false }
+        catch { notify(errText(error), error: true); return false }
     }
 
-    // MARK: - Helfer
-
-    func notify(_ text: String, error: Bool = false) { message = text; messageIsError = error }
-    func err(_ e: Error) -> String { (e as? APIError)?.errorDescription ?? "Fehler" }
+    // notify(_:error:) und errText(_:) kommen aus NotifiableStore.
 }

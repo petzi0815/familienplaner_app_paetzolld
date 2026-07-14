@@ -186,7 +186,7 @@ struct GGiftFormSheet: View {
             saving = false
             dismiss()
         } catch {
-            store.notify(store.err(error), error: true)
+            store.notify(store.errText(error), error: true)
             saving = false
         }
     }
@@ -198,7 +198,7 @@ struct GGiftFormSheet: View {
             store.notify("Als schon geschenkt markiert & entfernt 🔄")
             await store.loadDashboard(); await store.loadEinkauf()
             dismiss()
-        } catch { store.notify(store.err(error), error: true) }
+        } catch { store.notify(store.errText(error), error: true) }
     }
 }
 

@@ -30,23 +30,20 @@ struct ReinigerRootView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            AreaHeader(gradientKey: "reiniger", systemImage: "sparkles", title: "Reiniger", subtitle: subtitle)
-            SegmentBar(tabs: tabs, selection: $store.tab, gradientKey: "reiniger")
-            AreaSearchField(placeholder: searchPlaceholder, text: $store.search)
-            Divider()
-            content
-        }
-        .background(Palette.gradient(for: "reiniger").opacity(0.05).ignoresSafeArea())
-        .navigationBarTitleDisplayMode(.inline)
-        .task { if store.items.isEmpty && store.loading { await store.loadAll() } }
-        .task(id: store.search) {
-            guard store.initialized else { return }
-            try? await Task.sleep(nanoseconds: 350_000_000)
-            if !Task.isCancelled { await store.reload() }
-        }
-        .environmentObject(store)
-        .overlay(alignment: .bottom) { toast }
+        AreaScaffold(gradientKey: "reiniger", systemImage: "sparkles", title: "Reiniger", subtitle: subtitle,
+                     toast: $store.message, toastIsError: store.messageIsError,
+                     controls: {
+                         SegmentBar(tabs: tabs, selection: $store.tab, gradientKey: "reiniger")
+                         AreaSearchField(placeholder: searchPlaceholder, text: $store.search)
+                     },
+                     content: { content })
+            .task { if store.items.isEmpty && store.loading { await store.loadAll() } }
+            .task(id: store.search) {
+                guard store.initialized else { return }
+                try? await Task.sleep(nanoseconds: 350_000_000)
+                if !Task.isCancelled { await store.reload() }
+            }
+            .environmentObject(store)
     }
 
     @ViewBuilder private var content: some View {
@@ -58,13 +55,6 @@ struct ReinigerRootView: View {
             case .ratgeber: ReinigerGuideView()
             case .einkauf: ReinigerEinkaufView()
             }
-        }
-    }
-
-    @ViewBuilder private var toast: some View {
-        if let m = store.message {
-            AreaToast(message: m, isError: store.messageIsError)
-                .task { try? await Task.sleep(nanoseconds: 2_500_000_000); store.message = nil }
         }
     }
 }

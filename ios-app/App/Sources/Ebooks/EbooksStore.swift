@@ -4,7 +4,7 @@ import SwiftUI
 /// Kategorien/Jahre hängen NICHT von den Filtern ab → einmal beim Laden holen und cachen
 /// (statt dem Web-Original mit Dreifach-Fetch pro Filterwechsel).
 @MainActor
-final class EbooksStore: ObservableObject {
+final class EbooksStore: ObservableObject, NotifiableStore {
     let api: EbooksAPI
 
     @Published var items: [EbookItem] = []
@@ -276,9 +276,8 @@ final class EbooksStore: ObservableObject {
     }
 
     // MARK: - Helfer
+    // notify(_:error:) und errText(_:) kommen aus NotifiableStore.
 
-    func notify(_ text: String, error: Bool = false) { message = text; messageIsError = error }
-    private func errText(_ e: Error) -> String { (e as? APIError)?.errorDescription ?? "Fehler" }
     private func addIfPresent(_ body: inout [String: Any], _ key: String, _ value: String) {
         let v = value.trimmingCharacters(in: .whitespacesAndNewlines)
         if !v.isEmpty { body[key] = v }

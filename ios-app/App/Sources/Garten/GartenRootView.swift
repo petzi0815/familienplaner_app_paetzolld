@@ -23,22 +23,16 @@ struct GartenRootView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            AreaHeader(gradientKey: "garten", systemImage: "leaf.fill", title: "Garten", subtitle: subtitle) {
-                headerTrailing
+        AreaScaffold(gradientKey: "garten", systemImage: "leaf.fill", title: "Garten", subtitle: subtitle,
+                     toast: $store.message, toastIsError: store.messageIsError, toastSeconds: 3.5,
+                     trailing: { headerTrailing },
+                     controls: { SegmentBar(tabs: tabs, selection: $store.tab, gradientKey: "garten") },
+                     content: { content })
+            .task { if store.loading { await store.load() } }
+            .environmentObject(store)
+            .sheet(isPresented: $store.showGTS) {
+                if let g = store.gts { GartenGTSSheet(gts: g) }
             }
-            SegmentBar(tabs: tabs, selection: $store.tab, gradientKey: "garten")
-            Divider()
-            content
-        }
-        .background(Palette.gradient(for: "garten").opacity(0.05).ignoresSafeArea())
-        .navigationBarTitleDisplayMode(.inline)
-        .task { if store.loading { await store.load() } }
-        .environmentObject(store)
-        .overlay(alignment: .bottom) { toast }
-        .sheet(isPresented: $store.showGTS) {
-            if let g = store.gts { GartenGTSSheet(gts: g) }
-        }
     }
 
     @ViewBuilder private var content: some View {
@@ -78,12 +72,5 @@ struct GartenRootView: View {
             .background(Color(.secondarySystemBackground), in: Capsule())
         }
         .buttonStyle(.plain)
-    }
-
-    @ViewBuilder private var toast: some View {
-        if let m = store.message {
-            AreaToast(message: m, isError: store.messageIsError)
-                .task { try? await Task.sleep(nanoseconds: 3_500_000_000); store.message = nil }
-        }
     }
 }

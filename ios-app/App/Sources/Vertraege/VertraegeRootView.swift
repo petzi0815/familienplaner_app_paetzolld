@@ -20,26 +20,22 @@ struct VertraegeRootView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            AreaHeader(gradientKey: "vertraege", systemImage: "doc.text.fill", title: "Verträge", subtitle: subtitle) {
-                Button { editing = VertragEditRef(vertrag: nil) } label: {
-                    Image(systemName: "plus.circle.fill").font(.title2)
-                }
-                .foregroundStyle(Theme.accent)
-                .accessibilityLabel("Neuer Vertrag")
+        AreaScaffold(gradientKey: "vertraege", systemImage: "doc.text.fill", title: "Verträge", subtitle: subtitle,
+                     toast: $store.message, toastIsError: store.messageIsError, toastSeconds: 2.0,
+                     trailing: {
+                         Button { editing = VertragEditRef(vertrag: nil) } label: {
+                             Image(systemName: "plus.circle.fill").font(.title2)
+                         }
+                         .foregroundStyle(Theme.accent)
+                         .accessibilityLabel("Neuer Vertrag")
+                     },
+                     controls: { SegmentBar(tabs: tabs, selection: $store.tab, gradientKey: "vertraege") },
+                     content: { content })
+            .task { if store.vertraege.isEmpty && store.loading { await store.loadAll() } }
+            .environmentObject(store)
+            .sheet(item: $editing) { ref in
+                VertragEditSheet(existing: ref.vertrag).environmentObject(store)
             }
-            SegmentBar(tabs: tabs, selection: $store.tab, gradientKey: "vertraege")
-            Divider()
-            content
-        }
-        .background(Palette.gradient(for: "vertraege").opacity(0.05).ignoresSafeArea())
-        .navigationBarTitleDisplayMode(.inline)
-        .task { if store.vertraege.isEmpty && store.loading { await store.loadAll() } }
-        .environmentObject(store)
-        .sheet(item: $editing) { ref in
-            VertragEditSheet(existing: ref.vertrag).environmentObject(store)
-        }
-        .overlay(alignment: .bottom) { toast }
     }
 
     @ViewBuilder private var content: some View {
@@ -53,13 +49,6 @@ struct VertraegeRootView: View {
             case .uebersicht: VertraegeOverviewView()
             case .liste: VertraegeListView()
             }
-        }
-    }
-
-    @ViewBuilder private var toast: some View {
-        if let m = store.message {
-            AreaToast(message: m, isError: store.messageIsError)
-                .task { try? await Task.sleep(nanoseconds: 2_000_000_000); store.message = nil }
         }
     }
 }

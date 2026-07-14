@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Zentraler Zustand der Wunschliste (Events, Items, Auswahl, Filter, Mutationen).
 @MainActor
-final class WunschlisteStore: ObservableObject {
+final class WunschlisteStore: ObservableObject, NotifiableStore {
     let api: WunschlisteAPI
 
     @Published var events: [WunschEvent] = []
@@ -189,9 +189,8 @@ final class WunschlisteStore: ObservableObject {
     }
 
     // MARK: - Helfer
+    // notify(_:error:) und errText(_:) kommen aus NotifiableStore.
 
-    func notify(_ text: String, error: Bool = false) { message = text; messageIsError = error }
-    private func errText(_ e: Error) -> String { (e as? APIError)?.errorDescription ?? "Fehler" }
     /// Leerer Text → NSNull (Server-Konvention „leer = null").
     private func optOrNull(_ s: String) -> Any {
         let t = s.trimmingCharacters(in: .whitespacesAndNewlines)

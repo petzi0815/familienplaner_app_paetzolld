@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Zentraler Zustand der nativen ElisBooks-App (Bücher, Regale, Wunschliste, Filter, Auswahl).
 @MainActor
-final class BooksStore: ObservableObject {
+final class BooksStore: ObservableObject, NotifiableStore {
     let api: BooksAPI
 
     @Published var books: [Book] = []
@@ -186,6 +186,5 @@ final class BooksStore: ObservableObject {
     // ── Helfer ──
     func reloadBooks() async { if let b = try? await api.fetchBooks() { books = b } }
     func reloadShelves() async { if let s = try? await api.fetchShelves() { shelves = s } }
-    func notify(_ text: String, error: Bool = false) { message = text; messageIsError = error }
-    private func errText(_ e: Error) -> String { (e as? APIError)?.errorDescription ?? "Fehler" }
+    // notify(_:error:) und errText(_:) kommen aus NotifiableStore.
 }

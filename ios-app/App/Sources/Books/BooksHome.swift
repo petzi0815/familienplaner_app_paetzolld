@@ -27,7 +27,7 @@ struct BooksRootView: View {
         .task { if store.books.isEmpty && store.shelves.isEmpty { await store.loadAll() } }
         .environmentObject(store)
         .sheet(isPresented: $showSettings) { BooksSettingsSheet() }
-        .overlay(alignment: .bottom) { toast }
+        .areaToast($store.message, isError: store.messageIsError)
     }
 
     // ── Kopf ──
@@ -108,18 +108,6 @@ struct BooksRootView: View {
             case .shelfScanner: ShelfScanView()
             case .ocrScanner: ShelfScanView()
             }
-        }
-    }
-
-    @ViewBuilder private var toast: some View {
-        if let m = store.message {
-            Label(m, systemImage: store.messageIsError ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
-                .font(.subheadline.weight(.medium)).foregroundStyle(.white)
-                .padding(.horizontal, 16).padding(.vertical, 10)
-                .background(store.messageIsError ? Color.red : Color.green, in: Capsule())
-                .padding(.bottom, 16)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-                .task { try? await Task.sleep(nanoseconds: 2_500_000_000); store.message = nil }
         }
     }
 }

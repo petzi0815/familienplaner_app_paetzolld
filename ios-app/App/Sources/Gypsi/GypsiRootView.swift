@@ -10,19 +10,14 @@ struct GypsiRootView: View {
     init(settings: Settings) { _store = StateObject(wrappedValue: GypsiStore(settings: settings)) }
 
     var body: some View {
-        VStack(spacing: 0) {
-            AreaHeader(gradientKey: "gypsi", systemImage: "pawprint.fill",
-                       title: "Gypsis Futter", subtitle: "Futter-Vorlieben & Tracking")
-            Divider()
-            content
-        }
-        .background(Palette.gradient(for: "gypsi").opacity(0.05).ignoresSafeArea())
-        .navigationBarTitleDisplayMode(.inline)
-        .task { if store.all.isEmpty && store.loading { await store.loadAll() } }
-        .environmentObject(store)
-        .overlay(alignment: .bottomTrailing) { fab }
-        .overlay(alignment: .bottom) { toast }
-        .sheet(isPresented: $showAdd) { GypsiAddSheet().environmentObject(store) }
+        AreaScaffold(gradientKey: "gypsi", systemImage: "pawprint.fill",
+                     title: "Gypsis Futter", subtitle: "Futter-Vorlieben & Tracking",
+                     toast: $store.message, toastIsError: store.messageIsError,
+                     content: { content })
+            .task { if store.all.isEmpty && store.loading { await store.loadAll() } }
+            .environmentObject(store)
+            .overlay(alignment: .bottomTrailing) { fab }
+            .sheet(isPresented: $showAdd) { GypsiAddSheet().environmentObject(store) }
     }
 
     @ViewBuilder private var content: some View {
@@ -43,12 +38,5 @@ struct GypsiRootView: View {
                 .shadow(color: Palette.colors(for: "gypsi").first!.opacity(0.4), radius: 10, y: 5)
         }
         .padding(.trailing, 18).padding(.bottom, 20)
-    }
-
-    @ViewBuilder private var toast: some View {
-        if let m = store.message {
-            AreaToast(message: m, isError: store.messageIsError)
-                .task { try? await Task.sleep(nanoseconds: 2_500_000_000); store.message = nil }
-        }
     }
 }
