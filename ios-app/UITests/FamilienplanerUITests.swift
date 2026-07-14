@@ -102,20 +102,26 @@ final class FamilienplanerUITests: XCTestCase {
         }
     }
 
-    /// Native Bereiche mit Segment-Navigation: jedes Segment lässt sich antippen.
+    /// Native Bereiche mit Segment-Navigation: sichtbare Segmente lassen sich antippen.
+    /// (Segmente in der horizontalen Scroll-Leiste, die aus dem Bild laufen, werden übersprungen —
+    /// Hittability off-screen zu prüfen wirft in XCUITest.)
     func testNativeAreaSegmentsSwitch() {
         openBereiche()
-        for key in ["samu", "garten", "geschenkplaner", "vorratskammer", "wunschliste", "termine", "reiniger", "gypsi", "smarthome", "vertraege", "buecher", "ebooks"] {
+        let screen = app.windows.firstMatch.frame
+        for key in ["samu", "garten", "geschenkplaner", "vorratskammer", "wunschliste", "termine", "reiniger", "gypsi", "smarthome", "vertraege", "ebooks"] {
             let t = tile(key)
             guard t.waitForExistence(timeout: 5), t.isHittable else { continue }
             t.tap()
             _ = waitUntil(self.app.navigationBars.buttons.element(boundBy: 0).exists)
-            // Alle Segment-Buttons (Identifier-Präfix "segment-") durchtippen.
+            // Nur vollständig sichtbare Segment-Buttons antippen (Frame innerhalb des Bildschirms).
             let segments = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'segment-'"))
             let count = min(segments.count, 8)
             for i in 0..<count {
                 let seg = segments.element(boundBy: i)
-                if seg.exists && seg.isHittable { seg.tap() }
+                guard seg.exists else { continue }
+                let f = seg.frame
+                guard f.width > 1, f.minX >= screen.minX, f.maxX <= screen.maxX else { continue }
+                seg.tap()
                 XCTAssertTrue(waitUntil(self.app.state == .runningForeground), "App tot nach Segment in '\(key)'")
             }
             goBack()
