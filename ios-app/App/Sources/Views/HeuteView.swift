@@ -15,7 +15,9 @@ struct HeuteView: View {
             ScrollView {
                 if let d = app.dashboard {
                     VStack(spacing: 20) {
+                        searchBar
                         if let b = app.updateBuild { updateBanner(b) }
+                        if let next = (d.agenda ?? []).first { nextHighlight(next) }
                         kpiGrid(d.kpis ?? [])
                         agendaCard(d.agenda ?? [])
                     }
@@ -33,7 +35,7 @@ struct HeuteView: View {
                 }
             }
             .background(Palette.gradient(for: "termine").opacity(0.06).ignoresSafeArea())
-            .navigationTitle(greeting)
+            .navigationTitle(greetingTitle)
             .refreshable { await app.loadDashboard() }
             .task { if app.dashboard == nil { await app.loadDashboard() } }
         }
@@ -42,6 +44,57 @@ struct HeuteView: View {
     private var greeting: String {
         let h = Calendar.current.component(.hour, from: Date())
         switch h { case 5..<11: return "Guten Morgen"; case 11..<17: return "Hallo"; case 17..<22: return "Guten Abend"; default: return "Gute Nacht" }
+    }
+    /// Begrüßung inkl. Person (nur bei Per-User-Keys lars/elita, sonst neutral).
+    private var greetingTitle: String {
+        if let o = app.me?.owner, o == "lars" || o == "elita" { return "\(greeting), \(app.me!.displayName)" }
+        return greeting
+    }
+
+    // ── Globale Suche: Einstieg auf „Heute" → springt in den Suchen-Tab ──
+    private var searchBar: some View {
+        Button { app.selectedTab = .search } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                Text("Alles durchsuchen …").foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 16).padding(.vertical, 12)
+            .background(Color(.secondarySystemBackground), in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("home-search")
+    }
+
+    // ── „Als Nächstes" — hervorgehobenes nächstes Anstehendes über den KPI-Kacheln ──
+    private func nextHighlight(_ item: AgendaItem) -> some View {
+        HStack(spacing: 14) {
+            GradientIcon(systemName: nextIcon(item.source), gradientKey: item.domain, size: 46)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Als Nächstes").font(.caption.weight(.bold)).foregroundStyle(.secondary)
+                Text(item.title).font(.headline).lineLimit(1)
+                Text(nextSubtitle(item)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer(minLength: 6)
+            TerminDaysBadge(date: item.date)
+        }
+        .padding(16)
+        .cardSurface()
+    }
+    private func nextIcon(_ source: String) -> String {
+        switch source {
+        case "abfuhr": return "trash.fill"
+        case "reise": return "airplane"
+        case "vorrat": return "fork.knife"
+        case "reminder": return "bell.fill"
+        default: return "calendar"
+        }
+    }
+    private func nextSubtitle(_ item: AgendaItem) -> String {
+        var parts: [String] = [DateText.pretty(item.date)]
+        if let t = item.time, !t.isEmpty { parts.append(t) }
+        if let s = item.subtitle, !s.isEmpty { parts.append(s) }
+        return parts.joined(separator: " · ")
     }
 
     // ── Update-Banner (neuer TestFlight-Build) ──

@@ -27,6 +27,8 @@ final class AppState: ObservableObject {
     @Published var inboxNeu: Int = 0
     @Published var dashboard: DashboardToday?
     @Published var dashboardError: String?
+    /// Angemeldete Person (für die persönliche Begrüßung auf „Heute").
+    @Published var me: AuthMe?
     @Published var domains: [BereichDomain] = []
     @Published var resources: [ResourceInfo] = []
     /// Neuerer TestFlight-Build verfügbar (Buildnummer) → Update-Banner. nil = aktuell.
@@ -46,7 +48,11 @@ final class AppState: ObservableObject {
         Task { await loadInbox() }
         Task { await loadDashboard() }
         Task { await checkForUpdate() }
+        Task { await loadMe() }
     }
+
+    /// Angemeldete Identität laden (Rolle + Person) — für die Begrüßung.
+    func loadMe() async { if let m = try? await api.authMe() { me = m } }
 
     /// Prüft, ob im TestFlight ein neuerer Build als der installierte liegt.
     func checkForUpdate() async {

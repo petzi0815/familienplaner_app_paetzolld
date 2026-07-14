@@ -65,6 +65,18 @@ struct BereicheHubView: View {
     @State private var showSettings = false
     // Kompaktes Raster: mehr Bereiche pro Bildschirm (≈3 Spalten auf dem iPhone) ohne Scrollen.
     private let cols = [GridItem(.adaptive(minimum: 104), spacing: 10)]
+    // Angepinnte Bereiche (Reihenfolge gemerkt) — erscheinen oben. Toggle per Long-Press.
+    @AppStorage("bereich.favorites") private var favoritesRaw = ""
+
+    private var favKeys: [String] { favoritesRaw.split(separator: ",").map(String.init) }
+    private func isFav(_ key: String) -> Bool { favKeys.contains(key) }
+    private func toggleFav(_ key: String) {
+        var keys = favKeys
+        if let i = keys.firstIndex(of: key) { keys.remove(at: i) } else { keys.append(key) }
+        favoritesRaw = keys.joined(separator: ",")
+    }
+    private var favoriteDomains: [BereichDomain] { favKeys.compactMap { k in app.domains.first { $0.key == k } } }
+    private var otherDomains: [BereichDomain] { app.domains.filter { !isFav($0.key) } }
 
     var body: some View {
         NavigationStack(path: $app.bereichePath) {
@@ -72,11 +84,12 @@ struct BereicheHubView: View {
                 if app.domains.isEmpty {
                     ProgressView("Lädt Bereiche …").padding(.top, 80)
                 } else {
-                    LazyVGrid(columns: cols, spacing: 10) {
-                        ForEach(app.domains) { d in
-                            NavigationLink(value: d.key) { BereichTile(domain: d) }
-                                .buttonStyle(.plain)
-                                .accessibilityIdentifier("bereich-tile-\(d.key)")
+                    VStack(alignment: .leading, spacing: 18) {
+                        if favoriteDomains.isEmpty {
+                            grid(app.domains)
+                        } else {
+                            gridSection("★ Favoriten", favoriteDomains)
+                            gridSection("Alle Bereiche", otherDomains)
                         }
                     }
                     .padding()
@@ -99,6 +112,30 @@ struct BereicheHubView: View {
         }
     }
 
+    @ViewBuilder private func gridSection(_ title: String, _ domains: [BereichDomain]) -> some View {
+        if !domains.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(title).font(.subheadline.weight(.bold)).foregroundStyle(.secondary).padding(.leading, 4)
+                grid(domains)
+            }
+        }
+    }
+    private func grid(_ domains: [BereichDomain]) -> some View {
+        LazyVGrid(columns: cols, spacing: 10) {
+            ForEach(domains) { d in
+                NavigationLink(value: d.key) { BereichTile(domain: d, isFavorite: isFav(d.key)) }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("bereich-tile-\(d.key)")
+                    .contextMenu {
+                        Button { toggleFav(d.key) } label: {
+                            Label(isFav(d.key) ? "Von Favoriten lösen" : "Zu Favoriten hinzufügen",
+                                  systemImage: isFav(d.key) ? "star.slash" : "star")
+                        }
+                    }
+            }
+        }
+    }
+
     /// Domain zum Key: aus den geladenen Domains, sonst minimal aus dem Katalog (Deep-Link vor dem
     /// Capabilities-Laden; native Bereiche routen key-basiert und brauchen keine Ressourcenliste).
     private func domainForKey(_ key: String) -> BereichDomain {
@@ -110,6 +147,7 @@ struct BereicheHubView: View {
 
 struct BereichTile: View {
     let domain: BereichDomain
+    var isFavorite: Bool = false
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(domain.emoji).font(.system(size: 30))
@@ -121,6 +159,11 @@ struct BereichTile: View {
         .frame(maxWidth: .infinity, minHeight: 82, alignment: .leading)
         .padding(12)
         .background(Palette.gradient(for: domain.key), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(alignment: .topTrailing) {
+            if isFavorite {
+                Image(systemName: "star.fill").font(.caption2).foregroundStyle(.white.opacity(0.95)).padding(8)
+            }
+        }
         .shadow(color: Palette.colors(for: domain.key).first!.opacity(0.3), radius: 7, y: 4)
     }
 }
