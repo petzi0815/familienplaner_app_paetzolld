@@ -1,5 +1,6 @@
 import SwiftUI
 import AVKit
+import UIKit
 
 /// „Smarthome"-Tab (Schnellzugriff): Alarmanlage + Kameras + Raffstore-Steuerung (Höhe & Lamellen) + Szenen.
 struct SmarthomeTabView: View {
@@ -294,13 +295,44 @@ struct CameraLiveView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var player: AVPlayer?
     @State private var errorText: String?
+    // Pinch-Zoom + Verschieben.
+    @State private var zoom: CGFloat = 1
+    @State private var lastZoom: CGFloat = 1
+    @State private var offset: CGSize = .zero
+    @State private var lastOffset: CGSize = .zero
+
+    private var magnify: some Gesture {
+        MagnifyGesture()
+            .onChanged { v in zoom = min(max(lastZoom * v.magnification, 1), 6) }
+            .onEnded { _ in
+                lastZoom = zoom
+                if zoom <= 1.01 { resetZoom() }
+            }
+    }
+    private var pan: some Gesture {
+        DragGesture()
+            .onChanged { g in
+                guard zoom > 1 else { return }
+                offset = CGSize(width: lastOffset.width + g.translation.width, height: lastOffset.height + g.translation.height)
+            }
+            .onEnded { _ in lastOffset = offset }
+    }
+    private func resetZoom() {
+        withAnimation(.snappy) { zoom = 1; lastZoom = 1; offset = .zero; lastOffset = .zero }
+    }
 
     var body: some View {
         NavigationStack {
             ZStack {
                 Color.black.ignoresSafeArea()
                 if let player {
-                    VideoPlayer(player: player).ignoresSafeArea(edges: .bottom)
+                    CameraPlayerView(player: player)
+                        .scaleEffect(zoom)
+                        .offset(offset)
+                        .gesture(magnify)
+                        .simultaneousGesture(pan)
+                        .onTapGesture(count: 2) { resetZoom() }
+                        .ignoresSafeArea()
                 } else if let errorText {
                     VStack(spacing: 12) {
                         Image(systemName: "video.slash.fill").font(.largeTitle).foregroundStyle(.white.opacity(0.85))
@@ -317,7 +349,12 @@ struct CameraLiveView: View {
                 ToolbarItem(placement: .topBarTrailing) { Button("Fertig") { dismiss() } }
             }
             .task { await start() }
-            .onDisappear { player?.pause(); player = nil }
+            // Live-Kamera darf sich mit dem Gerät drehen (Hoch-/Querformat); danach wieder auf Hochformat sperren.
+            .onAppear { AppDelegate.setOrientationLock(.allButUpsideDown) }
+            .onDisappear {
+                player?.pause(); player = nil
+                AppDelegate.setOrientationLock(.portrait)
+            }
         }
     }
 
@@ -344,4 +381,25 @@ struct CameraLiveView: View {
             errorText = (error as? APIError)?.errorDescription ?? "Live-Stream nicht verfügbar."
         }
     }
+}
+
+/// Video über eine `AVPlayerLayer` (ohne AVKit-Bedienelemente) — passt sich Pinch-Zoom/Drehung an.
+struct CameraPlayerView: UIViewRepresentable {
+    let player: AVPlayer
+    func makeUIView(context: Context) -> PlayerLayerHostView {
+        let v = PlayerLayerHostView()
+        v.playerLayer.player = player
+        v.playerLayer.videoGravity = .resizeAspect
+        return v
+    }
+    func updateUIView(_ uiView: PlayerLayerHostView, context: Context) {
+        if uiView.playerLayer.player !== player { uiView.playerLayer.player = player }
+    }
+}
+
+/// UIView, deren Backing-Layer eine `AVPlayerLayer` ist (dreht/skaliert mit der View mit).
+final class PlayerLayerHostView: UIView {
+    override class var layerClass: AnyClass { AVPlayerLayer.self }
+    // swiftlint:disable:next force_cast
+    var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
 }

@@ -6,10 +6,28 @@ import UserNotifications
 final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     static weak var appState: AppState?
 
+    /// Erlaubte Ausrichtungen. Standard = nur Hochformat; die Live-Kamera erlaubt zusätzlich Querformat.
+    static var orientationLock: UIInterfaceOrientationMask = .portrait
+
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = self
         return true
+    }
+
+    func application(_ application: UIApplication,
+                     supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
+        AppDelegate.orientationLock
+    }
+
+    /// Erlaubte Ausrichtungen setzen und die aktuelle Ansicht neu bewerten lassen (dreht ggf. sofort zurück).
+    @MainActor
+    static func setOrientationLock(_ mask: UIInterfaceOrientationMask) {
+        orientationLock = mask
+        guard let scene = UIApplication.shared.connectedScenes
+            .first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene else { return }
+        scene.keyWindow?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
+        scene.requestGeometryUpdate(.iOS(interfaceOrientations: mask)) { _ in }
     }
 
     /// Push-Berechtigung anfragen und (bei Erlaubnis) für Remote-Notifications registrieren.

@@ -51,8 +51,11 @@ targets:
         NSCameraUsageDescription: "Zum Aufnehmen von Fotos und Scannen von Barcodes (Bücher-ISBN, Lebensmittel)."
         NSPhotoLibraryUsageDescription: "Zum Auswählen von Fotos aus der Mediathek."
         NSCalendarsWriteOnlyAccessUsageDescription: "Zum Eintragen von Terminen und Ereignissen in deinen iOS-Kalender."
+        # Portrait app-weit; Querformat NUR für die Live-Kamera erlaubt (per AppDelegate.orientationLock).
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
         UIApplicationShortcutItems:
           - UIApplicationShortcutItemType: app.yagemi.familienplaner.newphoto
             UIApplicationShortcutItemTitle: Foto aufnehmen
