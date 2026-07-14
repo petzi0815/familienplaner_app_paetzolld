@@ -147,7 +147,7 @@ final class FamilienplanerUITests: XCTestCase {
         XCTAssertTrue(tabButton("Heute").waitForExistence(timeout: 15), "Heute-Tab fehlt")
         tabButton("Heute").tap()
         XCTAssertTrue(app.staticTexts["Alarmanlage"].waitForExistence(timeout: 10), "Alarmanlage-Kachel fehlt")
-        XCTAssertTrue(app.buttons["alarmo-arm"].waitForExistence(timeout: 6), "„Aktivieren"-Steuerung fehlt (Zustand disarmed)")
+        XCTAssertTrue(app.buttons["alarmo-arm"].waitForExistence(timeout: 6), "Aktivieren-Steuerung fehlt (Zustand disarmed)")
     }
 
     /// Suche ist oben rechts auf „Heute" erreichbar (Toolbar-Button öffnet die Such-Ansicht als Sheet).

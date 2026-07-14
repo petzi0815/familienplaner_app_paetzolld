@@ -47,7 +47,7 @@ struct CalibreBookDetail: View {
                 ForEach(fmts, id: \.self) { f in downloadButton(f) }
                 Spacer(minLength: 0)
             }
-            Text("Öffnet den Teilen-Dialog – dort „In Bücher kopieren" wählen.")
+            Text("Öffnet den Teilen-Dialog – dort „In Bücher kopieren“ wählen.")
                 .font(.caption2).foregroundStyle(.secondary)
         }
     }
