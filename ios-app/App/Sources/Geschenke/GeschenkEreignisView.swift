@@ -59,6 +59,7 @@ struct GeschenkEreignisView: View {
                 AreaEmptyState(emoji: "🎁", title: "Nicht gefunden")
             }
         }
+        .accessibilityIdentifier("gp-ereignis-detail")
         .navigationTitle(ereignis.map { "\(GStyle.anlassEmoji($0.anlass)) \($0.kindName ?? "")" } ?? "Ereignis")
         .navigationBarTitleDisplayMode(.inline)
         .background(Palette.gradient(for: "geschenkplaner").opacity(0.05).ignoresSafeArea())
@@ -111,7 +112,7 @@ struct GeschenkEreignisView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("\(GStyle.anlassEmoji(e.anlass)) \(e.kindName ?? "") — \(GStyle.anlassLabel(e.anlass)) \(e.jahr)")
+                    Text("\(GStyle.anlassEmoji(e.anlass)) \(e.kindName ?? "") — \(GStyle.anlassLabel(e.anlass)) \(String(e.jahr))")
                         .font(.headline)
                     Text(headerSub(e)).font(.caption).foregroundStyle(.secondary)
                 }

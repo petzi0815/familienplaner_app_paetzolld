@@ -28,12 +28,6 @@ struct GeschenkRootView: View {
         .background(Palette.gradient(for: "geschenkplaner").opacity(0.05).ignoresSafeArea())
         .navigationBarTitleDisplayMode(.inline)
         .environmentObject(store)
-        .navigationDestination(for: GeschenkRoute.self) { route in
-            switch route {
-            case .ereignis(let id): GeschenkEreignisView(ereignisID: id).environmentObject(store)
-            case .kind(let id): GeschenkKindView(kindID: id).environmentObject(store)
-            }
-        }
         .overlay(alignment: .bottom) { toast }
     }
 

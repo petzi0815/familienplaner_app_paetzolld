@@ -63,11 +63,11 @@ struct GeschenkKinderView: View {
     private func childCard(_ k: GKind) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top) {
-                NavigationLink(value: GeschenkRoute.kind(k.id)) { childInfo(k) }
+                NavigationLink { GeschenkKindView(kindID: k.id).environmentObject(store) } label: { childInfo(k) }
                     .buttonStyle(.plain)
                 Spacer(minLength: 8)
                 HStack(spacing: 6) {
-                    NavigationLink(value: GeschenkRoute.kind(k.id)) { smallTag("✏️") }
+                    NavigationLink { GeschenkKindView(kindID: k.id).environmentObject(store) } label: { smallTag("✏️") }
                         .buttonStyle(.plain)
                     Button { deleteTarget = k } label: { smallTag("🗑️") }
                         .buttonStyle(.plain)
@@ -77,10 +77,10 @@ struct GeschenkKinderView: View {
             if !k.naechsteEreignisse.isEmpty {
                 Divider()
                 ForEach(k.naechsteEreignisse) { e in
-                    NavigationLink(value: GeschenkRoute.ereignis(e.id)) {
+                    NavigationLink { GeschenkEreignisView(ereignisID: e.id).environmentObject(store) } label: {
                         HStack(spacing: 8) {
                             Text(GStyle.anlassEmoji(e.anlass))
-                            Text("\(GStyle.anlassLabel(e.anlass)) \(e.jahr)").font(.caption)
+                            Text("\(GStyle.anlassLabel(e.anlass)) \(String(e.jahr))").font(.caption)
                             Spacer(minLength: 6)
                             let cd = GDate.countdown(e.datum)
                             Text(cd.text).font(.caption.weight(.bold))

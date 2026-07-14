@@ -142,11 +142,11 @@ struct GeschenkKindView: View {
                 Text("Ereignisse werden automatisch angelegt.").font(.caption).foregroundStyle(.secondary)
             } else {
                 ForEach(ereignisse) { e in
-                    NavigationLink(value: GeschenkRoute.ereignis(e.id)) {
+                    NavigationLink { GeschenkEreignisView(ereignisID: e.id).environmentObject(store) } label: {
                         HStack(spacing: 10) {
                             Text(GStyle.anlassEmoji(e.anlass)).font(.title3)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("\(GStyle.anlassLabel(e.anlass)) \(e.jahr)").font(.subheadline.weight(.semibold))
+                                Text("\(GStyle.anlassLabel(e.anlass)) \(String(e.jahr))").font(.subheadline.weight(.semibold))
                                 Text(ereignisSub(e)).font(.caption2).foregroundStyle(.secondary)
                             }
                             Spacer(minLength: 6)

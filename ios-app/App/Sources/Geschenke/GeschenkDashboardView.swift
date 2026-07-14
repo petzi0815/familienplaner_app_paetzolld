@@ -36,7 +36,7 @@ struct GeschenkDashboardView: View {
             Text("⚠️").font(.title3)
             VStack(alignment: .leading, spacing: 2) {
                 Text("\(ob.kindName ?? "Kind"): Profil bestätigen").font(.subheadline.weight(.bold))
-                Text("\(GStyle.anlassEmoji(ob.anlass)) \(GStyle.anlassLabel(ob.anlass)) \(ob.jahr)")
+                Text("\(GStyle.anlassEmoji(ob.anlass)) \(GStyle.anlassLabel(ob.anlass)) \(String(ob.jahr))")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Spacer(minLength: 8)
@@ -64,8 +64,9 @@ struct GeschenkDashboardView: View {
                 .frame(minHeight: 220)
         } else {
             ForEach(d.anstehende) { e in
-                NavigationLink(value: GeschenkRoute.ereignis(e.id)) { eventCard(e) }
+                NavigationLink { GeschenkEreignisView(ereignisID: e.id).environmentObject(store) } label: { eventCard(e) }
                     .buttonStyle(.plain)
+                    .accessibilityIdentifier("gp-event-\(e.id)")
             }
         }
     }
@@ -75,7 +76,7 @@ struct GeschenkDashboardView: View {
         return VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("\(GStyle.anlassEmoji(e.anlass)) \(e.kindName ?? "") — \(GStyle.anlassLabel(e.anlass)) \(e.jahr)")
+                    Text("\(GStyle.anlassEmoji(e.anlass)) \(e.kindName ?? "") — \(GStyle.anlassLabel(e.anlass)) \(String(e.jahr))")
                         .font(.subheadline.weight(.bold)).foregroundStyle(.primary)
                     Text(subline(e)).font(.caption).foregroundStyle(.secondary)
                 }

@@ -125,9 +125,6 @@ final class GeschenkStore: ObservableObject {
 }
 
 enum GeschenkTab: Hashable { case uebersicht, einkauf, kinder, archiv }
-
-/// Navigationsziele fuer die Detail-Pushes (im umgebenden NavigationStack).
-enum GeschenkRoute: Hashable {
-    case ereignis(Int)
-    case kind(Int)
-}
+// Detail-Pushes laufen über closure-basierte NavigationLinks (zuverlässig im gepushten Bereich,
+// wie in Reisen); value-basierte navigationDestination-Registrierung auf einer gepushten View ist
+// in SwiftUI flaky (Symptom: erster Tap „verschluckt", Zurück zeigt erst das Detail).

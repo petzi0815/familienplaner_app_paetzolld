@@ -128,4 +128,30 @@ final class FamilienplanerUITests: XCTestCase {
             _ = waitUntil(t.isHittable)
         }
     }
+
+    /// DATENGETRIEBEN (Fixture): Geschenkplaner-Event antippen → Detail öffnet sich → Zurück.
+    /// Fängt den Navigations-Bug (Tap „verschluckt") UND die Jahres-Formatierung (2.026 statt 2026).
+    func testGeschenkplanerEventNavigation() {
+        openBereiche()
+        let tileEl = tile("geschenkplaner")
+        XCTAssertTrue(tileEl.waitForExistence(timeout: 8), "Geschenkplaner-Kachel fehlt")
+        tileEl.tap()
+
+        // Dashboard-Event aus der Fixture muss erscheinen.
+        let event = app.buttons["gp-event-1"]
+        XCTAssertTrue(event.waitForExistence(timeout: 12), "Geschenkplaner-Dashboard zeigt kein Event (Fixture nicht geladen?)")
+
+        // Jahr korrekt gerendert — NICHT mit Tausendertrennung „2.026".
+        let grouped = app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "2.026")).firstMatch
+        XCTAssertFalse(grouped.exists, "Jahr mit Tausendertrennung gerendert (2.026 statt 2026)")
+
+        // Event antippen → Ereignis-Detail muss sich öffnen (fixt den Navigations-Bug).
+        event.tap()
+        XCTAssertTrue(app.staticTexts["Test-Geschenk A"].waitForExistence(timeout: 8),
+                      "Event-Tap hat nicht ins Detail navigiert (Navigations-Bug)")
+
+        // Zurück muss auf das Dashboard führen (nicht erst das Detail zeigen).
+        goBack()
+        XCTAssertTrue(waitUntil(event.isHittable), "Zurück aus dem Ereignis-Detail fehlgeschlagen")
+    }
 }

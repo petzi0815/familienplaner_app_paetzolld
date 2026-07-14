@@ -47,6 +47,7 @@ final class CompatClient {
 
     /// Bare-Array-Antwort aus Objekten (`[{…},{…}]`).
     func getArray(_ path: String, query: [URLQueryItem] = []) async throws -> [[String: Any]] {
+        if let fixture = UITestFixtures.array(path) { return fixture }   // UI-Test: deterministische Daten
         let (data, resp) = try await Self.session.data(for: req(path, query: query))
         try check(resp, data)
         if let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] { return arr }
@@ -65,6 +66,7 @@ final class CompatClient {
 
     /// Objekt-Antwort (`{…}` — z.B. ?stats=true, /gts, /dashboard, Einzel-GET).
     func getObject(_ path: String, query: [URLQueryItem] = []) async throws -> [String: Any] {
+        if let fixture = UITestFixtures.object(path) { return fixture }   // UI-Test: deterministische Daten
         let (data, resp) = try await Self.session.data(for: req(path, query: query))
         try check(resp, data)
         return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
