@@ -12,55 +12,74 @@ struct SamuBedarfView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 12) {
-                HStack {
-                    ForEach(BedarfFilter.allCases, id: \.self) { f in
-                        FilterPill(label: f.label, selected: filter == f) { filter = f }
+        VStack(spacing: 0) {
+            header
+            Group {
+                if store.bedarf.isEmpty {
+                    ScrollView {
+                        AreaEmptyState(emoji: "🎉", title: "Nichts auf der Liste!", hint: "Alles vorhanden 👍",
+                                       actionLabel: "Bedarf hinzufügen", action: { withAnimation { showAdd = true } })
+                            .frame(minHeight: 320)
                     }
-                    Spacer()
-                    Button { withAnimation { showAdd.toggle() } } label: {
-                        Label("Neuer Bedarf", systemImage: "plus.circle.fill").font(.subheadline.weight(.semibold))
+                    .refreshable { await store.reloadBedarf() }
+                } else {
+                    List {
+                        if filter != .erledigt && !store.offeneBedarf.isEmpty {
+                            bedarfSection(title: filter == .alle ? "Offen" : nil, items: store.offeneBedarf)
+                        }
+                        if filter != .offen && !store.erledigteBedarf.isEmpty {
+                            bedarfSection(title: filter == .alle ? "Erledigt" : nil, items: store.erledigteBedarf)
+                        }
                     }
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
+                    .refreshable { await store.reloadBedarf() }
                 }
-                .padding(.horizontal, 14).padding(.top, 8)
-
-                if showAdd { SamuBedarfAddForm(onDone: { showAdd = false }).environmentObject(store) }
-
-                content
             }
-            .padding(.bottom, 24)
         }
-        .refreshable { await store.reloadBedarf() }
         .confirmationDialog("Wirklich löschen?", isPresented: Binding(get: { deleteTarget != nil }, set: { if !$0 { deleteTarget = nil } }), titleVisibility: .visible) {
             Button("Löschen", role: .destructive) { if let t = deleteTarget { Task { await store.deleteBedarf(t) } }; deleteTarget = nil }
             Button("Abbrechen", role: .cancel) { deleteTarget = nil }
         }
     }
 
-    @ViewBuilder private var content: some View {
-        if store.bedarf.isEmpty {
-            AreaEmptyState(emoji: "🎉", title: "Nichts auf der Liste!", hint: "Alles vorhanden 👍").frame(minHeight: 220)
-        } else {
-            VStack(spacing: 14) {
-                if filter != .erledigt && !store.offeneBedarf.isEmpty {
-                    section(title: filter == .alle ? "Offen" : nil, items: store.offeneBedarf)
+    private var header: some View {
+        VStack(spacing: 12) {
+            HStack {
+                ForEach(BedarfFilter.allCases, id: \.self) { f in
+                    FilterPill(label: f.label, selected: filter == f) { filter = f }
                 }
-                if filter != .offen && !store.erledigteBedarf.isEmpty {
-                    section(title: filter == .alle ? "Erledigt" : nil, items: store.erledigteBedarf)
+                Spacer()
+                Button { withAnimation { showAdd.toggle() } } label: {
+                    Label("Neuer Bedarf", systemImage: "plus.circle.fill").font(.subheadline.weight(.semibold))
                 }
             }
-            .padding(.horizontal, 14)
+            .padding(.horizontal, 14).padding(.top, 8)
+
+            if showAdd { SamuBedarfAddForm(onDone: { showAdd = false }).environmentObject(store) }
         }
     }
 
-    private func section(title: String?, items: [SamuBedarf]) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if let title { Text(title).font(.subheadline.weight(.bold)).foregroundStyle(.secondary) }
+    private func bedarfSection(title: String?, items: [SamuBedarf]) -> some View {
+        Section {
             ForEach(items) { b in
                 SamuBedarfCard(b: b, onToggle: { Task { await store.toggleBedarf(b) } }, onDelete: { deleteTarget = b })
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 6, leading: 14, bottom: 6, trailing: 14))
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button(role: .destructive) { deleteTarget = b } label: {
+                            Label("Löschen", systemImage: "trash")
+                        }
+                        Button { Task { await store.toggleBedarf(b) } } label: {
+                            Label(b.erledigt ? "Offen" : "Erledigt", systemImage: b.erledigt ? "arrow.uturn.left" : "checkmark")
+                        }.tint(b.erledigt ? .orange : .green)
+                    }
             }
+        } header: {
+            if let title { Text(title).font(.subheadline.weight(.bold)).foregroundStyle(.secondary) }
         }
+        .textCase(nil)
     }
 }
 

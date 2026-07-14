@@ -200,7 +200,7 @@ private struct KpiTileView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Image(systemName: kpi.icon).font(.title3).foregroundStyle(.white.opacity(0.95))
-            Text("\(kpi.value)").font(.system(size: 30, weight: .heavy, design: .rounded)).foregroundStyle(.white)
+            Text(String(kpi.value)).font(.system(size: 30, weight: .heavy, design: .rounded)).foregroundStyle(.white)
             Text(kpi.label).font(.caption.weight(.medium)).foregroundStyle(.white.opacity(0.9)).lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)

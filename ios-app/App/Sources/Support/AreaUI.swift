@@ -305,15 +305,23 @@ extension AreaScaffold where Trailing == EmptyView, Controls == EmptyView {
 }
 
 /// Leerzustand mit Emoji-Titel + Hinweis (statt SF-Symbol) — passt zum verspielten Bereichs-Look.
+/// Optional mit direktem Aktions-Button (z. B. „+ Hinzufügen") für einen schnellen Einstieg.
 struct AreaEmptyState: View {
     let emoji: String
     let title: String
     var hint: String? = nil
+    var actionLabel: String? = nil
+    var action: (() -> Void)? = nil
     var body: some View {
         VStack(spacing: 8) {
             Text(emoji).font(.system(size: 44))
             Text(title).font(.headline)
             if let hint { Text(hint).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center) }
+            if let actionLabel, let action {
+                Button(action: action) { Label(actionLabel, systemImage: "plus") }
+                    .buttonStyle(.borderedProminent)
+                    .padding(.top, 6)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(40)

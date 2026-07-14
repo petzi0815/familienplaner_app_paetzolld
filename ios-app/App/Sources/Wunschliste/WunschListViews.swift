@@ -18,7 +18,7 @@ struct WunschEventChipBar: View {
                         HStack(spacing: 5) {
                             Text("\(ev.emoji) \(ev.name)").font(.footnote.weight(.semibold)).lineLimit(1)
                             if ev.openCount > 0 {
-                                Text("\(ev.openCount)")
+                                Text(String(ev.openCount))
                                     .font(.system(size: 10, weight: .bold))
                                     .foregroundStyle(sel ? Color.white.opacity(0.9) : .secondary)
                             }
@@ -63,24 +63,63 @@ struct WunschItemsView: View {
     @State private var detail: WunschItem?
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 12) {
-                if let ev = store.selectedEvent {
-                    WunschActiveEventCard(event: ev).environmentObject(store)
-                }
-                WunschStatPills().environmentObject(store)
-                AreaSearchField(placeholder: "Geschenke suchen …", text: $store.search)
-
-                if store.selectedEventID != nil {
-                    addItemButton
-                }
-                itemList
-            }
-            .padding(.bottom, 28)
+        // Chrome (aktive-Event-Karte, Stats-Filter, Suche, „Hinzufügen") als fixe Kopfleiste,
+        // darunter eine echte List → native Wisch-Aktionen (Status/Löschen). Karten-Look bleibt via clear rows.
+        VStack(spacing: 0) {
+            header
+            content
         }
-        .refreshable { await store.loadAll() }
         .sheet(item: $detail) { it in
             WunschItemDetailSheet(itemID: it.id).environmentObject(store)
+        }
+    }
+
+    // MARK: - Fixe Kopfleiste (scrollt nicht mit)
+
+    private var header: some View {
+        VStack(spacing: 12) {
+            if let ev = store.selectedEvent {
+                WunschActiveEventCard(event: ev).environmentObject(store)
+            }
+            WunschStatPills().environmentObject(store)
+            AreaSearchField(placeholder: "Geschenke suchen …", text: $store.search)
+            if store.selectedEventID != nil {
+                addItemButton
+            }
+        }
+        .padding(.top, 8).padding(.bottom, 6)
+    }
+
+    // MARK: - Inhalt (List für Wisch-Aktionen; ScrollView nur im Leerzustand)
+
+    @ViewBuilder private var content: some View {
+        let visible = store.visibleItems
+        if visible.isEmpty {
+            ScrollView { emptyState }
+                .refreshable { await store.loadAll() }
+        } else if store.selectedEventID == nil {
+            // Alle-Modus: nach Event gruppiert → Sections.
+            List {
+                ForEach(store.groupedItems) { group in
+                    Section {
+                        ForEach(group.items) { it in row(it) }
+                    } header: {
+                        groupHeader(group)
+                    }
+                    .textCase(nil)
+                }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .refreshable { await store.loadAll() }
+        } else {
+            // Einzel-Anlass-Modus: flache Liste.
+            List {
+                ForEach(visible) { it in row(it) }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .refreshable { await store.loadAll() }
         }
     }
 
@@ -100,43 +139,38 @@ struct WunschItemsView: View {
         .padding(.horizontal, 14)
     }
 
-    @ViewBuilder private var itemList: some View {
-        let visible = store.visibleItems
-        if visible.isEmpty {
-            emptyState
-        } else if store.selectedEventID == nil {
-            // Alle-Modus: nach Event gruppiert.
-            LazyVStack(spacing: 16) {
-                ForEach(store.groupedItems) { group in
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack(spacing: 6) {
-                            Text("\(group.emoji) \(group.name)").font(.headline)
-                            if let cd = group.event?.countdown {
-                                Text(cd.text).font(.caption2.weight(.bold))
-                                    .padding(.horizontal, 6).padding(.vertical, 2)
-                                    .background(cd.color, in: Capsule()).foregroundStyle(cd.color.onFill)
-                            }
-                            Text("(\(group.items.count))").font(.caption).foregroundStyle(.secondary)
-                            Spacer(minLength: 0)
-                        }
-                        .padding(.horizontal, 14)
-                        ForEach(group.items) { it in card(it) }
-                    }
-                }
+    // Gruppen-Kopf (Event-Name + Countdown + Anzahl) als Section-Header.
+    private func groupHeader(_ group: WunschGroup) -> some View {
+        HStack(spacing: 6) {
+            Text("\(group.emoji) \(group.name)").font(.headline)
+            if let cd = group.event?.countdown {
+                Text(cd.text).font(.caption2.weight(.bold))
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(cd.color, in: Capsule()).foregroundStyle(cd.color.onFill)
             }
-        } else {
-            LazyVStack(spacing: 10) {
-                ForEach(visible) { it in card(it) }
-            }
+            Text("(\(String(group.items.count)))").font(.caption).foregroundStyle(.secondary)
+            Spacer(minLength: 0)
         }
     }
 
-    private func card(_ it: WunschItem) -> some View {
+    // Item-Karte als transparente List-Zeile + native Wisch-Aktionen (Löschen zuerst, dann Status).
+    private func row(_ it: WunschItem) -> some View {
         WunschItemCard(item: it,
                        onOpen: { detail = it },
                        onCycle: { Task { await store.cycleStatus(it) } },
                        onDelete: { Task { await store.deleteItem(it) } })
-            .padding(.horizontal, 14)
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets(top: 6, leading: 14, bottom: 6, trailing: 14))
+            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                Button(role: .destructive) { Task { await store.deleteItem(it) } } label: {
+                    Label("Löschen", systemImage: "trash")
+                }
+                Button { Task { await store.cycleStatus(it) } } label: {
+                    Label("Status", systemImage: "arrow.triangle.2.circlepath")
+                }
+                .tint(WunschStyle.accent)
+            }
     }
 
     @ViewBuilder private var emptyState: some View {
@@ -181,7 +215,7 @@ struct WunschStatPills: View {
                       selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             VStack(spacing: 1) {
-                Text("\(emoji) \(count)").font(.subheadline.weight(.bold))
+                Text("\(emoji) \(String(count))").font(.subheadline.weight(.bold))
                 Text(label.uppercased()).font(.caption2)
             }
             .padding(.horizontal, 12).padding(.vertical, 7)

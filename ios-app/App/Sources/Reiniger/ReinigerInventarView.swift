@@ -7,21 +7,49 @@ struct ReinigerInventarView: View {
     @State private var editRef: ReinigerEditRef?
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 14) {
-                HStack {
-                    Spacer()
-                    Button { editRef = ReinigerEditRef(product: nil) } label: {
-                        Label("Neuer Reiniger", systemImage: "plus.circle.fill").font(.subheadline.weight(.semibold))
-                    }
+        Group {
+            if store.inventarGroups.isEmpty {
+                ScrollView {
+                    AreaEmptyState(emoji: "🧽", title: "Noch keine Reiniger erfasst",
+                                   hint: "Tippe auf \"Neuer Reiniger\", um zu starten.",
+                                   actionLabel: "Hinzufügen",
+                                   action: { editRef = ReinigerEditRef(product: nil) })
+                        .frame(minHeight: 260)
                 }
-                .padding(.horizontal, 14).padding(.top, 8)
-
-                content
+                .refreshable { await store.loadAll() }
+            } else {
+                VStack(spacing: 0) {
+                    header
+                    List {
+                        ForEach(store.inventarGroups, id: \.kategorie) { group in
+                            Section {
+                                ForEach(group.items) { p in
+                                    ReinigerProduktCard(produkt: p) { detail = p }
+                                        .listRowSeparator(.hidden)
+                                        .listRowBackground(Color.clear)
+                                        .listRowInsets(EdgeInsets(top: 6, leading: 14, bottom: 6, trailing: 14))
+                                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                            Button(role: .destructive) {
+                                                Task { await store.deleteProduct(p.id) }
+                                            } label: { Label("Löschen", systemImage: "trash") }
+                                            Button {
+                                                Task { await store.setStatus(p.id, "nachkaufen") }
+                                            } label: { Label("Nachkaufen", systemImage: "cart.badge.plus") }
+                                            .tint(.green)
+                                        }
+                                }
+                            } header: {
+                                sectionHeader(group.kategorie, group.items.count)
+                            }
+                            .textCase(nil)
+                        }
+                    }
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
+                    .refreshable { await store.loadAll() }
+                }
             }
-            .padding(.bottom, 24)
         }
-        .refreshable { await store.loadAll() }
         .sheet(item: $detail) { p in
             ReinigerDetailSheet(productID: p.id).environmentObject(store)
         }
@@ -30,30 +58,22 @@ struct ReinigerInventarView: View {
         }
     }
 
-    @ViewBuilder private var content: some View {
-        let groups = store.inventarGroups
-        if groups.isEmpty {
-            AreaEmptyState(emoji: "🧽", title: "Noch keine Reiniger erfasst", hint: "Tippe auf \"Neuer Reiniger\", um zu starten.")
-                .frame(minHeight: 260)
-        } else {
-            VStack(spacing: 18) {
-                ForEach(groups, id: \.kategorie) { group in
-                    section(group.kategorie, group.items)
-                }
+    /// Fester Kopf (nicht scrollend): "+ Neuer Reiniger".
+    private var header: some View {
+        HStack {
+            Spacer()
+            Button { editRef = ReinigerEditRef(product: nil) } label: {
+                Label("Neuer Reiniger", systemImage: "plus.circle.fill").font(.subheadline.weight(.semibold))
             }
-            .padding(.horizontal, 14)
         }
+        .padding(.horizontal, 14).padding(.vertical, 8)
     }
 
-    private func section(_ kategorie: String, _ produkte: [ReinigerProdukt]) -> some View {
+    /// Kategorie-Kopf je Section (Emoji + Label + Anzahl).
+    private func sectionHeader(_ kategorie: String, _ count: Int) -> some View {
         let cat = ReinigerStyle.cat(kategorie)
-        return VStack(alignment: .leading, spacing: 8) {
-            Text("\(cat.emoji) \(cat.label.uppercased()) (\(produkte.count))")
-                .font(.caption.weight(.bold)).foregroundStyle(.secondary)
-            ForEach(produkte) { p in
-                ReinigerProduktCard(produkt: p) { detail = p }
-            }
-        }
+        return Text("\(cat.emoji) \(cat.label.uppercased()) (\(String(count)))")
+            .font(.caption.weight(.bold)).foregroundStyle(.secondary)
     }
 }
 

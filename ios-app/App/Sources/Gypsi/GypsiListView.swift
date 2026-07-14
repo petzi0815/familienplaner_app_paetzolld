@@ -1,26 +1,17 @@
 import SwiftUI
 
 /// Futter-Liste: Stats-Chips, Suche, Status-Segment, Marke/Geschmack-Menüs, Karten.
-/// Löschen via nativer Bestätigungsabfrage; Umschalten/Löschen inline auf der Karte.
+/// Karten liegen in einer nativen `List` → Wisch-Aktionen (Umschalten/Löschen); der feste
+/// Kopf (Stats/Suche/Status/Filter) sitzt außerhalb der Liste. Löschen via Bestätigungsabfrage.
 struct GypsiListView: View {
     @EnvironmentObject private var store: GypsiStore
     @State private var deleteTarget: GypsiFutter?
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 10) {
-                statsRow
-                AreaSearchField(placeholder: "Suchen …", text: $store.search)
-                statusBar
-                if !store.availableMarken.isEmpty || !store.availableGeschmack.isEmpty || store.filtersActive {
-                    filterBar
-                }
-                list
-            }
-            .padding(.top, 4)
-            .padding(.bottom, 96)   // Platz für den FAB
+        VStack(spacing: 0) {
+            header
+            listContent
         }
-        .refreshable { await store.loadAll() }
         .confirmationDialog(deleteTitle,
                             isPresented: deleteBinding,
                             titleVisibility: .visible) {
@@ -30,6 +21,71 @@ struct GypsiListView: View {
             }
             Button("Abbrechen", role: .cancel) { deleteTarget = nil }
         }
+    }
+
+    // ── Fester Kopf (bleibt beim Scrollen stehen) ──
+    private var header: some View {
+        VStack(spacing: 10) {
+            statsRow
+            AreaSearchField(placeholder: "Suchen …", text: $store.search)
+            statusBar
+            if !store.availableMarken.isEmpty || !store.availableGeschmack.isEmpty || store.filtersActive {
+                filterBar
+            }
+        }
+        .padding(.top, 4)
+        .padding(.bottom, 8)
+    }
+
+    // ── Liste bzw. Leerzustände ──
+    @ViewBuilder private var listContent: some View {
+        let items = store.visible
+        if store.all.isEmpty {
+            ScrollView {
+                AreaEmptyState(emoji: "🐾", title: "Noch kein Futter eingetragen",
+                               hint: "Tippe unten auf +, um Gypsis erstes Futter hinzuzufügen.")
+                    .frame(maxWidth: .infinity).frame(minHeight: 260)
+            }
+            .refreshable { await store.loadAll() }
+        } else if items.isEmpty {
+            ScrollView {
+                AreaEmptyState(emoji: "🔍", title: "Nix gefunden!", hint: "Andere Filter probieren 🎯")
+                    .frame(maxWidth: .infinity).frame(minHeight: 240)
+            }
+            .refreshable { await store.loadAll() }
+        } else {
+            // List statt ScrollView → native Wisch-Aktionen; Karten-Look via transparente Zeilen.
+            List {
+                ForEach(items) { f in row(f) }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .contentMargins(.bottom, 88, for: .scrollContent)   // Platz für den FAB
+            .refreshable { await store.loadAll() }
+        }
+    }
+
+    /// Futter-Karte als List-Zeile (transparent) mit nativen Wisch-Aktionen (Umschalten + Löschen).
+    private func row(_ f: GypsiFutter) -> some View {
+        let info = GypsiStyle.info(f.status)
+        return GypsiFutterCard(
+            f: f,
+            busy: store.busyIDs.contains(f.id),
+            onToggle: { Task { await store.toggle(f) } },
+            onDelete: { deleteTarget = f })
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets(top: 6, leading: 14, bottom: 6, trailing: 14))
+            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                Button(role: .destructive) { deleteTarget = f } label: {
+                    Label("Löschen", systemImage: "trash")
+                }
+                Button { Task { await store.toggle(f) } } label: {
+                    Label(f.liked ? "Mag er nicht" : "Mag er",
+                          systemImage: f.liked ? "hand.thumbsdown.fill" : "hand.thumbsup.fill")
+                }
+                .tint(info.toggleColor)
+            }
     }
 
     // ── Stats-Chips (globale Zahlen) ──
@@ -110,30 +166,6 @@ struct GypsiListView: View {
         .padding(.horizontal, 12).padding(.vertical, 7)
         .background(Color(.secondarySystemBackground), in: Capsule())
         .foregroundStyle(.primary)
-    }
-
-    // ── Liste ──
-    @ViewBuilder private var list: some View {
-        let items = store.visible
-        if store.all.isEmpty {
-            AreaEmptyState(emoji: "🐾", title: "Noch kein Futter eingetragen",
-                           hint: "Tippe unten auf +, um Gypsis erstes Futter hinzuzufügen.")
-                .frame(minHeight: 260)
-        } else if items.isEmpty {
-            AreaEmptyState(emoji: "🔍", title: "Nix gefunden!", hint: "Andere Filter probieren 🎯")
-                .frame(minHeight: 240)
-        } else {
-            LazyVStack(spacing: 12) {
-                ForEach(items) { f in
-                    GypsiFutterCard(
-                        f: f,
-                        busy: store.busyIDs.contains(f.id),
-                        onToggle: { Task { await store.toggle(f) } },
-                        onDelete: { deleteTarget = f })
-                }
-            }
-            .padding(.horizontal, 14).padding(.top, 4)
-        }
     }
 
     // ── Löschen-Bestätigung ──

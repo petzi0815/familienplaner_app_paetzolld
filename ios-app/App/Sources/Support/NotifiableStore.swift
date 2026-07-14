@@ -1,4 +1,4 @@
-import Foundation
+import UIKit
 
 /// Gemeinsames Toast-/Fehler-Verhalten für Bereichs-Stores. Entfernt die pro-Store duplizierte
 /// notify/errText-Boilerplate: der Store hält nur noch `message`/`messageIsError` (@Published),
@@ -14,6 +14,12 @@ protocol NotifiableStore: AnyObject {
 
 @MainActor
 extension NotifiableStore {
-    func notify(_ text: String, error: Bool = false) { message = text; messageIsError = error }
+    /// Setzt den Toast UND gibt zentrales haptisches Feedback (Erfolg = leichter Tap, Fehler = Warnung)
+    /// — greift dadurch für ALLE Bereiche (Speichern/Löschen/Umschalten laufen über notify).
+    func notify(_ text: String, error: Bool = false) {
+        message = text; messageIsError = error
+        if error { UINotificationFeedbackGenerator().notificationOccurred(.error) }
+        else { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
+    }
     func errText(_ e: Error) -> String { (e as? APIError)?.errorDescription ?? "Fehler" }
 }

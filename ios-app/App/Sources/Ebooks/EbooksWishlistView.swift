@@ -7,18 +7,19 @@ struct EbooksWishlistView: View {
     @State private var deleteTarget: EbookItem?
 
     var body: some View {
-        ScrollView {
+        VStack(spacing: 0) {
+            // Feste Kopfleiste (Stat-Pillen, Bulk, Suche, Status-Pillen, Dropdowns) — bleibt beim Scrollen stehen.
             VStack(spacing: 10) {
                 statsPills
                 bulkRow
                 AreaSearchField(placeholder: "In Wunschliste suchen …", text: $store.filters.search)
                 statusPills
                 dropdownRow
-                list
             }
-            .padding(.bottom, 24)
+            .padding(.bottom, 8)
+
+            listOrEmpty
         }
-        .refreshable { await store.loadAll() }
         .task(id: store.filters.search) {
             try? await Task.sleep(nanoseconds: 350_000_000)
             if !Task.isCancelled { await store.applySearch() }
@@ -127,25 +128,44 @@ struct EbooksWishlistView: View {
         .foregroundStyle(.primary)
     }
 
-    // ── Liste ──
-    @ViewBuilder private var list: some View {
+    // ── Liste (SwiftUI List → native Swipe-Aktionen) ──
+    @ViewBuilder private var listOrEmpty: some View {
         if store.items.isEmpty {
-            if store.filters.isActive {
-                AreaEmptyState(emoji: "📖", title: "Keine Bücher gefunden", hint: "Versuche andere Filter 🎯").frame(minHeight: 260)
-            } else {
-                AreaEmptyState(emoji: "📖", title: "Keine Bücher gefunden", hint: "Die Wunschliste ist noch leer.").frame(minHeight: 260)
+            // List rendert Leerzustände schlecht → ScrollView + gleicher Reload.
+            ScrollView {
+                if store.filters.isActive {
+                    AreaEmptyState(emoji: "📖", title: "Keine Bücher gefunden", hint: "Versuche andere Filter 🎯").frame(minHeight: 260)
+                } else {
+                    AreaEmptyState(emoji: "📖", title: "Keine Bücher gefunden", hint: "Die Wunschliste ist noch leer.").frame(minHeight: 260)
+                }
             }
+            .refreshable { await store.loadAll() }
         } else {
-            LazyVStack(spacing: 12) {
+            List {
                 ForEach(store.items) { item in
                     EbookCard(item: item,
                               onOpen: { detail = item },
                               onDelete: { deleteTarget = item },
                               onCheck: { Task { await store.checkBook(item) } },
                               checking: store.checkingID == item.id)
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(EdgeInsets(top: 6, leading: 14, bottom: 6, trailing: 14))
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button(role: .destructive) { deleteTarget = item } label: {
+                                Label("Löschen", systemImage: "trash")
+                            }
+                            Button { Task { _ = await store.toggleStatus(item) } } label: {
+                                Label(item.isDownloaded ? "Gesucht" : "Geladen",
+                                      systemImage: item.isDownloaded ? "magnifyingglass" : "checkmark.circle")
+                            }
+                            .tint(item.isDownloaded ? EbookStyle.amber : EbookStyle.green)
+                        }
                 }
             }
-            .padding(.horizontal, 14).padding(.top, 4)
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .refreshable { await store.loadAll() }
         }
     }
 }

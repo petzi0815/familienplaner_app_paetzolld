@@ -6,16 +6,16 @@ struct VertraegeListView: View {
     @State private var detail: Vertrag?
 
     var body: some View {
-        ScrollView {
+        // Feste Kopfzeile (Suche/Filter/Sortierung) über einer nativen `List` → echte `.swipeActions`.
+        VStack(spacing: 0) {
             VStack(spacing: 10) {
                 AreaSearchField(placeholder: "Anbieter, Nummer, Notiz …", text: $store.filters.search)
                 kategoriePills
                 sortBar
-                list
             }
-            .padding(.bottom, 28)
+            .padding(.bottom, 6)
+            listBody
         }
-        .refreshable { await store.loadAll() }
         .sheet(item: $detail) { v in
             VertragDetailSheet(vertragID: v.id).environmentObject(store)
         }
@@ -61,23 +61,41 @@ struct VertraegeListView: View {
             }
             Spacer()
             let n = store.listVisible.count
-            Text("\(n) \(n == 1 ? "Vertrag" : "Verträge")").font(.footnote).foregroundStyle(.secondary)
+            Text("\(String(n)) \(n == 1 ? "Vertrag" : "Verträge")").font(.footnote).foregroundStyle(.secondary)
         }
         .padding(.horizontal, 14)
     }
 
-    @ViewBuilder private var list: some View {
+    @ViewBuilder private var listBody: some View {
         let items = store.listVisible
-        if items.isEmpty {
-            AreaEmptyState(emoji: "🔍", title: "Nichts gefunden", hint: "Andere Suche oder Filter versuchen.")
-                .frame(minHeight: 240)
-        } else {
-            VStack(spacing: 8) {
-                ForEach(items) { v in
-                    VertragRow(vertrag: v, accent: v.catColor, showKategorie: true, onOpen: { detail = v })
+        Group {
+            if items.isEmpty {
+                // List rendert Leerzustände schlecht → eigener scrollbarer Zweig (Pull-to-Refresh bleibt).
+                ScrollView {
+                    AreaEmptyState(emoji: "🔍", title: "Nichts gefunden", hint: "Andere Suche oder Filter versuchen.")
+                        .frame(minHeight: 240)
                 }
+                .refreshable { await store.loadAll() }
+            } else {
+                List {
+                    ForEach(items) { v in
+                        VertragRow(vertrag: v, accent: v.catColor, showKategorie: true, onOpen: { detail = v })
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                            .listRowInsets(EdgeInsets(top: 6, leading: 14, bottom: 6, trailing: 14))
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                Button(role: .destructive) {
+                                    Task { await store.delete(v) }
+                                } label: {
+                                    Label("Löschen", systemImage: "trash")
+                                }
+                            }
+                    }
+                }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .refreshable { await store.loadAll() }
             }
-            .padding(.horizontal, 14).padding(.top, 2)
         }
     }
 }
