@@ -73,14 +73,27 @@ final class EbooksAPI {
         return ((obj["shelves"] as? [[String: Any]]) ?? []).compactMap(CalibreShelf.init)
     }
 
-    /// Bücher listen/suchen ODER (shelf gesetzt) Regal-Inhalt.
-    func calibreBooks(search: String?, shelf: Int?, offset: Int, limit: Int = 60) async throws -> (total: Int, rows: [CalibreBook]) {
+    /// Bücher listen/suchen ODER (shelf gesetzt) Regal-Inhalt; mit Sortierung.
+    func calibreBooks(search: String?, shelf: Int?, offset: Int, limit: Int = 60,
+                      sort: String? = nil, order: String? = nil) async throws -> (total: Int, rows: [CalibreBook]) {
         var q: [URLQueryItem] = [.init(name: "offset", value: String(offset)), .init(name: "limit", value: String(limit))]
         if let s = search, !s.isEmpty { q.append(.init(name: "search", value: s)) }
         if let sh = shelf { q.append(.init(name: "shelf", value: String(sh))) }
+        if let sort { q.append(.init(name: "sort", value: sort)) }
+        if let order { q.append(.init(name: "order", value: order)) }
         let obj = try await c.getObject("/buecher/calibre/books", query: q)
         let rows = ((obj["rows"] as? [[String: Any]]) ?? []).map(CalibreBook.init(fields:))
         return (Coerce.int(obj["total"]) ?? rows.count, rows)
+    }
+
+    /// Detail: zugeordnete Regal-IDs + (soweit ermittelbar) Voll-Metadaten.
+    func calibreBookDetail(id: Int, title: String?) async throws -> (shelfIds: [Int], book: CalibreBook?) {
+        var q: [URLQueryItem] = []
+        if let t = title, !t.isEmpty { q.append(.init(name: "title", value: t)) }
+        let obj = try await c.getObject("/buecher/calibre/book/\(id)", query: q)
+        let ids = (obj["shelf_ids"] as? [Any])?.compactMap { Coerce.int($0) } ?? []
+        let book = (obj["book"] as? [String: Any]).map(CalibreBook.init(fields:))
+        return (ids, book)
     }
 
     @discardableResult

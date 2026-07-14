@@ -18,6 +18,11 @@
   auf Regal legen), Routen `/api/buecher/calibre/{shelves,books,cover/[id],shelf}`, config.calibre (`CWA_*`).
   iOS: neuer **„Bibliothek"-Tab** (`Ebooks/CalibreView.swift`) — 5354 Bücher durchsuchbar, nach Regal filterbar,
   Cover, auf-Regal-legen. Live gegen die CWA-Instanz verifiziert (8/8, add/remove-Round-Trip sauber).
+  **+ Detailseite** (`Ebooks/CalibreBookDetail.swift`, Route `/api/buecher/calibre/book/[id]`): Metadaten + Beschreibung
+  + Regale zuordnen/entfernen (data-shelf-action="remove" = Mitgliedschaft). **+ Sortierung**: Neueste zuerst (Default) /
+  Autor A–Z / Z–A. LERNPUNKT: CWA `/ajax/listbooks` ignoriert sort für id/timestamp/title (Titel-Sort nur mit Suche),
+  nur `author_sort` greift zuverlässig → „alphabetisch" = Autor. **OFFEN/NÄCHSTES:** Wunschlisten-Retry (Task #13):
+  pro-Buch + „Alle prüfen" + „Fertige löschen" via Shelfmark.
 - **OFFEN (Lars, extern):** (1) fürs Update-Banner GH-Variable `FAMILIENPLANER_BASE_URL=https://familienplaner.yagemi.app` + Secret `FAMILIENPLANER_DEPLOY_KEY` (Agent-Key) setzen. (2) `APNS_*` in Coolify (bekannt offen) → sonst kein Per-User-Push. (3) Coolify muss `bookdl.yagemi.synology.me:1443` erreichen (sonst Shelfmark-Suche 502). `SHELFMARK_BASE_URL` optional. (4) **Calibre**: `CWA_URL`/`CWA_USERNAME`/`CWA_PASSWORD` in Coolify setzen (sonst Bibliothek-Tab 501; empfohlen: eigener CWA-Nutzer statt admin), Coolify muss `books.yagemi.synology.me:1443` erreichen.
 
 **Stand (2026-07-14, HEAD `9733200`): Backend + iOS LIVE — ALLE Lebensbereiche nativ in iOS + XCUITest-GUI-Tests (5/5, inkl. datengetriebenem Fixture-Test) + CI auf self-hosted Mac mini.** `https://familienplaner.yagemi.app`.

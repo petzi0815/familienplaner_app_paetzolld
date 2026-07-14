@@ -32,6 +32,7 @@ final class EbooksStore: ObservableObject {
     @Published var calibreLoading = false
     @Published var calibreLoadingMore = false
     @Published var calibreTotal = 0
+    @Published var calibreSort: CalibreSort = .neueste
     private var calibreSearchTask: Task<Void, Never>?
 
     init(settings: Settings) { api = EbooksAPI(settings: settings) }
@@ -181,8 +182,10 @@ final class EbooksStore: ObservableObject {
     func calibreReload() async {
         calibreLoading = true
         do {
-            let r = try await api.calibreBooks(search: calibreSearch, shelf: calibreShelf, offset: 0)
-            calibreBooks = r.rows; calibreTotal = r.total
+            let r = try await api.calibreBooks(search: calibreSearch, shelf: calibreShelf, offset: 0,
+                                               sort: calibreSort.sortParam, order: calibreSort.orderParam)
+            calibreBooks = r.rows   // Hauptliste server-sortiert; Regal-Inhalt in nativer Reihenfolge.
+            calibreTotal = r.total
         } catch { notify(errText(error), error: true) }
         calibreLoading = false
     }
@@ -191,11 +194,17 @@ final class EbooksStore: ObservableObject {
     func calibreLoadMore() async {
         guard !calibreLoadingMore, calibreShelf == nil, calibreBooks.count < calibreTotal else { return }
         calibreLoadingMore = true
-        if let r = try? await api.calibreBooks(search: calibreSearch, shelf: nil, offset: calibreBooks.count) {
+        if let r = try? await api.calibreBooks(search: calibreSearch, shelf: nil, offset: calibreBooks.count,
+                                               sort: calibreSort.sortParam, order: calibreSort.orderParam) {
             let seen = Set(calibreBooks.map(\.id))
             calibreBooks.append(contentsOf: r.rows.filter { !seen.contains($0.id) })
         }
         calibreLoadingMore = false
+    }
+
+    func setCalibreSort(_ s: CalibreSort) async {
+        calibreSort = s
+        await calibreReload()
     }
 
     func setCalibreShelf(_ id: Int?) async {

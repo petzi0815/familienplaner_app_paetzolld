@@ -1,21 +1,41 @@
 import SwiftUI
 
-/// „Bibliothek"-Tab: die echte Calibre-Web-Bibliothek — durchsuchbar, nach Regal filterbar,
-/// mit Covern; ein Buch antippen → auf ein Regal legen. Nur lesen + Regal (kein Löschen/Ändern).
+/// „Bibliothek"-Tab: die echte Calibre-Web-Bibliothek — durchsuchbar, nach Regal filterbar, sortierbar,
+/// mit Covern; ein Buch antippen → Detailseite (Metadaten + Regale zuordnen/entfernen).
 struct CalibreView: View {
     @EnvironmentObject private var store: EbooksStore
-    @State private var shelfPickerBook: CalibreBook?
+    @State private var selectedBook: CalibreBook?
     private let cols = [GridItem(.adaptive(minimum: 104), spacing: 12)]
 
     var body: some View {
         VStack(spacing: 0) {
             AreaSearchField(placeholder: "Bibliothek durchsuchen …", text: $store.calibreSearch)
+            sortBar
             shelfFilter
             content
         }
         .onChange(of: store.calibreSearch) { _, _ in store.calibreSearchChanged() }
         .task { if store.calibreBooks.isEmpty && store.calibreShelves.isEmpty { await store.loadCalibre() } }
-        .sheet(item: $shelfPickerBook) { book in shelfPicker(book) }
+        .sheet(item: $selectedBook) { book in CalibreBookDetail(book: book).environmentObject(store) }
+    }
+
+    // ── Sortierung + Zähler ──
+    private var sortBar: some View {
+        HStack {
+            Text("\(String(store.calibreTotal)) Bücher").font(.caption).foregroundStyle(.secondary)
+            Spacer()
+            Menu {
+                ForEach(CalibreSort.allCases) { s in
+                    Button { Task { await store.setCalibreSort(s) } } label: {
+                        Label(s.label, systemImage: store.calibreSort == s ? "checkmark" : "")
+                    }
+                }
+            } label: {
+                Label(store.calibreSort.label, systemImage: "arrow.up.arrow.down").font(.footnote.weight(.semibold))
+            }
+            .accessibilityIdentifier("calibre-sort")
+        }
+        .padding(.horizontal, 14).padding(.top, 2).padding(.bottom, 4)
     }
 
     // ── Regal-Filter ──
@@ -70,7 +90,7 @@ struct CalibreView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
-        .onTapGesture { shelfPickerBook = b }
+        .onTapGesture { selectedBook = b }
         .accessibilityIdentifier("calibre-book-\(b.id)")
     }
 
@@ -85,26 +105,5 @@ struct CalibreView: View {
         .frame(maxWidth: .infinity)
         .frame(height: 150)
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-    }
-
-    // ── Auf Regal legen ──
-    private func shelfPicker(_ book: CalibreBook) -> some View {
-        NavigationStack {
-            List {
-                Section {
-                    ForEach(store.calibreShelves) { s in
-                        Button { Task { await store.addToShelf(book, shelf: s); shelfPickerBook = nil } } label: {
-                            Label(s.name, systemImage: "text.badge.plus")
-                        }
-                    }
-                } header: {
-                    Text(book.title)
-                }
-            }
-            .navigationTitle("Auf Regal legen")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Abbrechen") { shelfPickerBook = nil } } }
-        }
-        .presentationDetents([.medium, .large])
     }
 }

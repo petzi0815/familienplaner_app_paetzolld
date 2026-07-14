@@ -182,6 +182,12 @@ final class FamilienplanerUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["UITEST Bibliotheksbuch"].waitForExistence(timeout: 8),
                       "Calibre-Bibliothek zeigt kein Buch (Fixture nicht geladen?)")
         XCTAssertTrue(app.buttons["calibre-shelf-2"].waitForExistence(timeout: 4), "Regal-Filter fehlt")
+        XCTAssertTrue(app.buttons["calibre-sort"].exists, "Sortier-Menü fehlt")
+
+        // Buch antippen → Detailseite mit Metadaten + Regal-Zuordnung.
+        app.buttons["calibre-book-5356"].tap()
+        XCTAssertTrue(app.staticTexts["Test Verlag"].waitForExistence(timeout: 8), "Buch-Detail zeigt keine Metadaten")
+        XCTAssertTrue(app.buttons["calibre-detail-shelf-2"].waitForExistence(timeout: 6), "Regal-Zuordnung im Detail fehlt")
     }
 
     /// DATENGETRIEBEN (Fixture): Geschenkplaner-Event antippen → Detail öffnet sich → Zurück.

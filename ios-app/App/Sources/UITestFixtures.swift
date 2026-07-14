@@ -15,6 +15,7 @@ enum UITestFixtures {
         case "/buecher/search": return shelfmarkSearch
         case "/buecher/calibre/shelves": return calibreShelves
         case "/buecher/calibre/books": return calibreBooks
+        case "/buecher/calibre/book/5356": return calibreBookDetail
         default: return nil
         }
     }
@@ -106,9 +107,13 @@ enum UITestFixtures {
     private static let calibreBooks: [String: Any] = [
         "total": 2,
         "rows": [
-            ["id": 5356, "title": "UITEST Bibliotheksbuch", "authors": "Test Autor", "has_cover": false, "tags": [], "series": NSNull(), "isbn": NSNull(), "read_status": false],
+            ["id": 5356, "title": "UITEST Bibliotheksbuch", "authors": "Test Autor", "has_cover": false, "tags": [], "series": NSNull(), "isbn": NSNull(), "read_status": false, "description": "Eine Testbeschreibung.", "publisher": "Test Verlag", "published": "2024", "languages": "Deutsch"],
             ["id": 5355, "title": "Zweites Testbuch", "authors": "Andere Autorin", "has_cover": false, "tags": [], "series": NSNull(), "isbn": NSNull(), "read_status": false],
         ],
+    ]
+    private static let calibreBookDetail: [String: Any] = [
+        "shelf_ids": [2],
+        "book": ["id": 5356, "title": "UITEST Bibliotheksbuch", "authors": "Test Autor", "has_cover": false, "tags": ["Roman"], "series": NSNull(), "isbn": "9781234567890", "read_status": false, "description": "Eine ausführliche Testbeschreibung des Buches.", "publisher": "Test Verlag", "published": "2024", "languages": "Deutsch", "rating": NSNull()],
     ]
 
     // ── Externe Buchsuche (Shelfmark) ──

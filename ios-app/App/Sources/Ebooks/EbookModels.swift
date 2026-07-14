@@ -167,6 +167,11 @@ struct CalibreBook: Identifiable, Equatable {
     let tags: [String]
     let hasCover: Bool
     let isbn: String?
+    let description: String?
+    let publisher: String?
+    let published: String?
+    let rating: String?
+    let languages: String?
 
     init(fields f: [String: Any]) {
         id = Coerce.int(f["id"]) ?? 0
@@ -176,10 +181,33 @@ struct CalibreBook: Identifiable, Equatable {
         tags = Coerce.stringArray(f["tags"])
         hasCover = Coerce.bool(f["has_cover"])
         isbn = Coerce.str(f["isbn"])
+        description = Coerce.str(f["description"])
+        publisher = Coerce.str(f["publisher"])
+        published = Coerce.str(f["published"])
+        rating = Coerce.str(f["rating"])
+        languages = Coerce.str(f["languages"])
     }
 
     /// Cover über den Backend-Proxy (AuthImage lädt mit Bearer). nil → Emoji-Fallback.
     var coverPath: String? { hasCover ? "/api/buecher/calibre/cover/\(id)" : nil }
+}
+
+/// Sortierung der Bibliotheks-Übersicht. Calibre-Webs Listen-API sortiert zuverlässig nur nach
+/// „zuletzt hinzugefügt" (Default) und nach Autor — Titel-/Datums-aufsteigend liefert die API nicht
+/// stabil, daher Autor-Alphabet als robuste alphabetische Sortierung über die ganze Bibliothek.
+enum CalibreSort: String, CaseIterable, Identifiable {
+    case neueste, autorAZ, autorZA
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .neueste: return "Neueste zuerst"
+        case .autorAZ: return "Autor A–Z"
+        case .autorZA: return "Autor Z–A"
+        }
+    }
+    /// Calibre-Web `sort`/`order`. nil = Default-Reihenfolge (neueste zuerst).
+    var sortParam: String? { self == .neueste ? nil : "author_sort" }
+    var orderParam: String { self == .autorZA ? "desc" : "asc" }
 }
 
 // MARK: - Tabs
