@@ -25,6 +25,7 @@ let BEREICH_REGISTRY: [BereichDef] = [
     .init(key: "ebooks",          title: "E-Books",     emoji: "📖",  makeRoot: { AnyView(EbooksRootView(settings: $0)) }),
     .init(key: "smarthome",       title: "Smart Home",  emoji: "🏠",  makeRoot: { AnyView(SmartHomeRootView(settings: $0)) }),
     .init(key: "vertraege",       title: "Verträge",    emoji: "📄",  makeRoot: { AnyView(VertraegeRootView(settings: $0)) }),
+    .init(key: "trauerkarten",    title: "Trauerkarten", emoji: "🕊️", makeRoot: { AnyView(TrauerkartenRootView(settings: $0)) }),
 ]
 
 private let BEREICH_BY_KEY: [String: BereichDef] = Dictionary(uniqueKeysWithValues: BEREICH_REGISTRY.map { ($0.key, $0) })

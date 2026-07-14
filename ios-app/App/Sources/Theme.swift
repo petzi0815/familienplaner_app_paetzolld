@@ -52,6 +52,7 @@ enum Palette {
         "vorratskammer": ["F97316", "FB923C", "FBBF24"],
         "reiniger": ["0EA5E9", "14B8A6", "84CC16"],
         "elisbooks": ["92400E", "B45309", "D97706"],
+        "trauerkarten": ["64748B", "475569", "334155"],
         "foto": ["5AC8FA", "007AFF", "5856D6"],
     ]
 
