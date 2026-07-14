@@ -68,6 +68,7 @@ struct SegmentBar<Tab: Hashable>: View {
                         .foregroundStyle(sel ? .white : .primary)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityIdentifier("segment-\(t.label)")
                 }
             }
             .padding(.horizontal, 12).padding(.vertical, 8)

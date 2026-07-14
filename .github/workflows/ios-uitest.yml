@@ -1,0 +1,94 @@
+# iOS UI-Tests (XCUITest) — GUI-Navigations-Smoke ohne Signing/Backend.
+# Startet die App im UI-Test-Modus (Login übersprungen, Bereiche statisch) und prüft, dass alle
+# Tabs erreichbar sind, jede Bereichs-Kachel navigiert + Zurück funktioniert und die Segment-Tabs
+# der nativen Bereiche schalten. Läuft auf dem self-hosted Mac-mini-iOS-Runner, kein Backend nötig.
+name: iOS UI Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "ios-app/**"
+      - ".github/workflows/ios-uitest.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ios-uitest-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  uitest:
+    runs-on: [self-hosted, ios, mac-mini-buero, familienplaner]
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: ios-app
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Versionen
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          xcode-select -p
+          xcrun simctl list runtimes
+
+      - name: XcodeGen installieren
+        run: |
+          set -euo pipefail
+          if ! command -v xcodegen >/dev/null 2>&1; then
+            brew install xcodegen
+          fi
+          xcodegen --version
+
+      - name: Xcode-Projekt generieren
+        run: xcodegen generate
+
+      - name: Simulator wählen (neuester verfügbarer iPhone-Simulator)
+        id: sim
+        run: |
+          set -euo pipefail
+          UDID=$(xcrun simctl list devices available -j | python3 -c "
+          import json,sys
+          d=json.load(sys.stdin)['devices']
+          cands=[]
+          for rt,devs in d.items():
+              if 'iOS' not in rt: continue
+              for dev in devs:
+                  if dev.get('isAvailable') and dev['name'].startswith('iPhone'):
+                      cands.append((rt, dev['name'], dev['udid']))
+          cands.sort(key=lambda x:(x[0], x[1]))
+          print(cands[-1][2] if cands else '')
+          ")
+          echo "Gewählter Simulator: $UDID"
+          if [ -z "$UDID" ]; then echo 'Kein iPhone-Simulator gefunden'; exit 1; fi
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+          xcrun simctl boot "$UDID" || true
+
+      - name: XCUITests ausführen
+        run: |
+          set -euo pipefail
+          DERIVED_DATA="$RUNNER_TEMP/Familienplaner-UITest-DerivedData"
+          rm -rf "$DERIVED_DATA"
+          xcodebuild test \
+            -project Familienplaner.xcodeproj \
+            -scheme Familienplaner \
+            -configuration Debug \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            -derivedDataPath "$DERIVED_DATA" \
+            -resultBundlePath "$RUNNER_TEMP/TestResults.xcresult" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
+
+      - name: Test-Ergebnis-Bundle sichern (bei Fehler)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: uitest-results
+          path: ${{ runner.temp }}/TestResults.xcresult
+          if-no-files-found: ignore
+
+      - name: Build-Artefakte aufraeumen
+        if: always()
+        run: |
+          rm -rf "$RUNNER_TEMP/Familienplaner-UITest-DerivedData" "$RUNNER_TEMP/TestResults.xcresult"
+          xcrun simctl delete unavailable || true

@@ -42,7 +42,8 @@ struct MainTabView: View {
         .tabBarMinimizeBehavior(.onScrollDown)
         .task {
             app.start()
-            AppDelegate.requestPushAuthorization()
+            // Im UI-Test KEINE Push-Berechtigung anfragen — der System-Alert würde XCUITest blockieren.
+            if !UITestMode.isActive { AppDelegate.requestPushAuthorization() }
         }
     }
 }

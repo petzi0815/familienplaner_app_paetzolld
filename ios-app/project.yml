@@ -64,6 +64,23 @@ targets:
             UIApplicationShortcutItemTitle: Was steht heute an
             UIApplicationShortcutItemIconType: UIApplicationShortcutIconTypeDate
 
+  # ── UI-Test-Target (XCUITest) — nur für die `test`-Action, nicht im Build-Check/Archive ──
+  FamilienplanerUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests
+    dependencies:
+      - target: Familienplaner
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.yagemi.familienplaner.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGNING_ALLOWED: NO
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: ""
+        TARGETED_DEVICE_FAMILY: "1"
+
   # ── Widget-Extension (Home-/Lock-Screen/StandBy) ──
   FamilienplanerWidgets:
     type: app-extension
@@ -95,6 +112,12 @@ schemes:
     build:
       targets:
         Familienplaner: all
+        FamilienplanerUITests: [test]
+    test:
+      config: Debug
+      gatherCoverageData: false
+      targets:
+        - FamilienplanerUITests
     archive:
       config: Release
     run:

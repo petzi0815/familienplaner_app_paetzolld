@@ -32,6 +32,15 @@ enum DomainCatalog {
             return BereichDomain(key: d, title: m.title, emoji: m.emoji, resources: byDomain[d] ?? [])
         }
     }
+
+    /// Statische Bereichsliste (alle bekannten Domains, ohne Ressourcen) — für den UI-Test-Modus
+    /// ohne Backend. Routing ist key-basiert, daher genügen key/title/emoji.
+    static func buildStatic() -> [BereichDomain] {
+        order.map { d in
+            let m = meta[d] ?? (d.prefix(1).uppercased() + d.dropFirst(), "📦")
+            return BereichDomain(key: d, title: m.title, emoji: m.emoji, resources: [])
+        }
+    }
 }
 
 /// „Bereiche"-Tab: farbiges Kachel-Grid aller Lebensbereiche. Einstellungen per Zahnrad.
@@ -50,6 +59,7 @@ struct BereicheHubView: View {
                         ForEach(app.domains) { d in
                             NavigationLink { BereichView(domain: d) } label: { BereichTile(domain: d) }
                                 .buttonStyle(.plain)
+                                .accessibilityIdentifier("bereich-tile-\(d.key)")
                         }
                     }
                     .padding()
@@ -106,6 +116,22 @@ struct BereichView: View {
                 GartenRootView(settings: app.settings)
             } else if domain.key == "geschenkplaner" {
                 GeschenkRootView(settings: app.settings)
+            } else if domain.key == "termine" {
+                TermineRootView(settings: app.settings)
+            } else if domain.key == "vorratskammer" {
+                VorratRootView(settings: app.settings)
+            } else if domain.key == "wunschliste" {
+                WunschlisteRootView(settings: app.settings)
+            } else if domain.key == "gypsi" {
+                GypsiRootView(settings: app.settings)
+            } else if domain.key == "reiniger" {
+                ReinigerRootView(settings: app.settings)
+            } else if domain.key == "ebooks" {
+                EbooksRootView(settings: app.settings)
+            } else if domain.key == "smarthome" {
+                SmartHomeRootView(settings: app.settings)
+            } else if domain.key == "vertraege" {
+                VertraegeRootView(settings: app.settings)
             } else if domain.resources.count == 1 {
                 ResourceListView(resource: domain.resources[0])
             } else {

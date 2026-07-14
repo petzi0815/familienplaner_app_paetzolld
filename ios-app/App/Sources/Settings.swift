@@ -18,6 +18,11 @@ final class Settings: ObservableObject {
     init() {
         baseURL = UserDefaults.standard.string(forKey: "baseURL") ?? AppConfig.defaultBaseURL
         apiKey = Keychain.read("apiKey")
+        // UI-Test: Login überspringen (in-memory, NICHT in die Keychain schreiben).
+        if UITestMode.isActive {
+            baseURL = UITestMode.baseURL
+            apiKey = UITestMode.apiKey
+        }
         // Spiegel für die Extension aktuell halten.
         SharedStore.baseURL = baseURL
         SharedStore.apiKey = apiKey

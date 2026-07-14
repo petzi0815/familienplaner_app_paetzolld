@@ -45,6 +45,11 @@ final class AppState: ObservableObject {
 
     func loadCapabilities() async {
         guard domains.isEmpty else { return }
+        // UI-Test ohne Backend: Bereiche-Grid statisch aus dem Katalog (Navigation offline testbar).
+        if UITestMode.isActive {
+            domains = DomainCatalog.buildStatic()
+            return
+        }
         if let caps = try? await api.capabilities() {
             resources = caps
             domains = DomainCatalog.build(from: caps)
