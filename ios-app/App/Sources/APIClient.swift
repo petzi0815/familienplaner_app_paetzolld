@@ -150,7 +150,26 @@ final class APIClient {
 
     /// Kompakter Tageszustand fürs „Heute"-Dashboard.
     func dashboard() async throws -> DashboardToday {
-        try await get("/dashboard/today", as: DashboardToday.self)
+        if let data = UITestFixtures.dashboardData {
+            return try Self.decoder.decode(DashboardToday.self, from: data)
+        }
+        return try await get("/dashboard/today", as: DashboardToday.self)
+    }
+
+    /// Abo-URL des Familien-Kalender-Feeds (https + webcal). Legt den Token serverseitig bei Bedarf an.
+    func feedSubscribe() async throws -> FeedSubscribeInfo {
+        if let data = UITestFixtures.feedSubscribeData {
+            return try Self.decoder.decode(FeedSubscribeInfo.self, from: data)
+        }
+        return try await get("/feed/subscribe", as: FeedSubscribeInfo.self)
+    }
+
+    /// Neuester bekannter iOS-Build (TestFlight) — fürs Update-Banner.
+    func appVersion() async throws -> AppVersionInfo {
+        if let data = UITestFixtures.appVersionData {
+            return try Self.decoder.decode(AppVersionInfo.self, from: data)
+        }
+        return try await get("/app/version", as: AppVersionInfo.self)
     }
 
     /// Kommende Abfuhrtermine je Kategorie gruppiert (für die native Kalenderansicht).
@@ -270,3 +289,4 @@ final class APIClient {
 }
 
 struct EmptyOK: Decodable {}
+struct FeedSubscribeInfo: Decodable { let url: String; let webcal: String }

@@ -45,6 +45,12 @@ struct AuthMe: Decodable {
     }
 }
 
+// ── Neuester iOS-Build (GET /api/v1/app/version) für das Update-Banner ──
+struct AppVersionInfo: Decodable {
+    let latestBuild: Int?
+    let testflightUrl: String?
+}
+
 // ── ID, die als Zahl ODER String kommen kann (elisbooks nutzt TEXT-PK) ──
 struct FlexibleID: Decodable, Hashable {
     let value: String
@@ -59,6 +65,8 @@ struct FlexibleID: Decodable, Hashable {
 // ── Dashboard (GET /api/v1/dashboard/today) ──
 struct DashboardToday: Decodable {
     let date: String
+    let kpis: [KpiTile]?               // datengetriebene KPI-Kacheln („Aktions-Fokus")
+    let agenda: [AgendaItem]?          // vereinheitlichter „Anstehendes"-Feed
     let termineUpcoming: [TerminShort]
     let remindersDue: Int
     let nextTrip: NextTrip?
@@ -66,6 +74,35 @@ struct DashboardToday: Decodable {
     let vorratBaldAblaufend: [VorratShort]
     let abfuhrNext: [AbfuhrNext]?
     let counts: DashboardCounts
+}
+
+// ── Datengetriebene KPI-Kachel (Home) ──
+struct KpiTile: Decodable, Identifiable {
+    let key: String
+    let icon: String        // SF-Symbol
+    let label: String
+    let value: Int
+    let domain: String      // Gradient-Key (Palette)
+    let target: String      // "inbox" | "heute" | "bereich:<key>"
+    var id: String { key }
+}
+
+// ── Vereinheitlichter „Anstehendes"-Feed (quellenübergreifend, GET /api/v1/agenda) ──
+struct AgendaItem: Decodable, Identifiable {
+    let source: String      // termin | abfuhr | reise | vorrat | reminder
+    let domain: String      // Gradient/Icon-Key
+    let id: String          // stabile Feed-ID, z.B. "termin-5"
+    let refId: Int?
+    let title: String
+    let subtitle: String?
+    let date: String
+    let time: String?
+    let endDate: String?
+    let daysUntil: Int?
+    let owner: String?
+    let done: Bool?
+    let read: Bool?
+    let notify: Bool?
 }
 
 // ── Abfuhrkalender (nächster Termin je Kategorie) ──

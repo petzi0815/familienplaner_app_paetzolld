@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Zentraler Zustand des Familienkalenders (Liste + Monat, Kategorien, Filter, Suche, Mutationen).
 @MainActor
-final class TermineStore: ObservableObject {
+final class TermineStore: ObservableObject, NotifiableStore {
     let api: TermineAPI
 
     // Daten
@@ -198,6 +198,23 @@ final class TermineStore: ObservableObject {
         } catch { notify(errText(error), error: true) }
     }
 
+    /// Persönliches „gelesen"-Häkchen umschalten (nur eigener Zustand, ändert NICHT den geteilten Status).
+    func toggleRead(_ t: Termin) async {
+        do {
+            try await api.setState(t.id, read: !t.read)
+            await reloadList(); await reloadMonth()
+        } catch { notify(errText(error), error: true) }
+    }
+
+    /// Persönliche Push-Benachrichtigung (2 & 1 Tag vorher) an/aus.
+    func setNotify(_ t: Termin, _ on: Bool) async {
+        do {
+            try await api.setState(t.id, notify: on)
+            notify(on ? "Benachrichtigung an (2 & 1 Tag vorher)" : "Benachrichtigung aus")
+            await reloadList(); await reloadMonth()
+        } catch { notify(errText(error), error: true) }
+    }
+
     /// Anlegen (id == nil) oder Bearbeiten. Gibt Erfolg zurück (für Sheet-Dismiss).
     func saveTermin(id: Int?, body: [String: Any]) async -> Bool {
         do {
@@ -211,8 +228,5 @@ final class TermineStore: ObservableObject {
         } catch { notify(errText(error), error: true); return false }
     }
 
-    // MARK: - Helfer
-
-    func notify(_ text: String, error: Bool = false) { message = text; messageIsError = error }
-    private func errText(_ e: Error) -> String { (e as? APIError)?.errorDescription ?? "Fehler" }
+    // notify(_:error:) und errText(_:) kommen aus NotifiableStore.
 }

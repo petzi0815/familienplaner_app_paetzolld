@@ -33,7 +33,7 @@ struct TermineRootView: View {
         }
         .task { if store.termine.isEmpty && store.loading { await store.loadAll() } }
         .environmentObject(store)
-        .overlay(alignment: .bottom) { toast }
+        .areaToast($store.message, isError: store.messageIsError)
         .onChange(of: store.search) { _, _ in store.searchChanged() }
         .sheet(item: $store.formRef) { ref in
             TermineFormSheet(termin: ref.termin, initialDate: ref.initialDate).environmentObject(store)
@@ -91,13 +91,6 @@ struct TermineRootView: View {
             case .liste: TermineListView()
             case .kalender: TermineCalendarView()
             }
-        }
-    }
-
-    @ViewBuilder private var toast: some View {
-        if let m = store.message {
-            AreaToast(message: m, isError: store.messageIsError)
-                .task { try? await Task.sleep(nanoseconds: 2_500_000_000); store.message = nil }
         }
     }
 }

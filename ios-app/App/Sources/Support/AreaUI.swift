@@ -202,6 +202,31 @@ struct AreaToast: View {
     }
 }
 
+/// Toast-Overlay als View-Modifier: zeigt `message` unten an und blendet ihn nach `seconds`
+/// automatisch aus (setzt die Bindung auf nil). Vereinheitlicht Dauer/Verhalten über alle Bereiche.
+private struct AreaToastModifier: ViewModifier {
+    @Binding var message: String?
+    var isError: Bool
+    var seconds: Double
+    func body(content: Content) -> some View {
+        content.overlay(alignment: .bottom) {
+            if let m = message {
+                AreaToast(message: m, isError: isError)
+                    .task {
+                        try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                        message = nil
+                    }
+            }
+        }
+    }
+}
+extension View {
+    /// Standard-Toast eines Bereichs (einheitliche Dauer). `message` wird nach dem Anzeigen genullt.
+    func areaToast(_ message: Binding<String?>, isError: Bool, seconds: Double = 2.5) -> some View {
+        modifier(AreaToastModifier(message: message, isError: isError, seconds: seconds))
+    }
+}
+
 /// Leerzustand mit Emoji-Titel + Hinweis (statt SF-Symbol) — passt zum verspielten Bereichs-Look.
 struct AreaEmptyState: View {
     let emoji: String

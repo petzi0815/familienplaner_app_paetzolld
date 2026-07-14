@@ -50,4 +50,19 @@ final class EbooksAPI {
     func deleteItem(_ id: Int) async throws {
         _ = try await c.send("/buecher/\(id)", method: "DELETE")
     }
+
+    // MARK: - Externe Suche (Shelfmark)
+
+    /// Externe Buchsuche über Shelfmark (GET /api/buecher/search?q=…).
+    func searchExternal(_ query: String) async throws -> [ShelfmarkResult] {
+        let obj = try await c.getObject("/buecher/search", query: [.init(name: "q", value: query)])
+        let arr = (obj["results"] as? [[String: Any]]) ?? []
+        return arr.map(ShelfmarkResult.init(fields:))
+    }
+
+    /// Download starten (addOnly=false) oder nur auf die Wunschliste setzen (addOnly=true).
+    @discardableResult
+    func download(_ raw: [String: Any], addOnly: Bool) async throws -> [String: Any] {
+        try await c.send("/buecher/download", method: "POST", body: ["release": raw, "addOnly": addOnly])
+    }
 }

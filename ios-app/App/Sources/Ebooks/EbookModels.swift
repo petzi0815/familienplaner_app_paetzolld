@@ -119,6 +119,35 @@ struct EbookFilters: Equatable {
     var hasClearable: Bool { year != nil || category != nil || !search.isEmpty }
 }
 
+// MARK: - Externes Suchergebnis (Shelfmark / Anna's Archive)
+
+struct ShelfmarkResult: Identifiable {
+    let sourceID: String
+    let title: String
+    let author: String?
+    let format: String?
+    let size: String?
+    let language: String?
+    let publisher: String?
+    let year: String?
+    let descriptionText: String?
+    let raw: [String: Any]      // volles Release-Objekt (für den Download an Shelfmark)
+    var id: String { sourceID.isEmpty ? title : sourceID }
+
+    init(fields f: [String: Any]) {
+        sourceID = Coerce.str(f["source_id"]) ?? ""
+        title = Coerce.str(f["title"]) ?? "Ohne Titel"
+        author = Coerce.str(f["author"])
+        format = Coerce.str(f["format"])
+        size = Coerce.str(f["size"])
+        language = Coerce.str(f["language"])
+        publisher = Coerce.str(f["publisher"])
+        year = Coerce.str(f["year"])
+        descriptionText = Coerce.str(f["description"])
+        raw = (f["_raw"] as? [String: Any]) ?? f
+    }
+}
+
 // MARK: - Tabs
 
 enum EbookTab: Hashable { case wunschliste, suche }

@@ -129,6 +129,47 @@ final class FamilienplanerUITests: XCTestCase {
         }
     }
 
+    /// DATENGETRIEBEN (Fixture): Home zeigt die 6 KPI-Kacheln, die Agenda, den Abonnieren-Button
+    /// und (Fixture-Build 999 > installiert) das Update-Banner.
+    func testHomeShowsKpisAgendaAndUpdateBanner() {
+        XCTAssertTrue(tabButton("Heute").waitForExistence(timeout: 15), "Heute-Tab fehlt")
+        tabButton("Heute").tap()
+        for key in ["foto", "termine", "reminders", "vorrat", "nachkaufen", "geschenke"] {
+            XCTAssertTrue(app.buttons["kpi-\(key)"].waitForExistence(timeout: 10), "KPI-Kachel fehlt: \(key)")
+        }
+        XCTAssertTrue(app.buttons["calendar-subscribe"].waitForExistence(timeout: 8), "Abonnieren-Button fehlt")
+        XCTAssertTrue(app.staticTexts["UITEST Zahnarzt"].waitForExistence(timeout: 8), "Agenda-Eintrag fehlt")
+        XCTAssertTrue(app.buttons["update-banner"].waitForExistence(timeout: 10), "Update-Banner fehlt")
+    }
+
+    /// KPI-Kachel „Anstehende Termine" tippen → springt in den Termine-Bereich.
+    func testHomeKpiNavigatesToBereich() {
+        tabButton("Heute").tap()
+        let kpi = app.buttons["kpi-termine"]
+        XCTAssertTrue(kpi.waitForExistence(timeout: 12), "KPI-Kachel 'termine' fehlt")
+        kpi.tap()
+        XCTAssertTrue(app.staticTexts["Familie Paetzold-Stilke"].waitForExistence(timeout: 12),
+                      "KPI-Tap hat nicht in den Termine-Bereich navigiert")
+    }
+
+    /// DATENGETRIEBEN (Fixture): externe E-Book-Suche liefert einen Treffer.
+    func testEbookExternalSearchReturnsResults() {
+        openBereiche()
+        let tileEl = tile("ebooks")
+        guard tileEl.waitForExistence(timeout: 8) else { XCTFail("E-Books-Kachel fehlt"); return }
+        tileEl.tap()
+        let seg = app.buttons["segment-Buch suchen"]
+        XCTAssertTrue(seg.waitForExistence(timeout: 8), "Segment 'Buch suchen' fehlt")
+        seg.tap()
+        let field = app.textFields["ebook-search-field"]
+        XCTAssertTrue(field.waitForExistence(timeout: 8), "Suchfeld fehlt")
+        field.tap()
+        field.typeText("test")
+        app.buttons["ebook-search-button"].tap()
+        XCTAssertTrue(app.staticTexts["UITEST Testbuch"].waitForExistence(timeout: 8),
+                      "Externe Suche liefert kein Ergebnis (Fixture nicht geladen?)")
+    }
+
     /// DATENGETRIEBEN (Fixture): Geschenkplaner-Event antippen → Detail öffnet sich → Zurück.
     /// Fängt den Navigations-Bug (Tap „verschluckt") UND die Jahres-Formatierung (2.026 statt 2026).
     func testGeschenkplanerEventNavigation() {

@@ -54,6 +54,14 @@ final class TermineAPI {
         _ = try await c.send("/termine/\(id)", method: "PATCH", body: body)
     }
 
+    /// Persönlichen Zustand (read/notify) des aufrufenden Users setzen (owner aus dem Key).
+    func setState(_ id: Int, read: Bool? = nil, notify: Bool? = nil) async throws {
+        var body: [String: Any] = [:]
+        if let read { body["read"] = read }
+        if let notify { body["notify"] = notify }
+        _ = try await c.send("/termine/\(id)/mystate", method: "POST", body: body)
+    }
+
     func delete(_ id: Int) async throws {
         _ = try await c.send("/termine/\(id)", method: "DELETE")
     }

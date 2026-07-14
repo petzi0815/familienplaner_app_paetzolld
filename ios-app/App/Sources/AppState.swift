@@ -5,11 +5,23 @@ final class AppState: ObservableObject {
     enum MainTab: Hashable { case heute, bereiche, scan, inbox, search }
 
     @Published var selectedTab: MainTab = .heute
+    /// Navigationspfad des Bereiche-Tabs (Deep-Link von den Home-KPI-Kacheln).
+    @Published var bereichePath: [String] = []
     /// Hochzählen → der Erfassen-Tab öffnet die Kamera (aus Quick-Action/Siri).
     @Published var openCameraTick: Int = 0
 
     /// Kamera direkt öffnen (Home-Quick-Action „Foto aufnehmen" / Siri).
     func requestCamera() { selectedTab = .scan; openCameraTick += 1 }
+
+    /// Einen Lebensbereich direkt öffnen (aus einer KPI-Kachel).
+    func openBereich(_ key: String) { bereichePath = [key]; selectedTab = .bereiche }
+
+    /// KPI-Kachel-Ziel auflösen: "inbox" | "heute" | "bereich:<key>".
+    func openKpiTarget(_ target: String) {
+        if target == "inbox" { selectedTab = .inbox }
+        else if target == "heute" { selectedTab = .heute }
+        else if target.hasPrefix("bereich:") { openBereich(String(target.dropFirst("bereich:".count))) }
+    }
     @Published var lebensbereiche: [Lebensbereich] = []
     @Published var inbox: [FotoInboxItem] = []
     @Published var inboxNeu: Int = 0
@@ -17,6 +29,9 @@ final class AppState: ObservableObject {
     @Published var dashboardError: String?
     @Published var domains: [BereichDomain] = []
     @Published var resources: [ResourceInfo] = []
+    /// Neuerer TestFlight-Build verfügbar (Buildnummer) → Update-Banner. nil = aktuell.
+    @Published var updateBuild: Int?
+    @Published var testflightURL: String?
 
     let settings: Settings
     let api: APIClient
@@ -30,6 +45,15 @@ final class AppState: ObservableObject {
         Task { await loadLebensbereiche() }
         Task { await loadInbox() }
         Task { await loadDashboard() }
+        Task { await checkForUpdate() }
+    }
+
+    /// Prüft, ob im TestFlight ein neuerer Build als der installierte liegt.
+    func checkForUpdate() async {
+        guard let info = try? await api.appVersion(), let latest = info.latestBuild else { return }
+        testflightURL = info.testflightUrl
+        let current = Int(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "") ?? 0
+        updateBuild = latest > current ? latest : nil
     }
 
     func loadLebensbereiche() async {
@@ -61,7 +85,9 @@ final class AppState: ObservableObject {
             let d = try await api.dashboard()
             dashboard = d
             dashboardError = nil
-            LocalReminders.reschedule(termine: d.termineUpcoming, vorrat: d.vorratBaldAblaufend, abfuhr: d.abfuhrNext ?? [])
+            // Termine laufen jetzt über den serverseitigen Per-User-Push (2 & 1 Tag vorher) →
+            // lokal nur noch Vorrat (MHD) + Abfuhr planen (kein Doppel-Push).
+            LocalReminders.reschedule(vorrat: d.vorratBaldAblaufend, abfuhr: d.abfuhrNext ?? [])
         } catch {
             dashboardError = (error as? APIError)?.errorDescription ?? "Konnte Heute-Übersicht nicht laden."
         }

@@ -17,6 +17,13 @@ final class EbooksStore: ObservableObject {
     @Published var message: String?
     @Published var messageIsError = false
 
+    // Externe Suche (Shelfmark)
+    @Published var searchQuery = ""
+    @Published var searchResults: [ShelfmarkResult] = []
+    @Published var searching = false
+    @Published var searchError: String?
+    @Published var downloadingID: String?
+
     init(settings: Settings) { api = EbooksAPI(settings: settings) }
 
     private static let ymd: DateFormatter = {
@@ -123,6 +130,35 @@ final class EbooksStore: ObservableObject {
         items.removeAll { $0.id == item.id }
         do { try await api.deleteItem(item.id) }
         catch { await reloadItems(); notify(errText(error), error: true) }
+    }
+
+    // MARK: - Externe Suche (Shelfmark)
+
+    /// Externe Buchsuche ausführen (min. 2 Zeichen).
+    func performSearch() async {
+        let q = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard q.count >= 2 else { searchResults = []; searchError = nil; return }
+        searching = true; searchError = nil
+        do {
+            let r = try await api.searchExternal(q)
+            searchResults = r
+            searchError = r.isEmpty ? "Keine Treffer." : nil
+        } catch {
+            searchResults = []
+            searchError = errText(error)
+        }
+        searching = false
+    }
+
+    /// Treffer herunterladen (addOnly=false) oder nur auf die Wunschliste setzen (addOnly=true).
+    func downloadResult(_ r: ShelfmarkResult, addOnly: Bool) async {
+        downloadingID = r.id
+        defer { downloadingID = nil }
+        do {
+            let res = try await api.download(r.raw, addOnly: addOnly)
+            notify((res["message"] as? String) ?? (addOnly ? "Zur Wunschliste hinzugefügt" : "Download gestartet"))
+            await reloadItems(); await reloadOptions()
+        } catch { notify(errText(error), error: true) }
     }
 
     private func reloadOptions() async {

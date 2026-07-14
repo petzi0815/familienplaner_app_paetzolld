@@ -1,7 +1,9 @@
 import SwiftUI
 import UIKit
 
-/// „Heute" — kompakter Tageszustand aus GET /api/v1/dashboard/today.
+/// „Heute" — datengetriebenes Home aus GET /api/v1/dashboard/today:
+/// KPI-Kacheln (antippbar → Bereich) + ein vereinheitlichter „Anstehendes"-Feed (Termine, Abfuhr,
+/// Reisen, Vorrat, injizierte Erinnerungen) + Kalender-Abo (ganzen Feed als ICS abonnieren).
 struct HeuteView: View {
     @EnvironmentObject private var app: AppState
     @State private var calMessage = ""
@@ -13,11 +15,9 @@ struct HeuteView: View {
             ScrollView {
                 if let d = app.dashboard {
                     VStack(spacing: 20) {
-                        stats(d)
-                        if let ab = d.abfuhrNext, !ab.isEmpty { abfuhr(ab) }
-                        if !d.termineUpcoming.isEmpty { termine(d.termineUpcoming) }
-                        if let trip = d.nextTrip { reise(trip) }
-                        if !d.vorratBaldAblaufend.isEmpty { vorrat(d.vorratBaldAblaufend) }
+                        if let b = app.updateBuild { updateBanner(b) }
+                        kpiGrid(d.kpis ?? [])
+                        agendaCard(d.agenda ?? [])
                     }
                     .padding()
                 } else if let err = app.dashboardError {
@@ -44,139 +44,154 @@ struct HeuteView: View {
         switch h { case 5..<11: return "Guten Morgen"; case 11..<17: return "Hallo"; case 17..<22: return "Guten Abend"; default: return "Gute Nacht" }
     }
 
-    // ── Bunte Kennzahl-Kacheln ──
-    private func stats(_ d: DashboardToday) -> some View {
+    // ── Update-Banner (neuer TestFlight-Build) ──
+    private func updateBanner(_ build: Int) -> some View {
+        Button {
+            let link = app.testflightURL.flatMap { URL(string: $0) } ?? URL(string: "itms-beta://")
+            if let link { UIApplication.shared.open(link) }
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "arrow.down.app.fill").font(.title2)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Update verfügbar").font(.subheadline.weight(.bold))
+                    Text("Build \(build) liegt im TestFlight – zum Aktualisieren tippen.").font(.caption)
+                }
+                Spacer(minLength: 6)
+                Image(systemName: "chevron.right").font(.caption.weight(.bold))
+            }
+            .foregroundStyle(.white)
+            .padding(14)
+            .background(Palette.gradient(for: "foto"), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .shadow(color: Palette.colors(for: "foto").first!.opacity(0.35), radius: 10, y: 5)
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("update-banner")
+    }
+
+    // ── KPI-Kacheln (datengetrieben, antippbar → springt in den Bereich) ──
+    private func kpiGrid(_ kpis: [KpiTile]) -> some View {
         LazyVGrid(columns: statCols, spacing: 12) {
-            StatTile(icon: "tray.full.fill", key: "foto", value: d.counts.fotoInboxNeu, label: "Neue Fotos")
-                .onTapGesture { app.selectedTab = .inbox }
-            StatTile(icon: "bell.badge.fill", key: "termine", value: d.remindersDue, label: "Erinnerungen")
-            StatTile(icon: "leaf.fill", key: "garten", value: d.gartenOffen, label: "Garten offen")
-            StatTile(icon: "gift.fill", key: "geschenkplaner", value: d.counts.geschenkeOffen, label: "Geschenke offen")
+            ForEach(kpis) { k in
+                Button { app.openKpiTarget(k.target) } label: { KpiTileView(kpi: k) }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("kpi-\(k.key)")
+            }
         }
     }
 
-    // ── Anstehende Termine ──
-    private func termine(_ items: [TerminShort]) -> some View {
-        SectionCard(title: "Anstehende Termine", systemImage: "calendar", key: "termine") {
-            ForEach(items.prefix(6)) { t in
-                HStack(spacing: 12) {
-                    GradientIcon(systemName: "calendar", gradientKey: "termine", size: 36)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(t.title).font(.subheadline.weight(.semibold)).lineLimit(1)
-                        Text(DateText.pretty(t.date) + (t.time.map { " · \($0)" } ?? ""))
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Button {
-                        Task { await addToCalendar(t) }
-                    } label: {
-                        Image(systemName: "calendar.badge.plus").font(.title3)
-                    }
-                    .buttonStyle(.plain).foregroundStyle(Palette.colors(for: "termine").first!)
-                }
-                if t.id != items.prefix(6).last?.id { Divider() }
+    // ── Anstehendes (vereinheitlichter Feed) + Kalender-Abo ──
+    private func agendaCard(_ items: [AgendaItem]) -> some View {
+        SectionCard(title: "Anstehendes", systemImage: "calendar", key: "termine") {
+            Button { Task { await subscribeCalendar() } } label: {
+                Label("Kalender abonnieren", systemImage: "calendar.badge.plus")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .buttonStyle(.plain)
+            .foregroundStyle(Palette.colors(for: "termine").first!)
+            .accessibilityIdentifier("calendar-subscribe")
             if !calMessage.isEmpty {
                 Text(calMessage).font(.caption).foregroundStyle(.secondary)
             }
+            Divider()
+            if items.isEmpty {
+                Text("Nichts in den nächsten Wochen.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 6)
+            } else {
+                ForEach(Array(items.prefix(12))) { item in
+                    AgendaRow(item: item)
+                        .contextMenu {
+                            if item.source == "termin" || item.source == "reise" {
+                                Button { Task { await addToCalendar(item) } } label: {
+                                    Label("Zum Kalender hinzufügen", systemImage: "calendar.badge.plus")
+                                }
+                            }
+                        }
+                    if item.id != items.prefix(12).last?.id { Divider() }
+                }
+            }
         }
     }
 
-    private func addToCalendar(_ t: TerminShort) async {
-        guard let date = DateText.parse(date: t.date, time: t.time) else { return }
-        let allDay = (t.time ?? "").isEmpty
-        switch await CalendarSync.addEvent(title: t.title, date: date, allDay: allDay, notes: "Aus Familienplaner") {
+    /// Ganzen Kalender-Feed (Termine + Abfuhr + Reisen) als ICS abonnieren (webcal → iOS-Abo-Dialog).
+    private func subscribeCalendar() async {
+        do {
+            let sub = try await app.api.feedSubscribe()
+            if let url = URL(string: sub.webcal) { _ = await UIApplication.shared.open(url) }
+            calMessage = "Kalender-Abo geöffnet – im Dialog bestätigen."
+        } catch {
+            calMessage = "Abo-Link konnte nicht geladen werden."
+        }
+    }
+
+    /// Einzelnes Ereignis manuell in den lokalen Kalender eintragen (Kontextmenü-Fallback).
+    private func addToCalendar(_ item: AgendaItem) async {
+        guard let date = DateText.parse(date: item.date, time: item.time) else { return }
+        let allDay = (item.time ?? "").isEmpty
+        switch await CalendarSync.addEvent(title: item.title, date: date, allDay: allDay, notes: "Aus Familienplaner") {
         case .success:
             UINotificationFeedbackGenerator().notificationOccurred(.success)
-            calMessage = "\"\(t.title)\" im Kalender eingetragen."
+            calMessage = "\"\(item.title)\" im Kalender eingetragen."
         case .failure(let e):
             calMessage = (e as? CalendarSync.CalError) == .denied
                 ? "Kalenderzugriff nicht erlaubt (in Einstellungen aktivieren)."
                 : "Konnte nicht eintragen."
         }
     }
-
-    // ── Nächste Abfuhr je Kategorie ──
-    private func abfuhr(_ items: [AbfuhrNext]) -> some View {
-        SectionCard(title: "Nächste Abfuhr", systemImage: "trash", key: "garten") {
-            ForEach(items) { a in
-                HStack(spacing: 12) {
-                    Text(a.emoji).font(.title2)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(a.label).font(.subheadline.weight(.semibold))
-                        if let dt = a.datum { Text(DateText.pretty(dt)).font(.caption).foregroundStyle(.secondary) }
-                    }
-                    Spacer()
-                    if let du = a.daysUntil {
-                        let urgent = du <= 1
-                        Text(du == 0 ? "heute" : du == 1 ? "morgen" : "in \(du) Tagen")
-                            .font(.caption.weight(.bold))
-                            .padding(.horizontal, 8).padding(.vertical, 4)
-                            .background((urgent ? Color.orange : Color(hex: a.color)).opacity(0.18), in: Capsule())
-                            .foregroundStyle(urgent ? Color.orange : Color(hex: a.color))
-                    }
-                }
-                if a.id != items.last?.id { Divider() }
-            }
-        }
-    }
-
-    // ── Nächste Reise (Countdown) ──
-    private func reise(_ trip: NextTrip) -> some View {
-        SectionCard(title: "Nächste Reise", systemImage: "airplane", key: "reisen") {
-            HStack(spacing: 14) {
-                GradientIcon(systemName: "airplane.departure", gradientKey: "reisen", size: 46)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(trip.title).font(.headline).lineLimit(1)
-                    if let dest = trip.destination, !dest.isEmpty {
-                        Text(dest).font(.subheadline).foregroundStyle(.secondary)
-                    }
-                }
-                Spacer()
-                if let days = trip.daysUntil {
-                    VStack(spacing: 0) {
-                        Text("\(max(days, 0))").font(.system(size: 30, weight: .heavy, design: .rounded))
-                        Text(days == 1 ? "Tag" : "Tage").font(.caption2).foregroundStyle(.secondary)
-                    }
-                    .foregroundStyle(Palette.colors(for: "reisen").first!)
-                }
-            }
-        }
-    }
-
-    // ── Bald ablaufende Lebensmittel ──
-    private func vorrat(_ items: [VorratShort]) -> some View {
-        SectionCard(title: "Bald ablaufend", systemImage: "clock.badge.exclamationmark", key: "vorratskammer") {
-            ForEach(items.prefix(6)) { v in
-                HStack(spacing: 12) {
-                    GradientIcon(systemName: "fork.knife", gradientKey: "vorratskammer", size: 36)
-                    Text(v.name).font(.subheadline.weight(.medium)).lineLimit(1)
-                    Spacer()
-                    if let mhd = v.mhd { Text(DateText.pretty(mhd)).font(.caption.weight(.semibold)).foregroundStyle(.orange) }
-                }
-                if v.id != items.prefix(6).last?.id { Divider() }
-            }
-        }
-    }
 }
 
-/// Bunte Kennzahl-Kachel (Verlauf).
-private struct StatTile: View {
-    let icon: String, key: String, value: Int, label: String
+/// Datengetriebene KPI-Kachel (Verlauf, antippbar).
+private struct KpiTileView: View {
+    let kpi: KpiTile
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Image(systemName: icon).font(.title3).foregroundStyle(.white.opacity(0.95))
-            Text("\(value)").font(.system(size: 30, weight: .heavy, design: .rounded)).foregroundStyle(.white)
-            Text(label).font(.caption.weight(.medium)).foregroundStyle(.white.opacity(0.9)).lineLimit(1)
+            Image(systemName: kpi.icon).font(.title3).foregroundStyle(.white.opacity(0.95))
+            Text("\(kpi.value)").font(.system(size: 30, weight: .heavy, design: .rounded)).foregroundStyle(.white)
+            Text(kpi.label).font(.caption.weight(.medium)).foregroundStyle(.white.opacity(0.9)).lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .background(Palette.gradient(for: key), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .shadow(color: Palette.colors(for: key).first!.opacity(0.35), radius: 10, y: 5)
+        .background(Palette.gradient(for: kpi.domain), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .shadow(color: Palette.colors(for: kpi.domain).first!.opacity(0.35), radius: 10, y: 5)
     }
 }
 
-/// Inhaltskarte mit Titel + Verlaufs-Icon.
+/// Eine Zeile des vereinheitlichten „Anstehendes"-Feeds (quellenübergreifend).
+struct AgendaRow: View {
+    let item: AgendaItem
+
+    private var icon: String {
+        switch item.source {
+        case "abfuhr": return "trash.fill"
+        case "reise": return "airplane"
+        case "vorrat": return "fork.knife"
+        case "reminder": return "bell.fill"
+        default: return "calendar"
+        }
+    }
+    private var subtitle: String {
+        var parts: [String] = [DateText.pretty(item.date)]
+        if let t = item.time, !t.isEmpty { parts.append(t) }
+        if let s = item.subtitle, !s.isEmpty { parts.append(s) }
+        return parts.joined(separator: " · ")
+    }
+    var body: some View {
+        HStack(spacing: 12) {
+            GradientIcon(systemName: icon, gradientKey: item.domain, size: 36)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.title).font(.subheadline.weight(.semibold)).lineLimit(1)
+                Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer(minLength: 6)
+            TerminDaysBadge(date: item.date)
+        }
+        .padding(.vertical, 2)
+        .opacity(item.read == true ? 0.6 : 1)
+    }
+}
+
+/// Inhaltskarte mit Titel + Verlaufs-Icon. (Von mehreren Bereichen genutzt — hier definiert.)
 struct SectionCard<Content: View>: View {
     let title: String, systemImage: String, key: String
     let content: Content

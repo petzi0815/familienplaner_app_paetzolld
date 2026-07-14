@@ -12,8 +12,23 @@ enum UITestFixtures {
         switch path {
         case "/geschenkplaner/dashboard": return dashboard
         case "/geschenkplaner/ereignisse/1": return ereignis1
+        case "/buecher/search": return shelfmarkSearch
         default: return nil
         }
+    }
+
+    // ── v1-JSON-Fixtures (vom APIClient im -uitest-Modus genutzt) ──
+    static var dashboardData: Data? {
+        guard UITestMode.isActive else { return nil }
+        return try? JSONSerialization.data(withJSONObject: dashboardToday)
+    }
+    static var feedSubscribeData: Data? {
+        guard UITestMode.isActive else { return nil }
+        return try? JSONSerialization.data(withJSONObject: ["url": "https://example.test/api/feed/uitest/familienplaner.ics", "webcal": "webcal://example.test/api/feed/uitest/familienplaner.ics"])
+    }
+    static var appVersionData: Data? {
+        guard UITestMode.isActive else { return nil }
+        return try? JSONSerialization.data(withJSONObject: ["latest_build": 999, "testflight_url": "itms-beta://"])
     }
 
     /// Bare-Array-Antwort für einen Pfad.
@@ -55,5 +70,41 @@ enum UITestFixtures {
         ["id": 1, "name": "Testkind", "geburtsdatum": "2020-09-09",
          "anlaesse": [["id": 1, "kind_id": 1, "anlass": "geburtstag", "aktiv": 1, "budget_min": 20, "budget_max": 60]],
          "naechste_ereignisse": [ereignis1Summary]],
+    ]
+
+    // ── Home-Dashboard (KPI-Kacheln + Agenda) ──
+    private static let dashboardToday: [String: Any] = [
+        "date": "2026-07-14",
+        "kpis": [
+            ["key": "foto", "icon": "tray.full.fill", "label": "Neue Fotos", "value": 2, "domain": "foto", "target": "inbox"],
+            ["key": "termine", "icon": "calendar", "label": "Anstehende Termine", "value": 3, "domain": "termine", "target": "bereich:termine"],
+            ["key": "reminders", "icon": "bell.badge.fill", "label": "Erinnerungen", "value": 1, "domain": "termine", "target": "heute"],
+            ["key": "vorrat", "icon": "clock.badge.exclamationmark", "label": "Bald ablaufend", "value": 4, "domain": "vorratskammer", "target": "bereich:vorratskammer"],
+            ["key": "nachkaufen", "icon": "cart.fill", "label": "Nachkaufen", "value": 5, "domain": "reiniger", "target": "bereich:reiniger"],
+            ["key": "geschenke", "icon": "gift.fill", "label": "Geschenke", "value": 6, "domain": "geschenkplaner", "target": "bereich:geschenkplaner"],
+        ],
+        "agenda": [
+            ["source": "termin", "domain": "termine", "id": "termin-1", "ref_id": 1, "title": "UITEST Zahnarzt", "subtitle": "Samu", "date": "2099-09-09", "time": "10:00", "days_until": 9999, "read": false, "notify": false],
+            ["source": "abfuhr", "domain": "abfuhrkalender", "id": "abfuhr-1", "ref_id": 1, "title": "🗑️ Restmüll", "date": "2099-09-10", "days_until": 9999],
+            ["source": "reminder", "domain": "termine", "id": "reminder-1", "ref_id": 1, "title": "UITEST Erinnerung", "subtitle": "per API", "date": "2099-09-11", "days_until": 9999],
+        ],
+        "termine_upcoming": [],
+        "reminders_due": 1,
+        "next_trip": NSNull(),
+        "garten_offen": 0,
+        "vorrat_bald_ablaufend": [],
+        "abfuhr_next": [],
+        "counts": ["samu_items": 0, "geschenke_offen": 6, "buecher": 0, "vertraege": 0, "foto_inbox_neu": 2],
+    ]
+
+    // ── Externe Buchsuche (Shelfmark) ──
+    private static let shelfmarkSearch: [String: Any] = [
+        "query": "test",
+        "count": 1,
+        "results": [
+            ["source_id": "sm1", "title": "UITEST Testbuch", "format": "epub", "size": "1.2MB",
+             "author": "Test Autor", "language": "de", "year": "2024",
+             "_raw": ["source_id": "sm1", "title": "UITEST Testbuch", "format": "epub", "source": "direct_download"]],
+        ],
     ]
 }

@@ -21,11 +21,13 @@ struct Termin: Identifiable, Equatable {
     var reminderDays: Int
     var reminderSent: Bool
     var cronJobId: String?
-    var status: String          // offen | erledigt
+    var status: String          // offen | erledigt (GETEILT)
     var notes: String?
     var source: String?
     var createdAt: String?
     var updatedAt: String?
+    var read: Bool              // PERSÖNLICH (nur bei Per-User-Key gesetzt)
+    var notify: Bool            // PERSÖNLICH: Push-Opt-in (2 & 1 Tag vorher)
 
     init(fields f: [String: Any]) {
         id = Coerce.int(f["id"]) ?? 0
@@ -48,6 +50,8 @@ struct Termin: Identifiable, Equatable {
         source = Coerce.str(f["source"])
         createdAt = Coerce.str(f["created_at"])
         updatedAt = Coerce.str(f["updated_at"])
+        read = Coerce.bool(f["read"])
+        notify = Coerce.bool(f["notify"])
     }
 
     var isDone: Bool { status == "erledigt" }

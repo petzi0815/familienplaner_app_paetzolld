@@ -1,15 +1,19 @@
 import SwiftUI
 
-/// „Buch suchen"-Tab. Die externe Shelfmark-Suche + Google-Books-Anreicherung sind serverseitig
-/// 501 → hier deaktiviert dargestellt. Das manuelle Anlegen (`POST /api/buecher`) funktioniert und
-/// ist der native Ersatz: Titel (+ optionale Felder) direkt auf die Wunschliste setzen.
+/// „Buch suchen"-Tab: externe Shelfmark-Suche (Anna's Archive) → Treffer herunterladen oder auf die
+/// Wunschliste setzen. Darunter das manuelle Anlegen als Fallback (kein externer Dienst nötig).
 struct EbooksSearchView: View {
     @EnvironmentObject private var store: EbooksStore
+
+    private var canSearch: Bool { store.searchQuery.trimmingCharacters(in: .whitespaces).count >= 2 && !store.searching }
 
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
-                disabledSearchCard
+                searchCard
+                if store.searching || store.searchError != nil || !store.searchResults.isEmpty {
+                    resultsCard
+                }
                 EbookManualAddForm().environmentObject(store)
             }
             .padding(14)
@@ -17,27 +21,97 @@ struct EbooksSearchView: View {
         }
     }
 
-    // ── Deaktivierte externe Suche ──
-    private var disabledSearchCard: some View {
+    // ── Externe Suche ──
+    private var searchCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("Externe Buchsuche", systemImage: "magnifyingglass")
-                .font(.headline)
+            Label("Externe Buchsuche", systemImage: "magnifyingglass").font(.headline)
             HStack {
-                Image(systemName: "magnifyingglass").foregroundStyle(.tertiary)
-                Text("Titel, Autor oder ISBN …").foregroundStyle(.tertiary)
-                Spacer()
+                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                TextField("Titel, Autor oder ISBN …", text: $store.searchQuery)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .submitLabel(.search)
+                    .onSubmit { Task { await store.performSearch() } }
+                    .accessibilityIdentifier("ebook-search-field")
+                if !store.searchQuery.isEmpty {
+                    Button { store.searchQuery = ""; store.searchResults = []; store.searchError = nil } label: {
+                        Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                    }
+                }
             }
             .padding(10)
             .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary, lineWidth: 1))
 
-            Label("Die Shelfmark-Suche und der Calibre-Download sind in dieser Version nicht verfügbar. Bücher lassen sich unten manuell auf die Wunschliste setzen — Ole sucht regelmäßig danach.",
-                  systemImage: "info.circle")
-                .font(.caption).foregroundStyle(.secondary)
+            Button { Task { await store.performSearch() } } label: {
+                Label(store.searching ? "Sucht …" : "Buch suchen", systemImage: "magnifyingglass")
+            }
+            .buttonStyle(GradientButtonStyle(gradientKey: "ebooks", enabled: canSearch))
+            .disabled(!canSearch)
+            .accessibilityIdentifier("ebook-search-button")
+
+            Text("Sucht über die familieneigene Shelfmark-Instanz und lädt direkt nach Calibre. Kein Treffer? Unten manuell auf die Wunschliste setzen — Ole sucht regelmäßig danach.")
+                .font(.caption2).foregroundStyle(.secondary)
         }
         .padding(14)
         .background(Color(.tertiarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .opacity(0.9)
+    }
+
+    // ── Ergebnisse ──
+    private var resultsCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if store.searching {
+                HStack(spacing: 8) { ProgressView(); Text("Sucht bei Shelfmark …").foregroundStyle(.secondary) }
+                    .font(.caption)
+            } else if let e = store.searchError {
+                Label(e, systemImage: "info.circle").font(.caption).foregroundStyle(.secondary)
+            } else {
+                Text("\(store.searchResults.count) Treffer").font(.caption.weight(.bold)).foregroundStyle(.secondary)
+            }
+            ForEach(store.searchResults) { r in
+                ShelfmarkResultRow(result: r).environmentObject(store)
+                if r.id != store.searchResults.last?.id { Divider() }
+            }
+        }
+        .padding(14)
+        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+}
+
+/// Eine Zeile eines externen Suchtreffers mit Download-/Wunschliste-Aktion.
+struct ShelfmarkResultRow: View {
+    let result: ShelfmarkResult
+    @EnvironmentObject private var store: EbooksStore
+    private var busy: Bool { store.downloadingID == result.id }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(result.title).font(.subheadline.weight(.semibold)).lineLimit(2)
+            if let a = result.author, !a.isEmpty {
+                Text(a).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    if let f = result.format, !f.isEmpty { Pill(text: f.uppercased(), color: EbookStyle.indigo, filled: false) }
+                    if let s = result.size, !s.isEmpty { Pill(text: s, color: .gray, filled: false) }
+                    if let l = EbookStyle.langLabel(result.language) { Pill(text: l, color: EbookStyle.green, filled: false) }
+                    if let y = result.year, !y.isEmpty { Pill(text: y, color: .gray, filled: false) }
+                    if let p = result.publisher, !p.isEmpty { Pill(text: p, color: .gray, filled: false) }
+                }
+            }
+            HStack(spacing: 10) {
+                Button { Task { await store.downloadResult(result, addOnly: false) } } label: {
+                    Label("Download", systemImage: "arrow.down.circle.fill").font(.caption.weight(.semibold))
+                }
+                .buttonStyle(.borderedProminent).tint(EbookStyle.rose).disabled(busy)
+                Button { Task { await store.downloadResult(result, addOnly: true) } } label: {
+                    Label("Wunschliste", systemImage: "star").font(.caption.weight(.semibold))
+                }
+                .buttonStyle(.bordered).disabled(busy)
+                if busy { ProgressView() }
+                Spacer()
+            }
+        }
+        .padding(.vertical, 4)
     }
 }
 

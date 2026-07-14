@@ -94,7 +94,7 @@ struct TerminCard: View {
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .opacity(dimmed ? 0.6 : 1)
+        .opacity(dimmed ? 0.6 : (termin.read && !termin.isDone ? 0.8 : 1))
     }
 
     private var metaChips: some View {
@@ -114,7 +114,8 @@ struct TerminCard: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 14) {
+            // Geteilt: Erledigt (ändert den Status für alle).
             Button { Task { await store.toggleStatus(termin) } } label: {
                 Label(termin.isDone ? "Offen" : "Erledigt",
                       systemImage: termin.isDone ? "arrow.uturn.left" : "checkmark.circle.fill")
@@ -122,6 +123,30 @@ struct TerminCard: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(termin.isDone ? Color.orange : Color.green)
+
+            // Persönlich: „gelesen"-Häkchen (nur für mich, lässt den Termin offen).
+            Button { Task { await store.toggleRead(termin) } } label: {
+                Image(systemName: termin.read ? "eye.fill" : "eye")
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(termin.read ? Theme.accent : .secondary)
+            .accessibilityIdentifier("termin-read-\(termin.id)")
+            .accessibilityLabel(termin.read ? "Als ungelesen markieren" : "Als gelesen markieren")
+
+            // Persönlich: Benachrichtigung (Dropdown) — 2 & 1 Tag vorher an/aus.
+            Menu {
+                Button { Task { await store.setNotify(termin, true) } } label: {
+                    Label("2 & 1 Tag vorher", systemImage: termin.notify ? "checkmark" : "bell")
+                }
+                Button { Task { await store.setNotify(termin, false) } } label: {
+                    Label("Keine Benachrichtigung", systemImage: termin.notify ? "bell.slash" : "checkmark")
+                }
+            } label: {
+                Image(systemName: termin.notify ? "bell.fill" : "bell")
+            }
+            .foregroundStyle(termin.notify ? Theme.accent : .secondary)
+            .accessibilityIdentifier("termin-notify-\(termin.id)")
+            .accessibilityLabel("Benachrichtigung wählen")
 
             Spacer()
 
