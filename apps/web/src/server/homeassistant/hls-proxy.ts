@@ -64,40 +64,36 @@ function rewriteRef(ref: string, basePath: string, expMs: number): string {
   return haPath ? proxyUrlFor(haPath, expMs) : ref;
 }
 
-// Low-Latency-HLS-Tags: HA liefert LL-HLS (blockierende Playlist-Reloads via `_HLS_msn/_HLS_part`).
-// Über den Proxy funktioniert das nicht zuverlässig (AVPlayer hängt) → diese Zeilen entfernen, damit
-// eine STANDARD-HLS-Playlist übrig bleibt (normale Reloads, etwas höhere Latenz, dafür stabil).
-const LL_HLS_TAGS = [
-  "#EXT-X-PART", // deckt auch #EXT-X-PART-INF ab (Präfix)
-  "#EXT-X-PRELOAD-HINT",
-  "#EXT-X-SERVER-CONTROL",
-  "#EXT-X-RENDITION-REPORT",
-  "#EXT-X-SKIP",
-];
-
-/** Alle URIs einer m3u8 auf Proxy-URLs umschreiben (bare Zeilen + URI="…" in Tags); LL-HLS entfernen. */
+/** Alle URIs einer m3u8 auf Proxy-URLs umschreiben (bare Zeilen + URI="…" in Tags). LL-HLS-Tags bleiben
+ *  erhalten (niedrige Latenz) — die blockierenden Reloads funktionieren, weil die `_HLS_`-Query
+ *  (msn/part) in der Route an HA durchgereicht wird. */
 function rewritePlaylist(text: string, basePath: string, expMs: number): string {
-  const out: string[] = [];
-  for (const line of text.split("\n")) {
-    const t = line.trim();
-    if (t === "") { out.push(line); continue; }
-    if (t.startsWith("#")) {
-      if (LL_HLS_TAGS.some((tag) => t.startsWith(tag))) continue; // LL-HLS → Standard-HLS
-      out.push(line.replace(/URI="([^"]+)"/g, (_m, uri) => `URI="${rewriteRef(uri, basePath, expMs)}"`));
-    } else {
-      out.push(rewriteRef(t, basePath, expMs));
-    }
-  }
-  return out.join("\n");
+  return text
+    .split("\n")
+    .map((line) => {
+      const t = line.trim();
+      if (t === "") return line;
+      if (t.startsWith("#")) {
+        return line.replace(/URI="([^"]+)"/g, (_m, uri) => `URI="${rewriteRef(uri, basePath, expMs)}"`);
+      }
+      return rewriteRef(t, basePath, expMs);
+    })
+    .join("\n");
 }
 
-/** Einen HA-HLS-Pfad proxyn: Playlist → Referenzen umschreiben; Segment/Init → Bytes durchreichen. */
-export async function proxyHls(haPath: string): Promise<Response> {
+/**
+ * Einen HA-HLS-Pfad proxyn: Playlist → Referenzen umschreiben; Segment/Init → Bytes durchreichen.
+ * `extraQuery` = die `_HLS_*`-Parameter (Low-Latency-Blocking-Reload) von AVPlayer → an HA anhängen.
+ */
+export async function proxyHls(haPath: string, extraQuery?: string): Promise<Response> {
+  const sep = haPath.includes("?") ? "&" : "?";
+  const target = extraQuery ? `${config.homeAssistant.url}${haPath}${sep}${extraQuery}` : `${config.homeAssistant.url}${haPath}`;
   const ctrl = new AbortController();
   // Timeout deckt AUCH den Body-Read ab (nicht nur die Header) → kein Hänger bei stockendem Segment.
+  // Großzügig, weil HA die Playlist beim Blocking-Reload bis zum nächsten Part zurückhält.
   const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
   try {
-    const res = await fetch(`${config.homeAssistant.url}${haPath}`, {
+    const res = await fetch(target, {
       signal: ctrl.signal,
       cache: "no-store",
       redirect: "manual", // keine Redirects folgen (bliebe zwar im /api/hls-Rahmen, aber unnötig)
