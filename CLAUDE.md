@@ -6,6 +6,14 @@
 
 ## ▶️ WIEDERAUFNAHME (nächste Session) — START HIER
 
+**NEU 2026-07-14 (Abend) — Kalender-Abo, generisches Anstehendes, Per-User-Termine, KPI-Rework, iOS-Reuse, Shelfmark, Update-Banner (Details: [[session-2026-07-14_kalender-feed-dashboard-per-user]]). Migration 0011. Backend 46 Smoke-Checks grün + adversarialer Review (0 Blocker).**
+- **Abonnierbarer ICS-Feed** (Termine+Abfuhr+Reisen): `server/ics/generate.ts` + `server/feed/tokens.ts` + öffentliche Route `app/api/feed/[token]/familienplaner.ics` (Token im Pfad, KEIN getAuth) + `/api/v1/feed/subscribe|rotate`. iOS: HeuteView „Kalender abonnieren" (webcal) + SettingsSheet.
+- **Generisches „Anstehendes"**: `queries.ts::agenda(days,owner)` mergt Termine/Abfuhr/Reisen/Vorrat/reminders; `reminders`-Tabelle (URL-Key **`erinnerungen`**, nicht `reminders`!) per API befüllbar; Route `/api/v1/agenda`. iOS Home = EINE datengetriebene Agenda-Liste.
+- **Per-User-Termine**: `termin_user_state` (read/notify + 2d/1d-Marker), `POST /api/termine/[id]/mystate`, Job `termine-user-reminders` (owner-Push 2 & 1 Tag vorher). iOS TerminCard: „gelesen"-Auge + Benachrichtigungs-Menu. LocalReminders: Termine raus (Server-Push).
+- **KPI-Kacheln „Aktions-Fokus 6"** (datengetrieben, antippbar → Deep-Link). **Geschenke 458→zukünftig** (`e.datum>=now`, auch Widget).
+- **iOS-Reuse**: `BEREICH_REGISTRY` (1 Eintrag/Bereich), `NotifiableStore`, `.areaToast`. **Shelfmark E-Book-Suche/Download echt** (node:https-Proxy, war 501). **Update-Banner** (`/api/v1/app/version` + Fastfile/CI).
+- **OFFEN (Lars, extern):** (1) fürs Update-Banner GH-Variable `FAMILIENPLANER_BASE_URL=https://familienplaner.yagemi.app` + Secret `FAMILIENPLANER_DEPLOY_KEY` (Agent-Key) setzen. (2) `APNS_*` in Coolify (bekannt offen) → sonst kein Per-User-Push. (3) Coolify muss `bookdl.yagemi.synology.me:1443` erreichen (sonst Shelfmark-Suche 502). `SHELFMARK_BASE_URL` optional (Default korrekt).
+
 **Stand (2026-07-14, HEAD `9733200`): Backend + iOS LIVE — ALLE Lebensbereiche nativ in iOS + XCUITest-GUI-Tests (5/5, inkl. datengetriebenem Fixture-Test) + CI auf self-hosted Mac mini.** `https://familienplaner.yagemi.app`.
 
 **NEU 2026-07-14 (Nachtrag) — 2 Geschenkplaner-Bugs gefixt (`9733200`, Details: [[feedback-swiftui-runtime-bugs]]):**
