@@ -6,7 +6,13 @@
 
 ## ▶️ WIEDERAUFNAHME (nächste Session) — START HIER
 
-**Stand (2026-07-14, HEAD `7aae84a`): Backend + iOS LIVE — ALLE Lebensbereiche jetzt nativ in iOS + XCUITest-GUI-Tests + CI auf self-hosted Mac mini.** `https://familienplaner.yagemi.app`.
+**Stand (2026-07-14, HEAD `9733200`): Backend + iOS LIVE — ALLE Lebensbereiche nativ in iOS + XCUITest-GUI-Tests (5/5, inkl. datengetriebenem Fixture-Test) + CI auf self-hosted Mac mini.** `https://familienplaner.yagemi.app`.
+
+**NEU 2026-07-14 (Nachtrag) — 2 Geschenkplaner-Bugs gefixt (`9733200`, Details: [[feedback-swiftui-runtime-bugs]]):**
+Nav: Event→Detail ging nicht (value-basierte NavigationLink in gepushter View flaky → closure-basiert wie Reisen).
+Optik: Jahr „2.026" statt „2026" (`Int` in `Text("…\(int)")` → `\(String(int))`). Beide Klassen alle Bereiche
+geprüft → nur Geschenkplaner. UI-Test-Best-Practice: `UITestFixtures.swift` (im `-uitest`-Modus vom CompatClient
+geliefert) → **datengetriebener** Test `testGeschenkplanerEventNavigation` fängt beide.
 
 **NEU 2026-07-14 — Restliche Bereiche nativ + XCUITest (Details: [[session-2026-07-14_restliche-bereiche-und-xcuitest]]):**
 - **Letzte 8 Bereiche nativ** (`App/Sources/{Termine,Vorrat,Wunschliste,Gypsi,Reiniger,Ebooks,SmartHome,Vertraege}/`) →
