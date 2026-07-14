@@ -23,4 +23,10 @@ export function startScheduler(): void {
     n++;
   }
   log.info("Scheduler gestartet", { geplant: n });
+
+  // Einmaliger Backfill kurz nach dem Boot: fehlende E-Book-Cover nachladen (idempotent, no-op wenn
+  // nichts fehlt) → Cover erscheinen ohne App-Update / manuellen Trigger.
+  setTimeout(() => {
+    runJob("buecher-cover-enrich").catch((e) => log.error("Cover-Enrich-Boot-Absturz", { error: String(e) }));
+  }, 90_000);
 }

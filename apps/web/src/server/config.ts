@@ -55,6 +55,14 @@ export const config = {
     baseUrl: env("SHELFMARK_BASE_URL", "https://bookdl.yagemi.synology.me:1443/api").replace(/\/+$/, ""),
   },
 
+  // Calibre-Web (familieneigene E-Book-Bibliothek, Synology, selbst-signiert). Der Server meldet sich
+  // per Session-Login an und proxyt Bücher/Regale/Cover. Ohne User/PW → Bibliothek-Tab liefert 501.
+  calibre: {
+    baseUrl: env("CWA_URL", "https://books.yagemi.synology.me:1443").replace(/\/+$/, ""),
+    username: env("CWA_USERNAME"),
+    password: env("CWA_PASSWORD"),
+  },
+
   // Integrationen (optional)
   openaiApiKey: env("OPENAI_API_KEY"),
   telegram: {

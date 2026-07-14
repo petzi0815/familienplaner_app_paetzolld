@@ -1,6 +1,7 @@
 import type BetterSqlite3 from "better-sqlite3";
 import { sendPush } from "@/server/push/apns";
 import { abfuhrCategory, fetchAhaICS, parseAbfuhrICS } from "@/server/abfuhr/abfuhr";
+import { enrichMissingCovers, countMissingCovers } from "@/server/ebooks/covers";
 
 export interface JobCtx {
   db: BetterSqlite3.Database;
@@ -82,6 +83,19 @@ export const JOBS: JobDef[] = [
         }
       }
       return { messages, affected };
+    },
+  },
+  {
+    name: "buecher-cover-enrich",
+    schedule: "30 4 * * *",
+    topic: "ebooks",
+    description: "Fehlende/kaputte E-Book-Wunschlisten-Cover aus Google Books nachladen (ISBN/Titel).",
+    async run(ctx) {
+      const pending = countMissingCovers(ctx.db);
+      if (ctx.dryRun) return { messages: [`${pending} Bücher ohne (valides) Cover`], affected: 0 };
+      if (pending === 0) return { messages: ["keine fehlenden Cover"], affected: 0 };
+      const { processed, updated } = await enrichMissingCovers(ctx.db);
+      return { messages: [`Cover-Enrich: ${processed} geprüft, ${updated} nachgeladen (${pending} offen)`], affected: updated };
     },
   },
   {
