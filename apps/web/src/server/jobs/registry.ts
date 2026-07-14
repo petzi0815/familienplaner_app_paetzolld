@@ -49,6 +49,42 @@ export const JOBS: JobDef[] = [
     },
   },
   {
+    name: "termine-user-reminders",
+    schedule: "0 8 * * *",
+    timezone: "Europe/Berlin",
+    topic: "termine",
+    description: "Per-User-Termin-Push: 2 Tage und 1 Tag vor dem Termin an das Gerät des Users (owner-gezielt).",
+    async run(ctx) {
+      const rows = ctx.db.prepare(
+        "SELECT s.termin_id, s.owner, s.reminder_2d_sent, s.reminder_1d_sent, t.title, t.date, t.time " +
+        "FROM termin_user_state s JOIN termine t ON t.id = s.termin_id " +
+        "WHERE s.notify=1 AND COALESCE(t.status,'')<>'erledigt' AND t.date IS NOT NULL AND t.date<>''",
+      ).all() as { termin_id: number; owner: string; reminder_2d_sent: number; reminder_1d_sent: number; title: string; date: string; time: string | null }[];
+      const t0 = todayStart();
+      const messages: string[] = [];
+      let affected = 0;
+      for (const r of rows) {
+        const d = new Date(r.date + "T00:00:00");
+        if (isNaN(d.getTime())) continue;
+        const days = Math.round((d.getTime() - t0.getTime()) / 86400000);
+        let offset: 2 | 1 | null = null;
+        if (days === 2 && !r.reminder_2d_sent) offset = 2;
+        else if (days === 1 && !r.reminder_1d_sent) offset = 1;
+        if (!offset) continue;
+        const when = offset === 2 ? "In 2 Tagen" : "Morgen";
+        const body = `${r.title} am ${r.date}${r.time ? ` um ${r.time}` : ""}`;
+        messages.push(`📅 ${when} (${r.owner}): ${body}`);
+        if (!ctx.dryRun) {
+          await sendPush({ title: `📅 ${when}`, body, data: { kind: "termin", id: r.termin_id }, owner: r.owner }).catch(() => {});
+          const col = offset === 2 ? "reminder_2d_sent" : "reminder_1d_sent";
+          ctx.db.prepare(`UPDATE termin_user_state SET ${col}=1, updated_at=datetime('now') WHERE termin_id=? AND owner=?`).run(r.termin_id, r.owner);
+          affected++;
+        }
+      }
+      return { messages, affected };
+    },
+  },
+  {
     name: "vorrat-mhd-check",
     schedule: "0 9 * * 1",
     topic: "vorratskammer",

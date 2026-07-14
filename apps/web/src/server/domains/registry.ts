@@ -25,6 +25,10 @@ export interface Resource {
 export const RESOURCES: Resource[] = [
   // ── Termine ──
   { key: "termine", table: "termine", domain: "termine", label: "Termine", sort: "date ASC, time ASC" },
+  // Generische, per-API befüllbare Erinnerungen/Ereignisse (Quelle des „Anstehendes"-Agenda-Feeds).
+  // URL-Key bewusst `erinnerungen` (nicht `reminders`) — kollidiert sonst mit den statischen
+  // /api/v1/reminders/due + /api/v1/reminders/[id]/sent-Routen. Tabelle bleibt `reminders`.
+  { key: "erinnerungen", table: "reminders", domain: "termine", label: "Erinnerungen", sort: "date ASC, time ASC", searchable: ["title", "body", "domain", "source", "status"] },
 
   // ── Reisen ──
   { key: "reisen", table: "reisen_trips", domain: "reisen", label: "Reisen", image: { col: "cover_image", multi: false, area: "reisen" }, sort: "start_date DESC" },

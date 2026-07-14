@@ -49,6 +49,12 @@ export const config = {
     useSandbox: env("APNS_USE_SANDBOX", "0") === "1",
   },
 
+  // Shelfmark (familieneigene E-Book-Downloader-Instanz auf der Synology, selbst-signiertes Zertifikat).
+  // Der Server proxyt Suche/Download dorthin. Basis-URL überschreibbar; Standard = bekannte DDNS.
+  shelfmark: {
+    baseUrl: env("SHELFMARK_BASE_URL", "https://bookdl.yagemi.synology.me:1443/api").replace(/\/+$/, ""),
+  },
+
   // Integrationen (optional)
   openaiApiKey: env("OPENAI_API_KEY"),
   telegram: {

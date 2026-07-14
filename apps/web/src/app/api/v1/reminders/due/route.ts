@@ -8,6 +8,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export function GET(req: Request): Response {
-  if (!hasRole(getAuth(req), "readonly")) return unauthorized();
-  return ok(remindersDue());
+  const auth = getAuth(req);
+  if (!hasRole(auth, "readonly")) return unauthorized();
+  return ok(remindersDue(auth?.owner ?? null));
 }

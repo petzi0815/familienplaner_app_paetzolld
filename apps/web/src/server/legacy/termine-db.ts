@@ -52,20 +52,23 @@ export function getCategoryInfo(cat: string) {
 }
 
 /* ── CRUD ── */
-export function getAllTermine(opts?: { from?: string; to?: string; category?: string; status?: string; person?: string }): Termin[] {
+// `owner` (Per-User-Key) → LEFT JOIN termin_user_state, ergänzt read/notify je Termin (0/1).
+export function getAllTermine(opts?: { from?: string; to?: string; category?: string; status?: string; person?: string }, owner?: string | null): Termin[] {
   const db = getDb();
-  let sql = 'SELECT * FROM termine WHERE 1=1';
-  const params: unknown[] = [];
+  const sel = owner ? "t.*, COALESCE(tus.read,0) AS read, COALESCE(tus.notify,0) AS notify" : "t.*";
+  let sql = `SELECT ${sel} FROM termine t`
+    + (owner ? " LEFT JOIN termin_user_state tus ON tus.termin_id=t.id AND tus.owner=@owner" : "")
+    + " WHERE 1=1";
+  const params: Record<string, unknown> = {};
+  if (owner) params.owner = owner;
+  if (opts?.from) { sql += ' AND t.date >= @from'; params.from = opts.from; }
+  if (opts?.to) { sql += ' AND t.date <= @to'; params.to = opts.to; }
+  if (opts?.category) { sql += ' AND t.category = @category'; params.category = opts.category; }
+  if (opts?.status) { sql += ' AND t.status = @status'; params.status = opts.status; }
+  if (opts?.person) { sql += ' AND t.person = @person'; params.person = opts.person; }
 
-  if (opts?.from) { sql += ' AND date >= ?'; params.push(opts.from); }
-  if (opts?.to) { sql += ' AND date <= ?'; params.push(opts.to); }
-  if (opts?.category) { sql += ' AND category = ?'; params.push(opts.category); }
-  if (opts?.status) { sql += ' AND status = ?'; params.push(opts.status); }
-  if (opts?.person) { sql += ' AND person = ?'; params.push(opts.person); }
-
-  sql += ' ORDER BY date ASC, time ASC';
-  const result = db.prepare(sql).all(...params) as Termin[];
-  return result;
+  sql += ' ORDER BY t.date ASC, t.time ASC';
+  return db.prepare(sql).all(params) as Termin[];
 }
 
 export function getTermin(id: number): Termin | undefined {
@@ -115,7 +118,26 @@ export function updateTermin(id: number, data: Partial<Termin>): boolean {
   fields.push("updated_at = datetime('now')");
   params.push(id);
   const result = db.prepare(`UPDATE termine SET ${fields.join(', ')} WHERE id = ?`).run(...params);
+  // Datum geändert → Per-User-Push-Marker zurücksetzen (sonst würde der 2d/1d-Push fälschlich unterdrückt).
+  if ('date' in data) {
+    db.prepare("UPDATE termin_user_state SET reminder_2d_sent=0, reminder_1d_sent=0, updated_at=datetime('now') WHERE termin_id=?").run(id);
+  }
   return result.changes > 0;
+}
+
+/* ── Per-User-Zustand (owner = 'lars' | 'elita') ── */
+export function setTerminUserState(terminId: number, owner: string, patch: { read?: boolean; notify?: boolean }): void {
+  const db = getDb();
+  const read = patch.read === undefined ? null : (patch.read ? 1 : 0);
+  const notify = patch.notify === undefined ? null : (patch.notify ? 1 : 0);
+  db.prepare(
+    `INSERT INTO termin_user_state (termin_id, owner, read, notify)
+     VALUES (@id, @owner, COALESCE(@read,0), COALESCE(@notify,0))
+     ON CONFLICT(termin_id, owner) DO UPDATE SET
+       read   = COALESCE(@read, read),
+       notify = COALESCE(@notify, notify),
+       updated_at = datetime('now')`,
+  ).run({ id: terminId, owner, read, notify });
 }
 
 export function deleteTermin(id: number): boolean {
@@ -125,27 +147,29 @@ export function deleteTermin(id: number): boolean {
 }
 
 /* ── Helpers ── */
-export function getUpcomingTermine(days: number = 14): Termin[] {
+export function getUpcomingTermine(days: number = 14, owner?: string | null): Termin[] {
   const today = new Date().toISOString().split('T')[0];
   const future = new Date(Date.now() + days * 86400000).toISOString().split('T')[0];
-  return getAllTermine({ from: today, to: future, status: 'offen' });
+  return getAllTermine({ from: today, to: future, status: 'offen' }, owner);
 }
 
-export function getTermineForMonth(year: number, month: number): Termin[] {
+export function getTermineForMonth(year: number, month: number, owner?: string | null): Termin[] {
   const from = `${year}-${String(month).padStart(2, '0')}-01`;
   const lastDay = new Date(year, month, 0).getDate();
   const to = `${year}-${String(month).padStart(2, '0')}-${lastDay}`;
-  return getAllTermine({ from, to });
+  return getAllTermine({ from, to }, owner);
 }
 
-export function searchTermine(query: string): Termin[] {
+export function searchTermine(query: string, owner?: string | null): Termin[] {
   const db = getDb();
   const q = `%${query}%`;
-  const results = db.prepare(`
-    SELECT * FROM termine
-    WHERE title LIKE ? OR description LIKE ? OR location LIKE ? OR person LIKE ? OR notes LIKE ? OR category LIKE ?
-    ORDER BY date DESC
-  `).all(q, q, q, q, q, q) as Termin[];
+  const sel = owner ? "t.*, COALESCE(tus.read,0) AS read, COALESCE(tus.notify,0) AS notify" : "t.*";
+  const join = owner ? " LEFT JOIN termin_user_state tus ON tus.termin_id=t.id AND tus.owner=@owner" : "";
+  const results = db.prepare(
+    `SELECT ${sel} FROM termine t${join}
+     WHERE t.title LIKE @q OR t.description LIKE @q OR t.location LIKE @q OR t.person LIKE @q OR t.notes LIKE @q OR t.category LIKE @q
+     ORDER BY t.date DESC`,
+  ).all(owner ? { q, owner } : { q }) as Termin[];
   return results;
 }
 

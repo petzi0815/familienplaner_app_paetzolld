@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAllTermine, addTermin, getUpcomingTermine, getDueReminders, getTermineForMonth, searchTermine, getConflicts, CATEGORIES } from '@/server/legacy/termine-db';
 import { guard } from '@/server/legacy/compat';
+import { getAuth } from '@/server/auth/auth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -10,10 +11,11 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const mode = searchParams.get('mode');
+    const owner = getAuth(request)?.owner ?? null; // Per-User read/notify (nur bei persönlichem Key)
 
     if (mode === 'upcoming') {
       const days = parseInt(searchParams.get('days') || '14');
-      return NextResponse.json(getUpcomingTermine(days));
+      return NextResponse.json(getUpcomingTermine(days, owner));
     }
 
     if (mode === 'reminders') {
@@ -23,7 +25,7 @@ export async function GET(request: Request) {
     if (mode === 'month') {
       const year = parseInt(searchParams.get('year') || new Date().getFullYear().toString());
       const month = parseInt(searchParams.get('month') || (new Date().getMonth() + 1).toString());
-      return NextResponse.json(getTermineForMonth(year, month));
+      return NextResponse.json(getTermineForMonth(year, month, owner));
     }
 
     if (mode === 'categories') {
@@ -33,7 +35,7 @@ export async function GET(request: Request) {
     if (mode === 'search') {
       const q = searchParams.get('q') || '';
       if (!q) return NextResponse.json([]);
-      return NextResponse.json(searchTermine(q));
+      return NextResponse.json(searchTermine(q, owner));
     }
 
     if (mode === 'conflicts') {
@@ -50,7 +52,7 @@ export async function GET(request: Request) {
     if (searchParams.get('status')) opts.status = searchParams.get('status')!;
     if (searchParams.get('person')) opts.person = searchParams.get('person')!;
 
-    return NextResponse.json(getAllTermine(opts));
+    return NextResponse.json(getAllTermine(opts, owner));
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Fehler' }, { status: 500 });
   }
