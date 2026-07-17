@@ -1,10 +1,12 @@
 import SwiftUI
 
-/// Zentraler Zustand des Pizza-Bereichs: Eingaben (`config` + `essenszeit`), das daraus gerechnete
-/// `ergebnis` und die gespeicherten Rezepturen/Notizen.
+/// Zentraler Zustand des Pizza-Bereichs: Eingaben (`config` + `essenszeit`), der daraus gerechnete
+/// Start-`korridor` samt gewaehltem Start und `aktiverPlan`, plus die gespeicherten Rezepturen/Notizen.
 ///
 /// Jede Aenderung an `config`/`essenszeit` rechnet sofort neu (`didSet` → `rechne()`), damit die
-/// Views nie selbst an den Rechenkern denken muessen: sie binden an die Eingaben und lesen `ergebnis`.
+/// Views nie selbst an den Rechenkern denken muessen: sie binden an die Eingaben und lesen
+/// `korridor`/`aktiverPlan`. `aktiverPlan` ist bewusst GESPEICHERT (nicht computed) und wird nur bei
+/// echten Aenderungen neu gerechnet — so kostet das Regler-Ziehen pro Frame nur EINEN planFuerStart.
 @MainActor
 final class PizzaStore: ObservableObject, NotifiableStore {
     let api: PizzaAPI
@@ -16,13 +18,25 @@ final class PizzaStore: ObservableObject, NotifiableStore {
 
     // MARK: - Ergebnis + Ansicht
 
-    /// Die Planung des Solvers: warm und/oder kalt. Nie ein "geht nicht" — die Essenszeit ist fix.
-    @Published var planung: PizzaPlanung?
-    /// Die aktuell gewaehlte Variante. Der Umschalter im Planer schreibt sie ueber `waehleVariante`;
-    /// `rechne()` korrigiert sie auf eine tatsaechlich vorhandene, ohne die Nutzerpraeferenz zu aendern.
-    @Published var variante: PizzaVariante = .warm
+    /// Der Start-Korridor des Solvers: welche Startzeiten fuer die (fixe) Essenszeit moeglich bzw.
+    /// durch die Nachtruhe blockiert sind. Nie ein "geht nicht" im harten Sinn — ist der Korridor
+    /// leer, erklaert `korridor.grund` sanft warum (zu kurzfristig / Essen faellt in die Nachtruhe).
+    @Published var korridor: PizzaKorridor?
+    /// Die per Regler gewaehlte Startzeit (erster Handgriff = Kneten). Default = fruehester freier
+    /// Start (laengste Gare, meiste Aroma). Wird NICHT persistiert — sie leitet sich aus der
+    /// Essenszeit ab und wird bei jeder Neuberechnung ggf. auf den Default zurueckgesetzt.
+    @Published var gewaehlterStart: Date
+    /// Der aktuell angezeigte Plan fuer den gewaehlten Start — GESPEICHERT (nicht computed), damit ein
+    /// body-Re-Render (z. B. beim Ziehen) planFuerStart nicht mehrfach ausloest. nil = Korridor leer.
+    /// Wird ausschliesslich ueber `aktualisierePlan()` gesetzt (in `rechne()` und `waehleStart(_:)`).
+    @Published private(set) var aktiverPlan: PizzaPlan?
     @Published var tab: PizzaTab = .planer
     @Published var showAdvanced = false
+
+    /// Der Zeitpunkt, mit dem der aktuelle Korridor gerechnet wurde. `aktiverPlan` und das
+    /// Regler-Snapping benutzen genau diesen Wert, damit der nominale Minutenrahmen (startOfDay)
+    /// konsistent zum Korridor bleibt und der Plan nicht gegen ein leicht abweichendes „jetzt" rechnet.
+    private var berechnungsJetzt = Date()
 
     // MARK: - Rezepturen
 
@@ -40,51 +54,67 @@ final class PizzaStore: ObservableObject, NotifiableStore {
     /// aufgehoert hat (Mehltyp/Raumtemperatur/Nachtruhe/Kuehlschrank aendern sich selten). Die
     /// Kuehlschranktemperatur ist Teil von `config` und wird darueber automatisch mitgesichert.
     private static let configKey = "pizza.lastConfig"
-    /// Zuletzt vom Nutzer gewaehlte Variante — der Default, wenn beide moeglich sind.
-    private static let varianteKey = "pizza.variante"
 
     init(settings: Settings) {
         api = PizzaAPI(settings: settings)
         config = PizzaStore.gespeicherteConfig()
         essenszeit = PizzaStore.standardEssenszeit()
-        variante = PizzaStore.gespeicherteVariante()
+        // `.distantPast` ist garantiert unmoeglich → `rechne()` setzt den Start auf den
+        // Korridor-Default (fruehester freier Start = laengste Gare = meiste Aroma).
+        gewaehlterStart = .distantPast
         rechne()
     }
 
     // MARK: - Rechnen
 
-    /// Ruft den Rechenkern mit der aktuellen Uhrzeit. Der Kern selbst bleibt rein — `jetzt`
-    /// kommt ausschliesslich von hier. Danach wird `variante` auf eine vorhandene korrigiert:
-    /// sind beide moeglich, gilt die (persistierte) Nutzerpraeferenz; sonst die einzig moegliche.
+    /// Baut den Start-Korridor mit der aktuellen Uhrzeit neu. Der Rechenkern bleibt rein — `jetzt`
+    /// kommt ausschliesslich von hier. Der gewaehlte Start bleibt erhalten, solange er weiterhin
+    /// moeglich ist (stabiles Gefuehl, wenn andere Parameter geaendert werden); sonst faellt er auf
+    /// den fruehesten freien Start (`defaultStart`) zurueck.
     func rechne() {
-        let p = PizzaCalculator.plan(config: config, essen: essenszeit, jetzt: Date())
-        planung = p
-        if p.warm != nil && p.kalt != nil {
-            variante = PizzaStore.gespeicherteVariante()   // beide → zurueck zur Nutzerpraeferenz
-        } else if p.warm != nil {
-            variante = .warm
-        } else if p.kalt != nil {
-            variante = .kalt
+        berechnungsJetzt = Date()
+        let k = PizzaCalculator.korridor(config: config, essen: essenszeit, jetzt: berechnungsJetzt)
+        korridor = k
+        if !startMoeglich(gewaehlterStart), let def = k.defaultStart {
+            gewaehlterStart = def
+        }
+        aktualisierePlan()
+    }
+
+    /// Rechnet den aktiven Plan EINMAL fuer den aktuellen Start neu und speichert ihn. Einzige
+    /// Stelle, die planFuerStart aufruft (ausser der stabilitaets-Pruefung in `rechne()`).
+    private func aktualisierePlan() {
+        guard let k = korridor, !k.leer else { aktiverPlan = nil; return }
+        aktiverPlan = PizzaCalculator.planFuerStart(config: config, start: gewaehlterStart,
+                                                    essen: essenszeit, jetzt: berechnungsJetzt)
+    }
+
+    /// Setzt den gewaehlten Start und snappt ihn auf den naechsten FREIEN Start, damit der
+    /// Regler-Daumen nie in einer Sperrzone (Nachtruhe) stehen bleibt. Das Snapping laeuft rein
+    /// ueber die bereits berechneten `korridor.segmente` (kein Korridor-Neuaufbau); danach wird nur
+    /// der Plan EINMAL neu gerechnet — schnell genug fuers Live-Ziehen (60–120 Events/s).
+    func waehleStart(_ ziel: Date) {
+        guard let snapped = korridor?.naechsterMoeglicher(ziel) else { return }
+        if snapped != gewaehlterStart {
+            gewaehlterStart = snapped
+            aktualisierePlan()
         }
     }
 
-    /// Der aktuell angezeigte Plan. Faellt auf die jeweils andere Variante zurueck, wenn die
-    /// gewaehlte fuer diese Essenszeit nicht existiert (dann zeigt der Planer keinen Umschalter).
-    var aktiverPlan: PizzaPlan? {
-        guard let p = planung else { return nil }
-        switch variante {
-        case .warm: return p.warm ?? p.kalt
-        case .kalt: return p.kalt ?? p.warm
-        }
+    /// Ist an diesem Start ein Plan moeglich? (Korridor nicht leer UND `planFuerStart` != nil.)
+    /// Nur in `rechne()` benutzt (einmalig), daher ist der eine planFuerStart-Aufruf unkritisch.
+    private func startMoeglich(_ start: Date) -> Bool {
+        guard let k = korridor, !k.leer else { return false }
+        return PizzaCalculator.planFuerStart(config: config, start: start,
+                                            essen: essenszeit, jetzt: berechnungsJetzt) != nil
     }
 
-    /// Beide Varianten vorhanden → der Planer bietet den Umschalter an.
-    var beideVarianten: Bool { planung?.warm != nil && planung?.kalt != nil }
-
-    /// Vom Umschalter aufgerufen: setzt die Variante UND merkt sie als Nutzerpraeferenz.
-    func waehleVariante(_ v: PizzaVariante) {
-        variante = v
-        UserDefaults.standard.set(v.rawValue, forKey: PizzaStore.varianteKey)
+    /// Fruehestmoegliche Essenszeit (fuer den `.zuKurzfristig`-Hinweis): der Regler-Bereich bietet
+    /// einen Knopf an, der die Essenszeit hierhin setzt. Nur sinnvoll, wenn der Korridor leer ist.
+    var fruehestesMoeglichesEssen: Date? {
+        let vorlauf = berechnungsJetzt.addingTimeInterval(Double(PizzaKonstanten.minVorlaufMin) * 60)
+        let ab = max(essenszeit, vorlauf)
+        return PizzaCalculator.fruehesteEssenszeit(config: config, ab: ab, jetzt: berechnungsJetzt)
     }
 
     /// Kopfzeile des Bereichs: Menge + Startzeit des aktiven Plans (kein Plan → nur die Menge).
@@ -115,13 +145,6 @@ final class PizzaStore: ObservableObject, NotifiableStore {
         guard let data = UserDefaults.standard.data(forKey: configKey),
               let c = try? JSONDecoder().decode(PizzaConfig.self, from: data) else { return .standard }
         return c.normalisiert()
-    }
-
-    /// Gemerkte Variante oder — ohne Praeferenz — `.warm` als neutraler Default (kein Erzwingen).
-    private static func gespeicherteVariante() -> PizzaVariante {
-        guard let raw = UserDefaults.standard.string(forKey: varianteKey),
-              let v = PizzaVariante(rawValue: raw) else { return .warm }
-        return v
     }
 
     /// Vorschlag beim Start: das naechste 18-Uhr-Abendessen, das noch mindestens 4,5 h entfernt ist.

@@ -1,12 +1,13 @@
 import SwiftUI
 
-/// Hauptbildschirm des Pizza-Planers: oben rein, wann gegessen wird - direkt darunter die
-/// Variantenwahl (schnell/warm oder ueber Nacht/kalt) und der Plan.
+/// Hauptbildschirm des Pizza-Planers: oben rein, wann gegessen wird - direkt darunter der
+/// Start-Korridor-Regler (waehlt den Startzeitpunkt; warm/kalt ergibt sich daraus) und der Plan.
 ///
 /// Die View rechnet NICHT selbst und ruft auch `rechne()` nicht auf: jede Eingabe bindet direkt
-/// an `store.config` bzw. `store.essenszeit`, deren `didSet` den Rechenkern anwirft. Hier wird
-/// ausschliesslich `store.planung`/`store.aktiverPlan` angezeigt - eine zweite Rechenschleife
-/// gaebe es nur die Chance, mit der ersten auseinanderzulaufen.
+/// an `store.config` bzw. `store.essenszeit`, deren `didSet` den Rechenkern anwirft. Der Regler
+/// meldet den gewaehlten Start ueber `store.waehleStart`. Hier wird ausschliesslich
+/// `store.korridor`/`store.aktiverPlan` angezeigt - eine zweite Rechenschleife gaebe es nur die
+/// Chance, mit der ersten auseinanderzulaufen.
 struct PizzaPlanerView: View {
     @EnvironmentObject var store: PizzaStore
 
@@ -27,14 +28,12 @@ struct PizzaPlanerView: View {
         ScrollView {
             VStack(spacing: 14) {
                 essenszeitKarte
-                variantenBereich
+                startBereich
                 if let p = store.aktiverPlan {
                     startKarte(p)
                     PizzaZutatenKarte(plan: p, tint: tint)
                     PizzaZeitplanKarte(plan: p, tint: tint)
                     hinweiseKarte(p)
-                } else if let frueh = store.planung?.fruehestesMoeglichesEssen {
-                    kurzfristigKarte(frueh)
                 }
                 eingabenKarte
                 erweitertKarte
@@ -61,58 +60,25 @@ struct PizzaPlanerView: View {
         }
     }
 
-    // MARK: - 2. Variantenwahl (direkt unter der Essenszeit)
+    // MARK: - 2. Start-Korridor (direkt unter der Essenszeit)
 
-    /// Sind beide Varianten moeglich, waehlt der Nutzer; ist nur eine moeglich, erklaert ein
-    /// dezenter Hinweis, welche das ist und warum die andere fuer diese Uhrzeit ausfaellt.
-    @ViewBuilder private var variantenBereich: some View {
-        if let p = store.planung {
-            if p.warm != nil && p.kalt != nil {
-                variantenUmschalter
-            } else if p.warm != nil {
-                variantenHinweis("Für diese Uhrzeit passt nur der Schnell-Plan am selben Tag – eine Übernacht-Gare würde nicht mehr rechtzeitig an einem Abend beginnen.",
-                                 icon: "hare.fill")
-            } else if p.kalt != nil {
-                variantenHinweis("Für diese Uhrzeit ist nur die Übernacht-Gare im Kühlschrank möglich – ein Schnell-Plan am selben Tag ginge sich nicht ohne nächtliche Handgriffe aus.",
-                                 icon: "snowflake")
-            }
-        }
-    }
-
-    /// Umschalter zwischen beiden Varianten. Jede Pille traegt ihre eigene ID
-    /// (`pizza-variante-warm` / `pizza-variante-kalt`) — der Container bleibt bewusst ID-los,
-    /// damit die Kinder fuer XCUITest einzeln auffindbar bleiben.
-    private var variantenUmschalter: some View {
-        PizzaAbschnitt(titel: "Variante", icon: "arrow.triangle.branch", tint: tint) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 8) {
-                    ForEach(PizzaVariante.allCases, id: \.self) { v in
-                        FilterPill(label: v.label, systemImage: v == .kalt ? "snowflake" : "hare.fill",
-                                   selected: store.variante == v, color: tint) {
-                            store.waehleVariante(v)
-                        }
-                        .accessibilityIdentifier("pizza-variante-\(v.rawValue)")
-                    }
-                    Spacer(minLength: 0)
+    /// Statt eines Warm/Kalt-Umschalters waehlt der Nutzer per Regler den START innerhalb des
+    /// Korridors moeglicher Startzeiten. Ist der Korridor leer, erklaert eine Hinweiskarte den
+    /// Grund (zu kurzfristig / Essen faellt in die Nachtruhe) — nie eine harte „geht nicht"-Absage.
+    @ViewBuilder private var startBereich: some View {
+        if let k = store.korridor {
+            if k.leer {
+                switch k.grund {
+                case .zuKurzfristig: kurzfristigKarte(store.fruehestesMoeglichesEssen)
+                case .essenInNachtruhe: nachtruheKonfliktKarte
+                case .ok: EmptyView()
                 }
-                Text(store.variante.kurzErklaerung)
-                    .font(.caption).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                PizzaStartRegler(korridor: k, gewaehlterStart: store.gewaehlterStart,
+                                 aktiverPlan: store.aktiverPlan, tint: tint,
+                                 onSelect: { store.waehleStart($0) })
             }
         }
-    }
-
-    private func variantenHinweis(_ text: String, icon: String) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: icon).foregroundStyle(tint).padding(.top, 1)
-            Text(text).font(.caption).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 0)
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .cardSurface()
-        .accessibilityIdentifier("pizza-variante-hinweis")
     }
 
     // MARK: - 3. Startzeit (die Antwort auf die eigentliche Frage)
@@ -171,25 +137,49 @@ struct PizzaPlanerView: View {
 
     // MARK: - Kurzfristig (< 4,5 h Vorlauf — der einzige physische Grenzfall)
 
-    /// Kein Fehler, keine Absage: der Teig braucht Vorlauf. Ein Knopf legt die Essenszeit auf den
-    /// fruehestmoeglichen Zeitpunkt, ab dem wieder mindestens eine Variante existiert.
-    private func kurzfristigKarte(_ frueh: Date) -> some View {
+    /// Kein Fehler, keine Absage: der Teig braucht Vorlauf. Gibt es einen fruehestmoeglichen
+    /// Zeitpunkt, legt ein Knopf die Essenszeit dorthin (ab da existiert wieder ein Korridor).
+    private func kurzfristigKarte(_ frueh: Date?) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Label("So kurzfristig wird der Teig nicht reif", systemImage: "clock.badge.exclamationmark")
                 .font(.headline).foregroundStyle(tint)
                 .accessibilityIdentifier("pizza-kurzfristig")
-            Text("Ein Pizzateig braucht etwas Vorlauf. Frühestens \(PizzaCalculator.datumUndUhrzeit(frueh)) Uhr ist er soweit.")
+            if let frueh {
+                Text("Ein Pizzateig braucht etwas Vorlauf. Frühestens \(PizzaCalculator.datumUndUhrzeit(frueh)) Uhr ist er soweit.")
+                    .font(.subheadline)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button { store.essenszeit = frueh } label: {
+                    Label("Frühestmögliche Zeit übernehmen", systemImage: "clock.arrow.circlepath")
+                        .font(.subheadline.weight(.bold))
+                        .frame(maxWidth: .infinity).padding(.vertical, 11)
+                        .background(tint, in: Capsule())
+                        .foregroundStyle(tint.onFill)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("pizza-kurzfristig-button")
+            } else {
+                Text("Ein Pizzateig braucht etwas Vorlauf – wähle eine spätere Essenszeit.")
+                    .font(.subheadline)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous)
+            .strokeBorder(tint.opacity(0.4)))
+    }
+
+    /// Der Korridor ist nicht zu kurzfristig, aber die Essenszeit (bzw. Ofen/Backen) faellt selbst
+    /// in die Nachtruhe: ein ehrlicher Konflikt mit der eigenen Schlafenszeit, keine Absage.
+    private var nachtruheKonfliktKarte: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Zu dieser Zeit schläfst du", systemImage: "moon.zzz.fill")
+                .font(.headline).foregroundStyle(tint)
+                .accessibilityIdentifier("pizza-nachtkonflikt")
+            Text("Um \(PizzaCalculator.uhrzeit(store.essenszeit)) Uhr schläfst du normalerweise – dann lässt sich der letzte Handgriff (Ofen anwerfen, Backen) nicht wach erledigen. Verschiebe die Essenszeit oder passe die Nachtruhe an.")
                 .font(.subheadline)
                 .fixedSize(horizontal: false, vertical: true)
-            Button { store.essenszeit = frueh } label: {
-                Label("Frühestmögliche Zeit übernehmen", systemImage: "clock.arrow.circlepath")
-                    .font(.subheadline.weight(.bold))
-                    .frame(maxWidth: .infinity).padding(.vertical, 11)
-                    .background(tint, in: Capsule())
-                    .foregroundStyle(tint.onFill)
-            }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("pizza-kurzfristig-button")
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)

@@ -612,6 +612,274 @@ enum PizzaCalculator {
         return nil
     }
 
+    // MARK: - Start-Korridor (Modell v3)
+    //
+    // Neuer Ansatz: die Essenszeit ist fix, der Nutzer waehlt per Regler den START. Aus dem
+    // Fenster [Start, Essen] ergibt sich das Rezept dynamisch (frueher Start -> lange kalte
+    // Kuehlschrankgare, wenig Hefe; spaeter Start -> kurze warme Gare, mehr Hefe). Starts, bei
+    // denen ein Handgriff in die Nachtruhe fiele, sind BLOCKIERT.
+    //
+    // Portiert 1:1 aus dem validierten Referenzmodell (ref-corridor.mjs). Die Phasen-Minuten
+    // (warm: stock/stueck; kalt: bulk/fridge/appretto) werden HIER bestimmt und an die
+    // bestehende Schritt-/Detail-Erzeugung (`detail`, `zutaten`, `baueKalt`) uebergeben -
+    // es gibt keine zweite, abweichende Zeitplan-Logik.
+
+    /// Plan fuer einen KONKRET gewaehlten Start. `nil` = an diesem Start unmoeglich (ein Handgriff
+    /// fiele in die Nachtruhe, oder das Fenster ist < 4,5 h bzw. > ~82 h). `jetzt` liefert nur den
+    /// Referenzrahmen fuer die nominale Minutenrechnung - es gibt bewusst KEINE `start >= jetzt`-
+    /// Sperre (die uebernimmt der Korridor ueber `frueh = max(jetzt, ...)`).
+    static func planFuerStart(config: PizzaConfig, start: Date, essen: Date, jetzt: Date,
+                              calendar: Calendar = .current) -> PizzaPlan? {
+        let c = config.normalisiert()
+        let ref = calendar.startOfDay(for: jetzt)
+        return planFuerStartMin(config: c,
+                                s: nominalMin(start, ref: ref, calendar: calendar),
+                                e: nominalMin(essen, ref: ref, calendar: calendar),
+                                ref: ref, calendar: calendar)
+    }
+
+    /// Der Kern von `planFuerStart` auf nominalen Minuten (1440/Tag). `s`/`e` = Start/Essen als
+    /// nominale Minute relativ zu `ref`.
+    private static func planFuerStartMin(config c: PizzaConfig, s: Int, e: Int,
+                                         ref: Date, calendar: Calendar) -> PizzaPlan? {
+        let window = e - s
+        if window < PizzaKonstanten.minVorlaufMin || window > PizzaKonstanten.maxWindowMin { return nil }
+        let fermTotal = window - PizzaKonstanten.fixSumme
+        let bake = e - PizzaKonstanten.fixBacken
+        let ofen = bake - PizzaKonstanten.vorheizMin
+        let kneten = s
+        let entspannen = s + PizzaKonstanten.fixKneten
+        let bulkStart = s + PizzaKonstanten.fixKneten + PizzaKonstanten.fixEntspannen
+
+        // Nicht verschiebbare Handgriffe: nicht im Schlaf anfangen, und Ofen/Backen/Essen liegen
+        // fix nahe der Essenszeit - fallen sie in die Nacht, ist dieser Start unmoeglich.
+        if schlaeftMin(kneten, config: c) || schlaeftMin(entspannen, config: c) { return nil }
+        if schlaeftMin(ofen, config: c) || schlaeftMin(bake, config: c) || schlaeftMin(e, config: c) { return nil }
+
+        if fermTotal <= PizzaKonstanten.nettoMax {
+            // WARM: eine Raumtemperatur-Gare, Stock/Stueck 35/65; portionieren muss wach sein.
+            var stock = Int((Double(fermTotal) * PizzaKonstanten.stockAnteil).rounded())
+            var port = bulkStart + stock
+            if schlaeftMin(port, config: c) {
+                // Stock verschieben (Stueck >= 120, Stock >= 60), damit portionieren wach wird.
+                var ok = false
+                var stTry = PizzaKonstanten.stockMin
+                while stTry <= fermTotal - PizzaKonstanten.stueckMin {
+                    if !schlaeftMin(bulkStart + stTry, config: c) { stock = stTry; port = bulkStart + stTry; ok = true; break }
+                    stTry += 5
+                }
+                if !ok { return nil }
+            }
+            let stueck = fermTotal - stock
+            let warmEq = Double(fermTotal) / 60 * gaerFaktor(c.raumtempC)
+            let pct = hefePctVonIntegral(warmEqStunden: warmEq, mehltyp: c.mehltyp, k: c.kFaktor)
+            return baueWarmVonStart(config: c, ref: ref, start: s, stockStart: bulkStart,
+                                    stock: stock, port: port, stueck: stueck, ofen: ofen,
+                                    bake: bake, essenMin: e, pctRoh: pct, calendar: calendar)
+        }
+
+        // KALT: bulk (warm) + fridge + appretto (warm). Warmanteil klein halten, Rest in den Kuehlschrank.
+        var bulk = PizzaKonstanten.bulkIdeal
+        var app = PizzaKonstanten.apprettoIdeal
+        var fridge = fermTotal - bulk - app
+        if fridge > PizzaKonstanten.fridgeGareMax {
+            // Sehr langes Fenster: Warmanteil hochziehen (erst Appretto, dann Bulk bis Max), damit
+            // der Kuehlschrank <= 72 h bleibt. Reicht selbst der maximale Warmanteil nicht -> ausserhalb.
+            var excess = fridge - PizzaKonstanten.fridgeGareMax
+            let appAdd = min(excess, PizzaKonstanten.apprettoMax - app); app += appAdd; excess -= appAdd
+            let bulkAdd = min(excess, PizzaKonstanten.bulkMax - bulk); bulk += bulkAdd; excess -= bulkAdd
+            fridge = PizzaKonstanten.fridgeGareMax
+            if excess > 0 { return nil }   // ganze Minuten -> excess > 0 entspricht dem ref > 0.5
+        }
+        if fridge < PizzaKonstanten.fridgeGareMin {
+            fridge = PizzaKonstanten.fridgeGareMin
+            bulk = min(PizzaKonstanten.bulkMax, max(PizzaKonstanten.bulkMin, fermTotal - fridge - app))
+            app = fermTotal - fridge - bulk
+        }
+        // portionieren wach? bulk in [min,max] verschieben.
+        var port = bulkStart + bulk
+        if schlaeftMin(port, config: c) {
+            var ok = false
+            var b = PizzaKonstanten.bulkMin
+            while b <= PizzaKonstanten.bulkMax {
+                if !schlaeftMin(bulkStart + b, config: c) { bulk = b; port = bulkStart + b; ok = true; break }
+                b += 5
+            }
+            if !ok { return nil }
+            fridge = fermTotal - bulk - app
+            if fridge > PizzaKonstanten.fridgeGareMax || fridge < PizzaKonstanten.fridgeGareMin { return nil }
+        }
+        // take-out (= Appretto-Start) wach? Appretto in [min..max] verschieben (aendert fridge).
+        var takeout = port + PizzaKonstanten.fixPortionieren + fridge
+        if schlaeftMin(takeout, config: c) {
+            var ok = false
+            var a = PizzaKonstanten.apprettoMin
+            while a <= PizzaKonstanten.apprettoMax {
+                let f2 = fermTotal - bulk - a
+                if f2 >= PizzaKonstanten.fridgeGareMin && f2 <= PizzaKonstanten.fridgeGareMax {
+                    let t2 = port + PizzaKonstanten.fixPortionieren + f2
+                    if !schlaeftMin(t2, config: c) { app = a; fridge = f2; takeout = t2; ok = true; break }
+                }
+                a += 5
+            }
+            if !ok { return nil }
+        }
+        let warmEq = Double(bulk + app) / 60 * gaerFaktor(c.raumtempC)
+            + Double(fridge) / 60 * gaerFaktor(c.fridgeTempC)
+        let pct = hefePctVonIntegral(warmEqStunden: warmEq, mehltyp: c.mehltyp, k: c.kFaktor)
+        var warn: [PizzaHinweis] = []
+        if pct < PizzaKonstanten.hefePctMin { warn.append(.sehrWenigHefe(pct)) }
+
+        // Die bestehende kalte Schritt-/Detail-Erzeugung uebernimmt - kneten = s, Stockgare
+        // (bulk) ab bulkStart, Kuehlschrank ab port + Portionieren.
+        return baueKalt(config: c, ref: ref, essenMin: e, kneten: kneten, stockStart: bulkStart,
+                        bulk: bulk, port: port, fridgeStart: port + PizzaKonstanten.fixPortionieren,
+                        fridgeGare: fridge, appStart: takeout, appretto: app, bake: bake,
+                        pctRoh: pct, warn: warn, calendar: calendar)
+    }
+
+    /// Warme Schrittliste fuer einen konkreten Start. Nutzt dieselben Offsets und denselben
+    /// `detail`-Text wie `rohplan`/`baueWarm`, wird aber mit der (ggf. verschobenen) `stock`-Dauer
+    /// parametrisiert - so bleibt der Zeitplan konsistent mit dem, was der Solver berechnet hat.
+    /// Emittiert nur die im Modell v3 vorgesehenen Warnungen (kein `planVerschoben` - es gibt
+    /// keinen 6-h-"Standard" mehr, von dem abgewichen wuerde).
+    private static func baueWarmVonStart(config c: PizzaConfig, ref: Date, start: Int, stockStart: Int,
+                                         stock: Int, port: Int, stueck: Int, ofen: Int, bake: Int,
+                                         essenMin: Int, pctRoh: Double, calendar: Calendar) -> PizzaPlan {
+        let z = zutaten(config: c, pctRoh: pctRoh)
+        let wt = wasserTemp(config: c)
+
+        func d(_ m: Int) -> Date { datum(nominalMin: m, ref: ref, calendar: calendar) }
+        func schritt(_ art: PizzaSchrittArt, _ m: Int, _ text: String?) -> PizzaSchritt {
+            PizzaSchritt(art: art, zeit: d(m), detail: text)
+        }
+        func geteilt(_ art: PizzaSchrittArt) -> String? {
+            detail(fuer: art, config: c, stock: stock, stueck: stueck, wasserTemp: wt.temp)
+        }
+
+        var schritte: [PizzaSchritt] = [
+            schritt(.kneten, start, geteilt(.kneten)),
+            schritt(.entspannen, start + PizzaKonstanten.fixKneten, geteilt(.entspannen)),
+            schritt(.stockgare, stockStart, geteilt(.stockgare)),
+        ]
+        if c.mehltyp == .dinkel {
+            schritte.append(schritt(.dehnenFalten1, stockStart + 30, geteilt(.dehnenFalten1)))
+            schritte.append(schritt(.dehnenFalten2, stockStart + 60, geteilt(.dehnenFalten2)))
+        }
+        schritte.append(schritt(.portionieren, port, geteilt(.portionieren)))
+        schritte.append(schritt(.stueckgare, port + PizzaKonstanten.fixPortionieren, geteilt(.stueckgare)))
+        schritte.append(schritt(.ofenAn, ofen, geteilt(.ofenAn)))
+        schritte.append(schritt(.backen, bake, geteilt(.backen)))
+        schritte.append(schritt(.essen, essenMin, nil))
+
+        var hinweise: [PizzaHinweis] = []
+        if z.wasserTempGeclampt { hinweise.append(.wasserTempGeclampt(z.wasserTempC)) }
+        if c.raumtempC < 18 { hinweise.append(.raumtempNiedrig(c.raumtempC)) }
+        if c.raumtempC > 28 { hinweise.append(.raumtempHoch(c.raumtempC)) }
+        if pctRoh > PizzaKonstanten.hefePctMax { hinweise.append(.knappesFensterMehrHefe) }
+        let netto = stock + stueck
+        if let t = mehlToleranzHinweis(mehltyp: c.mehltyp, gareStunden: Double(netto) / 60) {
+            hinweise.append(t)
+        }
+
+        return PizzaPlan(config: c,
+                         variante: .warm,
+                         zutaten: z,
+                         schritte: schritte,
+                         nettoMinuten: netto,
+                         stockMinuten: stock,
+                         stueckMinuten: stueck,
+                         fridgeMinuten: 0,
+                         startzeit: d(start),
+                         essenszeit: d(essenMin),
+                         hinweise: hinweise)
+    }
+
+    /// Ein Rasterpunkt des Korridors: der Start (nominale Minute) und der dort moegliche Plan (oder nil).
+    private struct KorridorPunkt { let s: Int; let plan: PizzaPlan? }
+
+    /// Berechnet die Rasterpunkte des Korridors (15-Minuten-Schritte) plus den Rahmen.
+    private static func korridorPunkte(config c: PizzaConfig, essenMin e: Int, jetztMin: Int,
+                                       ref: Date, calendar: Calendar)
+        -> (frueh: Int, spaet: Int, punkte: [KorridorPunkt]) {
+        let spaet = e - PizzaKonstanten.minVorlaufMin                 // spaetester Start (kuerzeste Gare)
+        let frueh = max(jetztMin, e - PizzaKonstanten.maxWindowMin)   // theoretisch fruehester Start
+        var punkte: [KorridorPunkt] = []
+        var s = frueh
+        while s <= spaet {
+            punkte.append(KorridorPunkt(s: s, plan: planFuerStartMin(config: c, s: s, e: e, ref: ref, calendar: calendar)))
+            s += 15
+        }
+        return (frueh, spaet, punkte)
+    }
+
+    /// Der Korridor moeglicher Startzeiten fuer eine fixe Essenszeit. `defaultStart` = erster
+    /// FREIER Start (fruehest = meiste Aroma), nie ein blockierter. `leer`/`grund` unterscheiden
+    /// "zu kurzfristig" (< 4,5 h Vorlauf) von "Essen faellt in die Nachtruhe".
+    static func korridor(config: PizzaConfig, essen: Date, jetzt: Date,
+                         calendar: Calendar = .current) -> PizzaKorridor {
+        let c = config.normalisiert()
+        let ref = calendar.startOfDay(for: jetzt)
+        let e = nominalMin(essen, ref: ref, calendar: calendar)
+        let jetztMin = nominalMin(jetzt, ref: ref, calendar: calendar)
+        let (fruehMin, spaetMin, punkte) = korridorPunkte(config: c, essenMin: e, jetztMin: jetztMin,
+                                                          ref: ref, calendar: calendar)
+        func d(_ m: Int) -> Date { datum(nominalMin: m, ref: ref, calendar: calendar) }
+
+        let moeglich = punkte.filter { $0.plan != nil }
+        let defaultStart = moeglich.first.map { d($0.s) }
+
+        // Segmente: zusammenhaengende moeglich/blockiert-Laeufe, lueckenlos gekachelt (Grenze am
+        // ersten Rasterpunkt des naechsten Laufs).
+        var segmente: [PizzaKorridorSegment] = []
+        var i = 0
+        while i < punkte.count {
+            let moeglichLauf = punkte[i].plan != nil
+            var j = i
+            while j + 1 < punkte.count && (punkte[j + 1].plan != nil) == moeglichLauf { j += 1 }
+            let von = d(punkte[i].s)
+            // Innenlaeufe enden am ersten Punkt des Folgelaufs; der LETZTE Lauf bekommt einen
+            // Rasterschritt Breite (sonst von==bis → im Regler unsichtbar, s. schmaler Korridor).
+            let bis = (j + 1 < punkte.count) ? d(punkte[j + 1].s) : d(punkte[j].s + 15)
+            segmente.append(PizzaKorridorSegment(von: von, bis: bis, moeglich: moeglichLauf))
+            i = j + 1
+        }
+
+        let leer = moeglich.isEmpty
+        let grund: PizzaKorridorGrund
+        if spaetMin < fruehMin {
+            grund = .zuKurzfristig            // Essen < jetzt + 4,5 h -> kein Rasterpunkt
+        } else if leer {
+            grund = .essenInNachtruhe         // Rahmen ok, aber Essen/Backen liegen im Schlaf
+        } else {
+            grund = .ok
+        }
+
+        return PizzaKorridor(frueh: d(fruehMin), spaet: d(spaetMin),
+                             defaultStart: defaultStart, leer: leer, grund: grund, segmente: segmente)
+    }
+
+    /// Fuer das Snapping des Reglers: der dem Zielpunkt `nahe` naechste FREIE Start. Bei
+    /// Gleichstand bevorzugt der gleiche oder groessere Wert; gibt es keinen freien Start, `nil`.
+    static func naechsterMoeglicherStart(config: PizzaConfig, essen: Date, jetzt: Date,
+                                         calendar: Calendar = .current, nahe: Date) -> Date? {
+        let c = config.normalisiert()
+        let ref = calendar.startOfDay(for: jetzt)
+        let e = nominalMin(essen, ref: ref, calendar: calendar)
+        let jetztMin = nominalMin(jetzt, ref: ref, calendar: calendar)
+        let naheMin = nominalMin(nahe, ref: ref, calendar: calendar)
+        let (_, _, punkte) = korridorPunkte(config: c, essenMin: e, jetztMin: jetztMin, ref: ref, calendar: calendar)
+        let frei = punkte.filter { $0.plan != nil }.map { $0.s }
+        guard !frei.isEmpty else { return nil }
+        // Naechster nach Abstand; bei Gleichstand gewinnt der groessere (>= nahe).
+        let best = frei.min { a, b in
+            let da = abs(a - naheMin), db = abs(b - naheMin)
+            if da != db { return da < db }
+            return a > b
+        }
+        return best.map { datum(nominalMin: $0, ref: ref, calendar: calendar) }
+    }
+
     // MARK: - Zeit-Helfer
 
     private static func plus(_ minuten: Int, _ d: Date, _ calendar: Calendar) -> Date {

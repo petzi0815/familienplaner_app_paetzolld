@@ -81,6 +81,11 @@ enum PizzaKonstanten {
     /// Kuerzestmoeglicher Vorlauf vom ersten Handgriff bis zur Pizza = 4,5 h.
     static let minVorlaufMin = fixSumme + nettoMin
 
+    /// Laengstmoegliches Planungsfenster (erster Handgriff bis Essen): Fix + max. warme Stockgare
+    /// + max. Kuehlschrankgare + max. Appretto. Das ist die aeussere Grenze des Start-Korridors
+    /// (fruehester theoretischer Start = Essen - maxWindowMin).
+    static let maxWindowMin = fixSumme + bulkMax + fridgeGareMax + apprettoMax
+
     /// Nachtruhe-Default: 23:00 bis 07:00 (Minuten seit Mitternacht).
     static let schlafVonDefault = 23 * 60
     static let schlafBisDefault = 7 * 60
@@ -132,8 +137,9 @@ enum Mehltyp: String, CaseIterable, Codable {
         }
     }
 
-    /// Gaermodell: nur Dinkel treibt traeger (braucht bei gleicher Zeit mehr Hefe). Die drei
-    /// neuen Weizenmehle garen wie tipo00 - der Faktor 1.0 haelt die Hefemenge unveraendert.
+    /// Gaermodell (Faktor steht im NENNER der Hefeformel: hoeher = weniger Hefe). Dinkel gaert laut
+    /// Spec (§3.7) ~10 % SCHNELLER als Tipo 00, braucht bei gleicher Zeit also etwas WENIGER Hefe →
+    /// Faktor 1.1. Die drei neuen Weizenmehle garen wie tipo00 (Faktor 1.0), die Hefemenge bleibt gleich.
     var mehlFaktor: Double {
         switch self {
         case .tipo00, .caputo_pizzeria, .la_farina_14, .edeka_herzstuecke: return 1.0
@@ -576,9 +582,6 @@ struct PizzaPlan: Equatable {
     let essenszeit: Date
     let hinweise: [PizzaHinweis]
 
-    /// Nur die warme Variante hat einen 6-h-Standard, von dem sie abweichen kann.
-    var weichtVomStandardAb: Bool { variante == .warm && nettoMinuten != PizzaKonstanten.nettoStandard }
-
     /// Erster Handgriff bis Essen. Fuer beide Varianten gilt: die vier Fixbloecke plus die drei
     /// Gaerabschnitte (bei warm ist fridge = 0 und stock+stueck = netto).
     var gesamtdauerMinuten: Int {
@@ -601,6 +604,76 @@ struct PizzaPlanung: Equatable {
     var irgendeiner: PizzaPlan? { warm ?? kalt }
     /// Es gibt mindestens einen Plan.
     var hatPlan: Bool { warm != nil || kalt != nil }
+}
+
+// MARK: - Start-Korridor (Modell v3)
+
+/// Warum ist ein Korridor leer? Trennt die beiden Absage-Ursachen, damit die UI den richtigen
+/// (sanften) Hinweis zeigt - nie eine harte "geht nicht"-Absage.
+enum PizzaKorridorGrund: Equatable {
+    /// Es gibt einen nicht-leeren Korridor mit mindestens einem moeglichen Start.
+    case ok
+    /// Die Essenszeit liegt weniger als 4,5 h in der Zukunft - kein Start hat genug Vorlauf.
+    case zuKurzfristig
+    /// Die Essenszeit (bzw. das Backen) faellt selbst in die Nachtruhe - kein Start ist moeglich.
+    case essenInNachtruhe
+}
+
+/// Ein zusammenhaengender Abschnitt des Start-Reglers: entweder durchgehend moeglich oder
+/// durchgehend blockiert. `von`/`bis` kacheln den Korridor lueckenlos (die Grenze liegt jeweils
+/// am ersten Rasterpunkt des naechsten Laufs), sodass die Regler-Darstellung die Sperrzonen
+/// exakt einfaerben kann.
+struct PizzaKorridorSegment: Identifiable, Equatable, Hashable {
+    let von: Date
+    let bis: Date
+    let moeglich: Bool
+
+    /// Stabil (ohne UUID), damit SwiftUI dieselben Segmente nicht bei jedem Neurechnen neu animiert.
+    var id: String { "\(Int(von.timeIntervalSince1970))-\(Int(bis.timeIntervalSince1970))-\(moeglich)" }
+}
+
+/// Das Ergebnis der Korridor-Berechnung fuer eine fixe Essenszeit.
+///
+/// `frueh`/`spaet` spannen den THEORETISCHEN Rahmen (fruehest moeglicher bis spaetest moeglicher
+/// Start). `defaultStart` ist der ERSTE tatsaechlich freie Start (= laengste Gare = meiste Aroma) -
+/// nie ein blockierter; nil, wenn kein Start moeglich ist. `segmente` beschreibt die
+/// moeglich/blockiert-Laeufe fuer den Regler. `leer`/`grund` unterscheiden die Absage-Ursache.
+struct PizzaKorridor: Equatable {
+    let frueh: Date
+    let spaet: Date
+    let defaultStart: Date?
+    let leer: Bool
+    let grund: PizzaKorridorGrund
+    let segmente: [PizzaKorridorSegment]
+
+    /// Snappt ein Zieldatum auf den naechsten FREIEN Start — AUSSCHLIESSLICH aus den bereits
+    /// berechneten `segmente` (kein erneuter Solver-Lauf). Genau das braucht der Regler beim
+    /// Live-Ziehen: pro Frame nur O(#Segmente) statt eines vollen Korridor-Neuaufbaus.
+    ///
+    /// Jedes moegliche Segment enthaelt die 15-min-Rasterpunkte [von, bis) (bis = erster Punkt des
+    /// naechsten Laufs bzw. letzter+15); diese Punkte sind per Konstruktion alle moeglich. Gesucht
+    /// wird der Rasterpunkt mit dem kleinsten Abstand zum Ziel ueber alle moeglichen Segmente.
+    func naechsterMoeglicher(_ ziel: Date, rasterMinuten: Int = 15) -> Date? {
+        let raster = Double(rasterMinuten) * 60
+        var best: Date?
+        var bestDist = Double.greatestFiniteMagnitude
+        for seg in segmente where seg.moeglich {
+            let spanne = seg.bis.timeIntervalSince(seg.von)
+            guard spanne > 0 else { continue }
+            // Letzter gueltiger Rasterindex: strikt vor `bis` (dessen Punkt gehoert zum naechsten Lauf).
+            let maxK = max(0, ceil(spanne / raster) - 1)
+            let kRoh = (ziel.timeIntervalSince(seg.von) / raster).rounded()
+            let k = min(max(0, kRoh), maxK)
+            let kandidat = seg.von.addingTimeInterval(k * raster)
+            let dist = abs(kandidat.timeIntervalSince(ziel))
+            // Bei Gleichstand den GROESSEREN (spaeteren) Start bevorzugen — wie der Solver.
+            if dist < bestDist || (dist == bestDist && (best == nil || kandidat > best!)) {
+                bestDist = dist
+                best = kandidat
+            }
+        }
+        return best
+    }
 }
 
 // MARK: - Navigation
