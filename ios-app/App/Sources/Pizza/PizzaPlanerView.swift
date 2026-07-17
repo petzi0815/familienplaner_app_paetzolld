@@ -10,6 +10,9 @@ import SwiftUI
 struct PizzaPlanerView: View {
     @EnvironmentObject var store: PizzaStore
 
+    /// Sheet zur Mehlauswahl (zeigt alle Sorten mit Charakter + Protein/W-Wert).
+    @State private var zeigtMehlAuswahl = false
+
     private var tint: Color { Palette.colors(for: "pizza").first ?? Theme.accent }
 
     /// Textfarbe auf dem Bereichsverlauf. Weiss auf einem hellen Verlauf (Amber/Lime) waere
@@ -248,7 +251,8 @@ struct PizzaPlanerView: View {
                 .accessibilityIdentifier("pizza-anzahl")
 
                 VStack(alignment: .leading, spacing: 4) {
-                    reihe("Teiglingsgewicht", PizzaCalculator.gramm(store.config.teiglingsgewichtG) + " g")
+                    reihe("Teiglingsgewicht", PizzaCalculator.gramm(store.config.teiglingsgewichtG) + " g",
+                          info: PizzaErklaerung.teiglingsgewicht)
                     Slider(value: $store.config.teiglingsgewichtG,
                            in: PizzaKonstanten.gewichtMin...PizzaKonstanten.gewichtMax, step: 5)
                         .tint(tint)
@@ -256,18 +260,19 @@ struct PizzaPlanerView: View {
                     Text("275 g ≈ 30–32 cm Durchmesser").font(.caption).foregroundStyle(.secondary)
                 }
 
-                wahl("Mehl", Mehltyp.allCases, label: { $0.label }, aktiv: store.config.mehltyp) {
-                    store.config.mehltyp = $0
-                }
-                wahl("Hefe", Hefetyp.allCases, label: { $0.label }, aktiv: store.config.hefetyp) {
+                mehlBlock
+                wahl("Hefe", Hefetyp.allCases, label: { $0.label }, aktiv: store.config.hefetyp,
+                     info: PizzaErklaerung.hefetyp) {
                     store.config.hefetyp = $0
                 }
-                wahl("Kneten", Knetmethode.allCases, label: { $0.label }, aktiv: store.config.knetmethode) {
+                wahl("Kneten", Knetmethode.allCases, label: { $0.label }, aktiv: store.config.knetmethode,
+                     info: PizzaErklaerung.knetmethode) {
                     store.config.knetmethode = $0
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
-                    reihe("Raumtemperatur", PizzaCalculator.grad(store.config.raumtempC) + " °C")
+                    reihe("Raumtemperatur", PizzaCalculator.grad(store.config.raumtempC) + " °C",
+                          info: PizzaErklaerung.raumtemperatur)
                     Slider(value: $store.config.raumtempC,
                            in: PizzaKonstanten.raumtempMin...PizzaKonstanten.raumtempMax, step: 0.5)
                         .tint(tint)
@@ -281,9 +286,45 @@ struct PizzaPlanerView: View {
         }
     }
 
+    /// Mehlauswahl: kompakte Zeile (Label + Protein/W + Info) über einer antippbaren Auswahl-Fläche,
+    /// die das Sortiment-Sheet öffnet; darunter der Charakter-Satz der aktuell gewählten Sorte.
+    private var mehlBlock: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Text("Mehl").font(.subheadline)
+                PizzaInfoButton(titel: PizzaErklaerung.mehltyp.titel, text: PizzaErklaerung.mehltyp.text)
+                Spacer(minLength: 8)
+                Text(store.config.mehltyp.proteinInfo)
+                    .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            }
+            Button { zeigtMehlAuswahl = true } label: {
+                HStack(spacing: 8) {
+                    Text(store.config.mehltyp.label).font(.subheadline.weight(.semibold))
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 12).padding(.vertical, 9)
+                .background(Color(.secondarySystemBackground),
+                            in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.primary)
+            .accessibilityIdentifier("pizza-mehl")
+            Text(store.config.mehltyp.charakter)
+                .font(.caption).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .sheet(isPresented: $zeigtMehlAuswahl) {
+            MehlAuswahlSheet(auswahl: $store.config.mehltyp)
+        }
+    }
+
     private var nachtruheBlock: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Nachtruhe").font(.subheadline.weight(.semibold))
+                .pizzaErklaerung(PizzaErklaerung.nachtruhe)
             HStack(spacing: 8) {
                 Text("von").font(.subheadline).foregroundStyle(.secondary)
                 DatePicker("Nachtruhe Beginn", selection: schlafBinding(\.schlafVon),
@@ -352,6 +393,7 @@ struct PizzaPlanerView: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text("Hydration").font(.subheadline)
+                PizzaInfoButton(titel: PizzaErklaerung.hydration.titel, text: PizzaErklaerung.hydration.text)
                 Spacer(minLength: 8)
                 if store.config.hydrationOverride != nil {
                     Button("Standard") { store.config.hydrationOverride = nil }
@@ -374,7 +416,8 @@ struct PizzaPlanerView: View {
 
     private var fridgeTempBlock: some View {
         VStack(alignment: .leading, spacing: 6) {
-            reihe("Kühlschranktemperatur", PizzaCalculator.grad(store.config.fridgeTempC) + " °C")
+            reihe("Kühlschranktemperatur", PizzaCalculator.grad(store.config.fridgeTempC) + " °C",
+                  info: PizzaErklaerung.kuehlschranktemperatur)
             // Praxisbereich 4–7 °C (die weiteren [2,10] aus `normalisiert()` sind nur die Clamp-Grenzen).
             Slider(value: $store.config.fridgeTempC, in: 4...7, step: 0.5)
                 .tint(tint)
@@ -387,7 +430,8 @@ struct PizzaPlanerView: View {
     private var kFaktorBlock: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text("K-Faktor").font(.subheadline)
+                Text("K-Wert").font(.subheadline)
+                PizzaInfoButton(titel: PizzaErklaerung.kWert.titel, text: PizzaErklaerung.kWert.text)
                 Spacer(minLength: 8)
                 if abs(store.config.kFaktor - PizzaKonstanten.kDefault) > 0.001 {
                     Button("Standard") { store.config.kFaktor = PizzaKonstanten.kDefault }
@@ -409,18 +453,24 @@ struct PizzaPlanerView: View {
 
     // MARK: - Kleinteile
 
-    private func reihe(_ titel: String, _ wert: String) -> some View {
+    private func reihe(_ titel: String, _ wert: String,
+                       info: PizzaErklaerung.Eintrag? = nil) -> some View {
         HStack {
             Text(titel).font(.subheadline)
+            if let info { PizzaInfoButton(titel: info.titel, text: info.text) }
             Spacer(minLength: 8)
             Text(wert).font(.subheadline.weight(.semibold)).monospacedDigit()
         }
     }
 
     private func wahl<T: Hashable>(_ titel: String, _ werte: [T], label: @escaping (T) -> String,
-                                   aktiv: T, waehle: @escaping (T) -> Void) -> some View {
+                                   aktiv: T, info: PizzaErklaerung.Eintrag? = nil,
+                                   waehle: @escaping (T) -> Void) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(titel).font(.subheadline)
+            HStack(spacing: 6) {
+                Text(titel).font(.subheadline)
+                if let info { PizzaInfoButton(titel: info.titel, text: info.text) }
+            }
             HStack(spacing: 8) {
                 ForEach(werte, id: \.self) { w in
                     FilterPill(label: label(w), selected: w == aktiv, color: tint) { waehle(w) }
@@ -454,6 +504,64 @@ struct PizzaPlanerView: View {
     }
 }
 
+// MARK: - Mehlauswahl-Sheet
+
+/// Zeigt alle Mehlsorten (Reihenfolge = CaseIterable) mit Label, Protein/W-Wert und einem
+/// Charakter-Satz zur Auswahl. Antippen setzt die Sorte und schließt das Sheet.
+private struct MehlAuswahlSheet: View {
+    @Binding var auswahl: Mehltyp
+    @Environment(\.dismiss) private var dismiss
+
+    private var tint: Color { Palette.colors(for: "pizza").first ?? Theme.accent }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    ForEach(Mehltyp.allCases, id: \.self) { m in
+                        Button {
+                            auswahl = m
+                            dismiss()
+                        } label: {
+                            HStack(alignment: .top, spacing: 12) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    HStack(spacing: 8) {
+                                        Text(m.label).font(.subheadline.weight(.semibold))
+                                            .foregroundStyle(.primary)
+                                        Text(m.proteinInfo).font(.caption.weight(.semibold))
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Text(m.charakter).font(.caption).foregroundStyle(.secondary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                Spacer(minLength: 0)
+                                if m == auswahl {
+                                    Image(systemName: "checkmark.circle.fill").foregroundStyle(tint)
+                                }
+                            }
+                            .contentShape(Rectangle())
+                            .padding(.vertical, 3)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("pizza-mehl-option-" + m.rawValue)
+                    }
+                } footer: {
+                    Text("Alle Weizen-Tipo-00 gären ähnlich schnell (gleiche Hefemenge) – sie "
+                         + "unterscheiden sich in Wasseraufnahme und wie lange der Teig gut bleibt.")
+                }
+            }
+            .listStyle(.insetGrouped)
+            .navigationTitle("Mehl wählen")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button("Fertig") { dismiss() } }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+}
+
 // MARK: - 3. Zutaten
 
 private struct PizzaZutatenKarte: View {
@@ -470,8 +578,12 @@ private struct PizzaZutatenKarte: View {
             InfoRow(icon: "💧", label: "Wasser", value: PizzaCalculator.gramm(z.wasserMl) + " ml")
             // Die Wassertemperatur ist ein Ausgabewert des Modells, kein Beiwerk: nur mit ihr
             // landet der fertige Teig auf der Zielteigtemperatur von 24 °C.
-            InfoRow(icon: "🌡️", label: "Wassertemperatur",
-                    value: PizzaCalculator.grad(z.wasserTempC) + " °C", valueColor: tint)
+            HStack(spacing: 8) {
+                InfoRow(icon: "🌡️", label: "Wassertemperatur",
+                        value: PizzaCalculator.grad(z.wasserTempC) + " °C", valueColor: tint)
+                PizzaInfoButton(titel: PizzaErklaerung.wassertemperatur.titel,
+                                text: PizzaErklaerung.wassertemperatur.text)
+            }
             InfoRow(icon: "🧂", label: "Salz", value: PizzaCalculator.gramm(z.salzG) + " g")
             InfoRow(icon: "🫧", label: plan.config.hefetyp.label,
                     value: PizzaCalculator.hefeGramm(z.hefeG) + " g")

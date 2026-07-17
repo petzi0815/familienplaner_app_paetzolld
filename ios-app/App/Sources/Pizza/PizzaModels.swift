@@ -91,45 +91,107 @@ enum PizzaKonstanten {
 // MARK: - Aufzaehlungen
 
 enum Mehltyp: String, CaseIterable, Codable {
+    // Reihenfolge = Picker-Reihenfolge. rawValues bleiben abwaertskompatibel:
+    // 'tipo00'/'dinkel' existieren in gespeicherten Rezepten. Die drei neuen sind alle
+    // Weizen-Tipo-00 (mehlFaktor 1.0) - gleiche Gaergeschwindigkeit wie tipo00, also gleiche
+    // Hefemenge; sie unterscheiden sich nur in hydrationDefault und der Gaer-Toleranz.
     case tipo00
+    case caputo_pizzeria
+    case la_farina_14
+    case edeka_herzstuecke
     case dinkel
 
     var label: String {
         switch self {
-        case .tipo00: return "Tipo 00"
+        case .tipo00: return "Tipo 00 (Standard)"
+        case .caputo_pizzeria: return "Caputo Pizzeria"
+        case .la_farina_14: return "La Farina 14"
+        case .edeka_herzstuecke: return "Edeka Herzstücke"
         case .dinkel: return "Dinkel 630"
+        }
+    }
+
+    /// Protein-/W-Wert zur Anzeige in der Mehlauswahl (keine Rechengroesse).
+    var proteinInfo: String {
+        switch self {
+        case .tipo00: return "~12,5 %"
+        case .caputo_pizzeria: return "12,5 % · W 260–270"
+        case .la_farina_14: return "14 %"
+        case .edeka_herzstuecke: return "13 %"
+        case .dinkel: return "—"
         }
     }
 
     var hydrationDefault: Double {
         switch self {
         case .tipo00: return 0.625
+        case .caputo_pizzeria: return 0.625
+        case .la_farina_14: return 0.66
+        case .edeka_herzstuecke: return 0.61
         case .dinkel: return 0.59
         }
     }
 
-    /// Gaermodell: Dinkel treibt traeger, braucht bei gleicher Zeit also mehr Hefe.
+    /// Gaermodell: nur Dinkel treibt traeger (braucht bei gleicher Zeit mehr Hefe). Die drei
+    /// neuen Weizenmehle garen wie tipo00 - der Faktor 1.0 haelt die Hefemenge unveraendert.
     var mehlFaktor: Double {
         switch self {
-        case .tipo00: return 1.0
+        case .tipo00, .caputo_pizzeria, .la_farina_14, .edeka_herzstuecke: return 1.0
         case .dinkel: return 1.1
         }
     }
 
-    /// Nur Dinkel braucht eine Warnung - sein Klebergeruest vertraegt kein langes Kneten.
+    /// Untere Grenze des sinnvollen Gaerfensters (Wanduhr-Stunden), bevor das Aroma zu kurz kommt.
+    var idealFermMinStunden: Double {
+        switch self {
+        case .tipo00: return 6
+        case .caputo_pizzeria: return 8
+        case .la_farina_14: return 24
+        case .edeka_herzstuecke: return 8
+        case .dinkel: return 4
+        }
+    }
+
+    /// Obere Grenze des Gaerfensters (Wanduhr-Stunden), ab der der Kleber nachlaesst.
+    var idealFermMaxStunden: Double {
+        switch self {
+        case .tipo00: return 48
+        case .caputo_pizzeria: return 48
+        case .la_farina_14: return 72
+        case .edeka_herzstuecke: return 36
+        case .dinkel: return 12
+        }
+    }
+
+    /// Ein Satz fuer die Mehlauswahl: was zeichnet das Mehl aus?
+    var charakter: String {
+        switch self {
+        case .tipo00: return "Generischer Tipo-00-Standard – verhält sich wie bisher."
+        case .caputo_pizzeria: return "Verzeiht Fehler, stabil bei kurzer–mittlerer Gare."
+        case .la_farina_14: return "Stark, nimmt viel Wasser – für lange, kalte Gare (24–72 h)."
+        case .edeka_herzstuecke: return "Supermarkt-Allrounder, luftig-knusprig."
+        case .dinkel: return "Überknetet schnell – dehnen & falten, kürzere Gare."
+        }
+    }
+
+    /// Nur Dinkel braucht eine Knet-Warnung - sein Klebergeruest vertraegt kein langes Kneten.
+    /// Die Weizen-Tipo-00 sind unkritisch.
     var knetHinweis: String? {
         switch self {
-        case .tipo00: return nil
+        case .tipo00, .caputo_pizzeria, .la_farina_14, .edeka_herzstuecke: return nil
         case .dinkel: return "Dinkel nicht überkneten – der Kleber reißt sonst und der Teig wird krümelig."
         }
     }
 
     func knetzeitText(_ methode: Knetmethode) -> String {
         switch (self, methode) {
-        case (.tipo00, .maschine): return "10-12 Min. Maschine"
-        case (.tipo00, .hand): return "15-20 Min. Hand"
+        // La Farina 14 ist staerker und vertraegt etwas laengeres Kneten.
+        case (.la_farina_14, .maschine): return "12-15 Min. Maschine"
         case (.dinkel, .maschine): return "6-8 Min. Maschine"
         case (.dinkel, .hand): return "10-12 Min. Hand"
+        // Die uebrigen Weizen-Tipo-00 (inkl. tipo00) kneten wie bisher.
+        case (_, .maschine): return "10-12 Min. Maschine"
+        case (_, .hand): return "15-20 Min. Hand"
         }
     }
 }
@@ -433,6 +495,9 @@ enum PizzaHinweis: Identifiable, Equatable, Hashable {
     case sehrWenigHefe(Double)
     /// Notfall (Essen mitten in der Nacht): so viele Handgriffe lassen sich nicht wach legen.
     case nachtHandgriffeUnvermeidbar(Int)
+    /// Die gesamte Gaerzeit passt nicht zur Gaer-Toleranz des gewaehlten Mehls - rein
+    /// informativ, mit einer konkreten Mehl-Empfehlung (im Calculator formuliert).
+    case mehlGaertoleranz(empfehlung: String)
 
     var text: String {
         switch self {
@@ -470,6 +535,8 @@ enum PizzaHinweis: Identifiable, Equatable, Hashable {
             let handgriffe = n == 1 ? "1 Handgriff" : "\(PizzaCalculator.ganzzahl(n)) Handgriffe"
             return "Für diese Uhrzeit lassen sich \(handgriffe) in der Nacht nicht vermeiden – "
                 + "dafür muss der Wecker klingeln."
+        case .mehlGaertoleranz(let empfehlung):
+            return empfehlung
         }
     }
 

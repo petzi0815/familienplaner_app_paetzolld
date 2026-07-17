@@ -348,6 +348,10 @@ enum PizzaCalculator {
                                             grund: verschiebeGrund(config: c, essen: essen, calendar: calendar)))
         }
         if knapp { hinweise.append(.knappesFensterMehrHefe) }
+        // Gesamte Wanduhr-Gaerzeit einer warmen Gare = netto (Stock- + Stueckgare).
+        if let t = mehlToleranzHinweis(mehltyp: c.mehltyp, gareStunden: Double(netto) / 60) {
+            hinweise.append(t)
+        }
         if let extra { hinweise.append(extra) }
 
         return PizzaPlan(config: c,
@@ -361,6 +365,29 @@ enum PizzaCalculator {
                          startzeit: plus(-(PizzaKonstanten.fixSumme + netto), essen, calendar),
                          essenszeit: essen,
                          hinweise: hinweise)
+    }
+
+    // MARK: Gaer-Toleranz des Mehls
+
+    /// Nicht blockierender Hinweis, wenn die GESAMTE Wanduhr-Gaerzeit (Stunden) ausserhalb des
+    /// Toleranzfensters [idealFermMin, idealFermMax] des gewaehlten Mehls liegt.
+    /// - zu LANG: der Kleber laesst nach -> das staerkste Mehl (La Farina 14) empfehlen.
+    /// - zu KURZ: nur fuer ein ausgesprochen starkes Mehl sinnvoll (es braucht lange Gare fuers
+    ///   Aroma); Standard-/Allround-Mehle bei kurzer Gare NICHT bemaengeln, sonst warnt schon der
+    ///   normale tipo00-Standardplan (netto ~5 h) grundlos.
+    private static func mehlToleranzHinweis(mehltyp: Mehltyp, gareStunden: Double) -> PizzaHinweis? {
+        if gareStunden > mehltyp.idealFermMaxStunden && mehltyp != .la_farina_14 {
+            let e = "\(mehltyp.label) ist für bis ~\(ganzzahl(Int(mehltyp.idealFermMaxStunden))) h "
+                + "ausgelegt – für so lange Gare ist \(Mehltyp.la_farina_14.label) stabiler."
+            return .mehlGaertoleranz(empfehlung: e)
+        }
+        if gareStunden < mehltyp.idealFermMinStunden
+            && mehltyp.idealFermMinStunden > Mehltyp.caputo_pizzeria.idealFermMinStunden {
+            let e = "\(mehltyp.label) braucht lange Gare für sein Aroma – für so kurze Gare "
+                + "reicht ein Standard-Tipo-00 oder \(Mehltyp.caputo_pizzeria.label)."
+            return .mehlGaertoleranz(empfehlung: e)
+        }
+        return nil
     }
 
     /// Warum weicht der warme Plan vom 6-h-Standard ab? (Nur gefragt, wenn er abweicht.)
@@ -507,6 +534,11 @@ enum PizzaCalculator {
         if c.raumtempC < 18 { hinweise.append(.raumtempNiedrig(c.raumtempC)) }
         if c.raumtempC > 28 { hinweise.append(.raumtempHoch(c.raumtempC)) }
         hinweise.append(contentsOf: warn)
+        // Gesamte Wanduhr-Gaerzeit der kalten Gare = bulk (warm) + Kuehlschrank + appretto (warm).
+        if let t = mehlToleranzHinweis(mehltyp: c.mehltyp,
+                                       gareStunden: Double(bulk + fridgeGare + appretto) / 60) {
+            hinweise.append(t)
+        }
 
         return PizzaPlan(config: c,
                          variante: .kalt,
