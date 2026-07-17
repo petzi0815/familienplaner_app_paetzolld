@@ -167,10 +167,16 @@ final class FamilienplanerUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Alarmanlage"].waitForExistence(timeout: 10), "Alarmanlage-Kachel fehlt im Smarthome-Tab")
         XCTAssertTrue(app.staticTexts["Raffstores"].waitForExistence(timeout: 8), "Raffstore-Sektion fehlt")
         XCTAssertTrue(app.staticTexts["Küche"].waitForExistence(timeout: 8), "Raffstore 'Küche' fehlt")
-        XCTAssertTrue(app.buttons["script-script.raffstore_putzen"].waitForExistence(timeout: 8), "Szenen-Button 'Putzen' fehlt")
-        // Kameras: Sektion + eine Kamera-Kachel (Snapshot trifft im Test kein Backend, Kachel existiert trotzdem).
+        // Kameras zuerst prüfen, SOLANGE oben (die Kamera-LazyVGrid recycelt ihre Zellen aus dem
+        // Baum, sobald man nach unten zu den Szenen scrollt) — Snapshot trifft im Test kein Backend.
         XCTAssertTrue(app.staticTexts["Kameras"].waitForExistence(timeout: 8), "Kamera-Sektion fehlt")
         XCTAssertTrue(app.buttons["camera-camera.einfahrt_high"].waitForExistence(timeout: 8), "Kamera-Kachel 'Einfahrt' fehlt")
+        // Szenen liegen unten im ScrollView in einer LazyVGrid → erst einscrollen, damit die Zellen
+        // instanziiert werden (off-screen existieren sie nicht im Accessibility-Baum).
+        let putzen = app.buttons["script-script.raffstore_putzen"]
+        var tries = 0
+        while !putzen.exists && tries < 6 { app.swipeUp(); tries += 1 }
+        XCTAssertTrue(putzen.waitForExistence(timeout: 8), "Szenen-Button 'Putzen' fehlt")
     }
 
     /// KPI-Kachel „Anstehende Termine" tippen → springt in den Termine-Bereich.

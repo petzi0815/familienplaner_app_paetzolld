@@ -28,7 +28,10 @@ struct AlarmoTile: View {
         }
         .padding(16)
         .cardSurface()
-        .accessibilityIdentifier("alarmo-tile")
+        // KEIN Container-.accessibilityIdentifier hier: SwiftUI propagiert ihn auf ALLE Kind-Elemente
+        // und ueberschreibt damit deren eigene IDs (alarmo-arm/alarmo-disarm/alarmo-retry) — die
+        // Steuerung waere dann fuer XCUITest nur noch als „alarmo-tile" auffindbar. Die Kinder tragen
+        // ihre eigenen, sprechenden IDs; die Kachel selbst braucht keine.
         // Fehlermeldung nach kurzer Zeit automatisch ausblenden. Cancellation-sicher:
         // bei Wechsel A→B wird die A-Task abgebrochen → NICHT die frische Meldung B löschen.
         .task(id: app.alarmoError) {
