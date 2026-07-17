@@ -24,7 +24,7 @@ final class FamilienplanerUITests: XCTestCase {
     // Alle Domain-Keys (Reihenfolge = DomainCatalog.order).
     private let domainKeys = [
         "termine", "abfuhrkalender", "reisen", "samu", "geschenkplaner", "garten", "vorratskammer",
-        "wunschliste", "gypsi", "reiniger", "elisbooks", "ebooks", "smarthome", "vertraege",
+        "wunschliste", "gypsi", "reiniger", "elisbooks", "ebooks", "smarthome", "vertraege", "pizza",
     ]
 
     // MARK: - Helfer
@@ -246,5 +246,39 @@ final class FamilienplanerUITests: XCTestCase {
         // Zurück muss auf das Dashboard führen (nicht erst das Detail zeigen).
         goBack()
         XCTAssertTrue(waitUntil(event.isHittable), "Zurück aus dem Ereignis-Detail fehlgeschlagen")
+    }
+
+    /// DATENGETRIEBEN (lokal gerechnet): der Pizza-Planer rechnet auf dem Gerät, nicht im Backend —
+    /// im -uitest-Lauf (ohne Backend) MUSS deshalb trotzdem eine Startzeit + ein Zeitplan dastehen.
+    /// Die Rezeptur-Liste hängt dagegen am Backend und darf leer bleiben; geprüft wird dort nur,
+    /// dass der Segment-Wechsel den Planer-Inhalt austauscht und zurück wieder herstellt.
+    func testPizzaPlaner() {
+        openBereiche()
+        let tileEl = tile("pizza")
+        XCTAssertTrue(tileEl.waitForExistence(timeout: 8), "Pizza-Kachel fehlt")
+        tileEl.tap()
+
+        // Startzeit = die Antwort des Planers (Standard-Essenszeit hat immer genug Vorlauf → kein Problem-Zustand).
+        // Zeitplan-Karte ist ein Accessibility-Container (children: .contain) → über .any suchen, nicht über staticTexts.
+        let startzeit = app.descendants(matching: .any)["pizza-startzeit"]
+        XCTAssertTrue(startzeit.waitForExistence(timeout: 12),
+                      "Startzeit-Anzeige fehlt — der Planer hat ohne Backend nicht gerechnet")
+        let zeitplan = app.descendants(matching: .any)["pizza-zeitplan"]
+        XCTAssertTrue(zeitplan.waitForExistence(timeout: 8), "Zeitplan-Karte fehlt")
+
+        // Segment 'Rezepturen': Planer-Inhalt muss verschwinden (Liste selbst darf leer/ladend sein).
+        let rezepturen = app.buttons["segment-Rezepturen"]
+        XCTAssertTrue(rezepturen.waitForExistence(timeout: 8), "Segment 'Rezepturen' fehlt")
+        rezepturen.tap()
+        XCTAssertTrue(waitUntil(!startzeit.exists), "Segment 'Rezepturen' hat nicht umgeschaltet")
+
+        // Zurück auf 'Planer': der Plan ist wieder da.
+        let planer = app.buttons["segment-Planer"]
+        XCTAssertTrue(planer.waitForExistence(timeout: 8), "Segment 'Planer' fehlt")
+        planer.tap()
+        XCTAssertTrue(waitUntil(startzeit.exists), "Segment 'Planer' hat nicht zurückgeschaltet")
+
+        goBack()
+        XCTAssertTrue(waitUntil(tileEl.isHittable), "Zurück aus dem Pizza-Bereich fehlgeschlagen")
     }
 }

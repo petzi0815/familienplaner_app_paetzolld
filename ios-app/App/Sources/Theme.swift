@@ -53,6 +53,7 @@ enum Palette {
         "reiniger": ["0EA5E9", "14B8A6", "84CC16"],
         "elisbooks": ["92400E", "B45309", "D97706"],
         "trauerkarten": ["64748B", "475569", "334155"],
+        "pizza": ["DC2626", "EA580C", "65A30D"],
         "foto": ["5AC8FA", "007AFF", "5856D6"],
     ]
 

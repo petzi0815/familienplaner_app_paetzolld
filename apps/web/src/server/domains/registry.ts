@@ -94,6 +94,10 @@ export const RESOURCES: Resource[] = [
   { key: "elisbooks-settings", table: "elisbooks_user_settings", domain: "elisbooks", label: "Bücher-Einstellungen" },
   { key: "ebook-wishlist", table: "ebook_wishlist", domain: "ebooks", label: "E-Book-Wunschliste", sort: "created_at DESC" },
 
+  // ── Pizza machen (reine Datenhaltung — die Teig-/Zeitplan-Berechnung passiert auf dem iPhone) ──
+  { key: "pizza-rezepte", table: "pizza_rezepte", domain: "pizza", label: "Pizza-Rezepturen", searchable: ["name", "notiz"], sort: "updated_at DESC" },
+  { key: "pizza-notizen", table: "pizza_notizen", domain: "pizza", label: "Rezept-Notizen", sort: "created_at DESC" },
+
   // ── Smart Home ──
   { key: "ha-entities", table: "ha_entities", domain: "smarthome", label: "HA Entities", sort: "friendly_name ASC" },
   { key: "ha-relationships", table: "ha_relationships", domain: "smarthome", label: "HA Beziehungen" },
