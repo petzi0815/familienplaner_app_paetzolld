@@ -1,18 +1,14 @@
 import SwiftUI
 
-/// Hauptbildschirm des Pizza-Planers: oben rein, wann gegessen wird - direkt darunter raus,
-/// wann der Teig angesetzt werden muss.
+/// Hauptbildschirm des Pizza-Planers: oben rein, wann gegessen wird - direkt darunter die
+/// Variantenwahl (schnell/warm oder ueber Nacht/kalt) und der Plan.
 ///
 /// Die View rechnet NICHT selbst und ruft auch `rechne()` nicht auf: jede Eingabe bindet direkt
 /// an `store.config` bzw. `store.essenszeit`, deren `didSet` den Rechenkern anwirft. Hier wird
-/// ausschliesslich `store.ergebnis` angezeigt - eine zweite Rechenschleife gaebe es nur die
-/// Chance, mit der ersten auseinanderzulaufen.
+/// ausschliesslich `store.planung`/`store.aktiverPlan` angezeigt - eine zweite Rechenschleife
+/// gaebe es nur die Chance, mit der ersten auseinanderzulaufen.
 struct PizzaPlanerView: View {
     @EnvironmentObject var store: PizzaStore
-
-    /// Der Gegenvorschlag zum aktuellen Problem, als State statt berechnet im Body: die Suche
-    /// danach scannt bis zu 48 h Kandidaten und darf nicht bei jedem Body-Durchlauf neu laufen.
-    @State private var vorschlag: PizzaVorschlag?
 
     private var tint: Color { Palette.colors(for: "pizza").first ?? Theme.accent }
 
@@ -28,11 +24,14 @@ struct PizzaPlanerView: View {
         ScrollView {
             VStack(spacing: 14) {
                 essenszeitKarte
-                ergebnisKarte
-                if let p = store.plan {
+                variantenBereich
+                if let p = store.aktiverPlan {
+                    startKarte(p)
                     PizzaZutatenKarte(plan: p, tint: tint)
                     PizzaZeitplanKarte(plan: p, tint: tint)
                     hinweiseKarte(p)
+                } else if let frueh = store.planung?.fruehestesMoeglichesEssen {
+                    kurzfristigKarte(frueh)
                 }
                 eingabenKarte
                 erweitertKarte
@@ -41,8 +40,6 @@ struct PizzaPlanerView: View {
             .padding(.top, 12)
             .padding(.bottom, 28)
         }
-        .onAppear { vorschlag = berechneVorschlag() }
-        .onChange(of: vorschlagSchluessel) { _, _ in vorschlag = berechneVorschlag() }
     }
 
     // MARK: - 1. Essenszeit
@@ -61,17 +58,64 @@ struct PizzaPlanerView: View {
         }
     }
 
-    // MARK: - 2. Ergebnis (Startzeit oder Problem)
+    // MARK: - 2. Variantenwahl (direkt unter der Essenszeit)
 
-    @ViewBuilder private var ergebnisKarte: some View {
-        if let p = store.plan {
-            startKarte(p)
-        } else if let f = store.problem {
-            problemKarte(f)
+    /// Sind beide Varianten moeglich, waehlt der Nutzer; ist nur eine moeglich, erklaert ein
+    /// dezenter Hinweis, welche das ist und warum die andere fuer diese Uhrzeit ausfaellt.
+    @ViewBuilder private var variantenBereich: some View {
+        if let p = store.planung {
+            if p.warm != nil && p.kalt != nil {
+                variantenUmschalter
+            } else if p.warm != nil {
+                variantenHinweis("Für diese Uhrzeit passt nur der Schnell-Plan am selben Tag – eine Übernacht-Gare würde nicht mehr rechtzeitig an einem Abend beginnen.",
+                                 icon: "hare.fill")
+            } else if p.kalt != nil {
+                variantenHinweis("Für diese Uhrzeit ist nur die Übernacht-Gare im Kühlschrank möglich – ein Schnell-Plan am selben Tag ginge sich nicht ohne nächtliche Handgriffe aus.",
+                                 icon: "snowflake")
+            }
         }
     }
 
-    /// Die Antwort auf die eigentliche Frage - deshalb die groesste Zahl auf dem Schirm.
+    /// Umschalter zwischen beiden Varianten. Jede Pille traegt ihre eigene ID
+    /// (`pizza-variante-warm` / `pizza-variante-kalt`) — der Container bleibt bewusst ID-los,
+    /// damit die Kinder fuer XCUITest einzeln auffindbar bleiben.
+    private var variantenUmschalter: some View {
+        PizzaAbschnitt(titel: "Variante", icon: "arrow.triangle.branch", tint: tint) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    ForEach(PizzaVariante.allCases, id: \.self) { v in
+                        FilterPill(label: v.label, systemImage: v == .kalt ? "snowflake" : "hare.fill",
+                                   selected: store.variante == v, color: tint) {
+                            store.waehleVariante(v)
+                        }
+                        .accessibilityIdentifier("pizza-variante-\(v.rawValue)")
+                    }
+                    Spacer(minLength: 0)
+                }
+                Text(store.variante.kurzErklaerung)
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func variantenHinweis(_ text: String, icon: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: icon).foregroundStyle(tint).padding(.top, 1)
+            Text(text).font(.caption).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cardSurface()
+        .accessibilityIdentifier("pizza-variante-hinweis")
+    }
+
+    // MARK: - 3. Startzeit (die Antwort auf die eigentliche Frage)
+
+    /// Deshalb die groesste Zahl auf dem Schirm. Bei der kalten Variante steht direkt darunter
+    /// prominent die Kuehlschrank-Info (wann rein, wann raus, wie lange, bei welcher Temperatur).
     private func startKarte(_ p: PizzaPlan) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 0) {
@@ -85,9 +129,16 @@ struct PizzaPlanerView: View {
                     Text(tag).font(.caption.weight(.bold)).opacity(0.9)
                 }
             }
+            if let info = kuehlschrankText(p) {
+                Label(info, systemImage: "refrigerator.fill")
+                    .font(.subheadline.weight(.semibold)).opacity(0.95)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("pizza-kuehlschrank")
+            }
             HStack(alignment: .top, spacing: 10) {
                 PizzaHeroWert(titel: "Gesamtdauer", wert: PizzaCalculator.dauer(p.gesamtdauerMinuten))
-                PizzaHeroWert(titel: "Gare (netto)", wert: PizzaCalculator.dauer(p.nettoMinuten))
+                PizzaHeroWert(titel: p.variante == .kalt ? "Reife" : "Gare (netto)",
+                              wert: PizzaCalculator.dauer(p.nettoMinuten))
                 PizzaHeroWert(titel: "Essen", wert: PizzaCalculator.uhrzeit(p.essenszeit))
             }
             if let grund = verschobenText(p) {
@@ -103,36 +154,45 @@ struct PizzaPlanerView: View {
         .shadow(color: tint.opacity(0.35), radius: 12, y: 6)
     }
 
-    /// Kein Plan ist ein Anzeigezustand, kein Fehler: Titel, Grund - und der Gegenvorschlag
-    /// als Knopf, damit niemand selbst nachrechnen muss, was der Kern schon weiss.
-    private func problemKarte(_ f: PizzaProblem) -> some View {
+    /// Kühlschrank-Zeile fuer die kalte Variante: "Kühlschrank: heute 23:00 → morgen 09:50,
+    /// ~11 h bei 5 °C". Nil bei der warmen Variante.
+    private func kuehlschrankText(_ p: PizzaPlan) -> String? {
+        guard p.variante == .kalt,
+              let rein = p.schritte.first(where: { $0.art == .kuehlschrank }),
+              let raus = p.schritte.first(where: { $0.art == .anwaermen }) else { return nil }
+        let von = PizzaCalculator.datumUndUhrzeit(rein.zeit)
+        let bis = PizzaCalculator.datumUndUhrzeit(raus.zeit)
+        return "Kühlschrank: \(von) → \(bis), \(PizzaCalculator.dauer(p.fridgeMinuten)) bei "
+            + "\(PizzaCalculator.grad(p.config.fridgeTempC)) °C"
+    }
+
+    // MARK: - Kurzfristig (< 4,5 h Vorlauf — der einzige physische Grenzfall)
+
+    /// Kein Fehler, keine Absage: der Teig braucht Vorlauf. Ein Knopf legt die Essenszeit auf den
+    /// fruehestmoeglichen Zeitpunkt, ab dem wieder mindestens eine Variante existiert.
+    private func kurzfristigKarte(_ frueh: Date) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label(f.titel, systemImage: "exclamationmark.triangle.fill")
-                .font(.headline).foregroundStyle(.orange)
-                .accessibilityIdentifier("pizza-problem")
-            Text(f.text).font(.subheadline)
+            Label("So kurzfristig wird der Teig nicht reif", systemImage: "clock.badge.exclamationmark")
+                .font(.headline).foregroundStyle(tint)
+                .accessibilityIdentifier("pizza-kurzfristig")
+            Text("Ein Pizzateig braucht etwas Vorlauf. Frühestens \(PizzaCalculator.datumUndUhrzeit(frueh)) Uhr ist er soweit.")
+                .font(.subheadline)
                 .fixedSize(horizontal: false, vertical: true)
-            if let s = f.vorschlag {
-                Text(s).font(.subheadline.weight(.semibold))
-                    .fixedSize(horizontal: false, vertical: true)
+            Button { store.essenszeit = frueh } label: {
+                Label("Frühestmögliche Zeit übernehmen", systemImage: "clock.arrow.circlepath")
+                    .font(.subheadline.weight(.bold))
+                    .frame(maxWidth: .infinity).padding(.vertical, 11)
+                    .background(tint, in: Capsule())
+                    .foregroundStyle(tint.onFill)
             }
-            if let v = vorschlag {
-                Button { wendeAn(v) } label: {
-                    Label(v.label, systemImage: v.icon)
-                        .font(.subheadline.weight(.bold))
-                        .frame(maxWidth: .infinity).padding(.vertical, 11)
-                        .background(Color.orange, in: Capsule())
-                        .foregroundStyle(Color.orange.onFill)
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("pizza-vorschlag")
-            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("pizza-kurzfristig-button")
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.orange.opacity(0.14), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous)
-            .strokeBorder(Color.orange.opacity(0.45)))
+            .strokeBorder(tint.opacity(0.4)))
     }
 
     /// Nur zeigen, wenn der Start nicht heute ist - sonst ist das Datum bloss Rauschen.
@@ -237,7 +297,7 @@ struct PizzaPlanerView: View {
                     .accessibilityIdentifier("pizza-schlaf-bis")
                 Spacer(minLength: 0)
             }
-            Text("In dieser Zeit plant der Planer keinen Handgriff ein. Stock- und Stückgare laufen weiter – nur Kneten, Portionieren, Ofen und Backen bleiben in der Wachzeit.")
+            Text("In dieser Zeit plant der Planer keinen Handgriff ein – nachts wird nichts erledigt. Die Gare läuft trotzdem weiter: bei Bedarf über Nacht im Kühlschrank. Nur Kneten, Portionieren, Ofen und Backen bleiben in der Wachzeit.")
                 .font(.caption).foregroundStyle(.secondary)
             if !store.config.nachtruheAktiv {
                 Text("Beide Zeiten gleich = keine Nachtruhe. Handgriffe dürfen dann zu jeder Uhrzeit liegen.")
@@ -253,6 +313,7 @@ struct PizzaPlanerView: View {
             VStack(alignment: .leading, spacing: 16) {
                 mehltempBlock
                 hydrationBlock
+                fridgeTempBlock
                 kFaktorBlock
             }
             .padding(.top, 12)
@@ -311,6 +372,18 @@ struct PizzaPlanerView: View {
         }
     }
 
+    private var fridgeTempBlock: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            reihe("Kühlschranktemperatur", PizzaCalculator.grad(store.config.fridgeTempC) + " °C")
+            // Praxisbereich 4–7 °C (die weiteren [2,10] aus `normalisiert()` sind nur die Clamp-Grenzen).
+            Slider(value: $store.config.fridgeTempC, in: 4...7, step: 0.5)
+                .tint(tint)
+                .accessibilityIdentifier("pizza-fridge-temp")
+            Text("Nur für die Übernacht-Gare: kälter heißt langsamere Reife und noch weniger Hefe, wärmer das Gegenteil. Übliche Kühlschränke stehen auf 4–5 °C.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
     private var kFaktorBlock: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
@@ -331,47 +404,6 @@ struct PizzaPlanerView: View {
                 .accessibilityIdentifier("pizza-kfaktor")
             Text("Kalibrierung des Hefemodells. Wird der Teig regelmäßig zu hefig, K verkleinern – bleibt er träge, K vergrößern.")
                 .font(.caption).foregroundStyle(.secondary)
-        }
-    }
-
-    // MARK: - Gegenvorschlag ableiten
-
-    /// Alles, wovon der Gegenvorschlag abhaengt - und nur das. Aendert sich hier nichts, muss
-    /// auch nicht neu gesucht werden.
-    private var vorschlagSchluessel: PizzaVorschlagSchluessel {
-        PizzaVorschlagSchluessel(config: store.config, essen: store.essenszeit, hatProblem: store.problem != nil)
-    }
-
-    /// Bildet die Reihenfolge des Rechenkerns nach: erst der 4,5-h-Vorlauf (dagegen hilft nur
-    /// eine spaetere Essenszeit), dann eine waermere Gare (weniger Hefe), sonst spaeter essen.
-    /// `kleinsteTauglicheRaumtemp` liefert nil, wenn die Nachtruhe das Problem ist - Waerme
-    /// aendert an schlafenden Handgriffen nichts.
-    private func berechneVorschlag() -> PizzaVorschlag? {
-        guard store.problem != nil else { return nil }
-        let jetzt = Date()
-        let cal = Calendar.current
-        let frueheste = cal.date(byAdding: .minute, value: PizzaKonstanten.minVorlaufMin, to: jetzt)
-            ?? jetzt.addingTimeInterval(Double(PizzaKonstanten.minVorlaufMin) * 60)
-
-        if store.essenszeit >= frueheste,
-           let t = PizzaCalculator.kleinsteTauglicheRaumtemp(config: store.config, essen: store.essenszeit),
-           t > store.config.raumtempC {
-            return .raumtemp(t)
-        }
-        if let e = PizzaCalculator.fruehesteEssenszeit(config: store.config,
-                                                       ab: max(store.essenszeit, frueheste)) {
-            return .essenszeit(e)
-        }
-        return nil
-    }
-
-    /// Bewusst frisch abgeleitet statt den State zu uebernehmen: die fruehestmoegliche Essenszeit
-    /// wandert mit der Uhr mit, und zwischen Anzeige und Tipp koennen Minuten liegen. Der Knopf
-    /// soll einen gueltigen Plan hinterlassen, nicht denselben Fehler mit neuer Uhrzeit.
-    private func wendeAn(_ v: PizzaVorschlag) {
-        switch berechneVorschlag() ?? v {
-        case .raumtemp(let t): store.config.raumtempC = t      // didSet -> neu rechnen
-        case .essenszeit(let d): store.essenszeit = d
         }
     }
 
@@ -485,9 +517,12 @@ private struct PizzaZeitplanKarte: View {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(plan.schritte.enumerated()), id: \.element.id) { i, s in
                     if tageswechsel(vor: i) {
-                        Label("Mitternacht – der Plan läuft in den nächsten Tag", systemImage: "moon.stars.fill")
-                            .font(.caption2.weight(.semibold)).foregroundStyle(.indigo)
-                            .padding(.vertical, 6)
+                        // Echter Datums-Header (Wochentag + Datum) statt eines generischen
+                        // Mitternachts-Trenners: bei der kalten Variante kann die Kuehlschrankgare
+                        // ueber MEHRERE Tage laufen, dann ist "23:00 -> 15:50" ohne Tag missverstaendlich.
+                        Label(PizzaCalculator.wochentagDatum(s.zeit), systemImage: "moon.stars.fill")
+                            .font(.caption2.weight(.bold)).foregroundStyle(.indigo)
+                            .padding(.top, 8).padding(.bottom, 4)
                     }
                     PizzaSchrittZeile(schritt: s, tint: tint, ueberNacht: ueberNacht(ab: i))
                 }
@@ -644,33 +679,4 @@ private struct PizzaHeroWert: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
-}
-
-// MARK: - Gegenvorschlag
-
-/// Welche Stellschraube der Gegenvorschlag des Rechenkerns dreht. `PizzaProblem.vorschlag` ist
-/// nur Text - fuer den Knopf braucht die View die Aktion dahinter.
-private enum PizzaVorschlag: Equatable {
-    case raumtemp(Double)
-    case essenszeit(Date)
-
-    var label: String {
-        switch self {
-        case .raumtemp(let t): return "Raumtemperatur auf " + PizzaCalculator.grad(t) + " °C setzen"
-        case .essenszeit(let d): return "Essenszeit auf " + PizzaCalculator.datumUndUhrzeit(d) + " legen"
-        }
-    }
-
-    var icon: String {
-        switch self {
-        case .raumtemp: return "thermometer.medium"
-        case .essenszeit: return "clock.arrow.circlepath"
-        }
-    }
-}
-
-private struct PizzaVorschlagSchluessel: Equatable {
-    let config: PizzaConfig
-    let essen: Date
-    let hatProblem: Bool
 }

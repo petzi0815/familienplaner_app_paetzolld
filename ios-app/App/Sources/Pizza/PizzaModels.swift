@@ -39,6 +39,27 @@ enum PizzaKonstanten {
     static let hefePctMax = 0.8
     static let kDefault = 4.5
 
+    // MARK: Kalte Kuehlschrankgare (Kugeln kalt, ueber Nacht)
+    //
+    // Ablauf: kneten -> kurze warme Stockgare (bulk) -> formen -> KUEHLSCHRANK (passiv, ueber
+    // Nacht) -> morgens rausnehmen + anwaermen/Stueckgare (appretto) -> backen.
+    /// Kuehlschranktemperatur (Advanced 2-10 C); 5 C = uebliche Haushaltseinstellung.
+    static let fridgeTempDefault = 5.0
+    static let fridgeTempMin = 2.0
+    static let fridgeTempMax = 10.0
+    /// Warme Stockgare vor dem Kuehlschrank (min).
+    static let bulkIdeal = 120
+    static let bulkMin = 60
+    static let bulkMax = 240
+    /// Anwaermen + Stueckgare nach dem Kuehlschrank (min). appFloor = absolute Notgrenze.
+    static let apprettoIdeal = 180
+    static let apprettoMin = 120
+    static let apprettoMax = 300
+    static let apprettoFloor = 30
+    /// Kuehlschrankgare selbst: 8 h bis 72 h.
+    static let fridgeGareMin = 8 * 60
+    static let fridgeGareMax = 72 * 60
+
     static let hydrationMin = 0.55
     static let hydrationMax = 0.70
 
@@ -154,6 +175,30 @@ enum Knetmethode: String, CaseIterable, Codable {
     }
 }
 
+/// Die beiden Planvarianten, die der Solver anbietet. Die Essenszeit ist immer fix - variiert
+/// werden Hefemenge, Gaerzeiten und (bei kalt) die Kuehlschrankgare ueber Nacht.
+enum PizzaVariante: String, Codable, CaseIterable {
+    case warm
+    case kalt
+
+    var label: String {
+        switch self {
+        case .warm: return "Schnell · warm"
+        case .kalt: return "Über Nacht · kalt"
+        }
+    }
+
+    /// Ein Satz, der die Variante in der UI erklaert.
+    var kurzErklaerung: String {
+        switch self {
+        case .warm:
+            return "Same-Day: alles an einem Tag bei Raumtemperatur gegärt."
+        case .kalt:
+            return "Kugeln reifen über Nacht im Kühlschrank – mehr Aroma und deutlich weniger Hefe."
+        }
+    }
+}
+
 // MARK: - Eingabe
 
 /// Alle Eingabeparameter eines Plans.
@@ -182,8 +227,36 @@ struct PizzaConfig: Codable, Equatable {
     var schlafVon: Int = PizzaKonstanten.schlafVonDefault
     /// Nachtruhe-Ende, Minuten seit Mitternacht.
     var schlafBis: Int = PizzaKonstanten.schlafBisDefault
+    /// Kuehlschranktemperatur fuer die kalte Gare (Advanced 2-10 C).
+    var fridgeTempC: Double = PizzaKonstanten.fridgeTempDefault
 
     static let standard = PizzaConfig()
+
+    init() {}
+
+    // Toleranter Decoder: fehlende Schluessel (z. B. `fridgeTempC` in aelteren gespeicherten
+    // Configs) fallen auf den Default zurueck, statt das Decodieren scheitern zu lassen. Der
+    // Encoder bleibt synthetisiert - die Schluesselnamen sind die Property-Namen.
+    private enum CodingKeys: String, CodingKey {
+        case mehltyp, hefetyp, knetmethode, anzahlPizzen, teiglingsgewichtG, raumtempC
+        case mehltempOverride, hydrationOverride, kFaktor, schlafVon, schlafBis, fridgeTempC
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        mehltyp = (try? c.decode(Mehltyp.self, forKey: .mehltyp)) ?? .tipo00
+        hefetyp = (try? c.decode(Hefetyp.self, forKey: .hefetyp)) ?? .frisch
+        knetmethode = (try? c.decode(Knetmethode.self, forKey: .knetmethode)) ?? .maschine
+        anzahlPizzen = (try? c.decode(Int.self, forKey: .anzahlPizzen)) ?? 6
+        teiglingsgewichtG = (try? c.decode(Double.self, forKey: .teiglingsgewichtG)) ?? 275
+        raumtempC = (try? c.decode(Double.self, forKey: .raumtempC)) ?? 22
+        mehltempOverride = try? c.decode(Double.self, forKey: .mehltempOverride)
+        hydrationOverride = try? c.decode(Double.self, forKey: .hydrationOverride)
+        kFaktor = (try? c.decode(Double.self, forKey: .kFaktor)) ?? PizzaKonstanten.kDefault
+        schlafVon = (try? c.decode(Int.self, forKey: .schlafVon)) ?? PizzaKonstanten.schlafVonDefault
+        schlafBis = (try? c.decode(Int.self, forKey: .schlafBis)) ?? PizzaKonstanten.schlafBisDefault
+        fridgeTempC = (try? c.decode(Double.self, forKey: .fridgeTempC)) ?? PizzaKonstanten.fridgeTempDefault
+    }
 
     // MARK: Abgeleitete Werte
 
@@ -235,6 +308,7 @@ struct PizzaConfig: Codable, Equatable {
         c.anzahlPizzen = Swift.min(Swift.max(anzahlPizzen, PizzaKonstanten.anzahlMin), PizzaKonstanten.anzahlMax)
         c.teiglingsgewichtG = Swift.min(Swift.max(teiglingsgewichtG, PizzaKonstanten.gewichtMin), PizzaKonstanten.gewichtMax)
         c.kFaktor = Swift.max(kFaktor, 0.1)
+        c.fridgeTempC = Swift.min(Swift.max(fridgeTempC, PizzaKonstanten.fridgeTempMin), PizzaKonstanten.fridgeTempMax)
         c.schlafVon = PizzaConfig.normalisierteTagesminute(schlafVon)
         c.schlafBis = PizzaConfig.normalisierteTagesminute(schlafBis)
         return c
@@ -269,15 +343,20 @@ enum PizzaSchrittArt: String, Codable, CaseIterable {
     case dehnenFalten2
     case portionieren
     case stueckgare
+    /// Passive kalte Kuehlschrankgare - spannt die Nacht und braucht keinen Handgriff.
+    case kuehlschrank
+    /// Anwaermen + Stueckgare nach dem Kuehlschrank. Der Zeitpunkt (= Kugeln rausnehmen)
+    /// ist ein Handgriff, deshalb `istAktion == true`.
+    case anwaermen
     case ofenAn
     case backen
     case essen
 
-    /// Handgriffe muessen in der Wachzeit liegen; Stock- und Stueckgare laufen von allein
-    /// und duerfen die Nacht ueberspannen.
+    /// Handgriffe muessen in der Wachzeit liegen; Stock-, Stueck- und Kuehlschrankgare laufen
+    /// von allein und duerfen die Nacht ueberspannen.
     var istAktion: Bool {
         switch self {
-        case .stockgare, .stueckgare: return false
+        case .stockgare, .stueckgare, .kuehlschrank: return false
         default: return true
         }
     }
@@ -291,6 +370,8 @@ enum PizzaSchrittArt: String, Codable, CaseIterable {
         case .dehnenFalten2: return "Dehnen & Falten (2/2)"
         case .portionieren: return "Portionieren"
         case .stueckgare: return "Stückgare"
+        case .kuehlschrank: return "Kühlschrank"
+        case .anwaermen: return "Anwärmen & Stückgare"
         case .ofenAn: return "Ofen an"
         case .backen: return "Backen"
         case .essen: return "Essen"
@@ -305,6 +386,8 @@ enum PizzaSchrittArt: String, Codable, CaseIterable {
         case .dehnenFalten1, .dehnenFalten2: return "arrow.up.and.down.and.arrow.left.and.right"
         case .portionieren: return "square.grid.2x2"
         case .stueckgare: return "clock"
+        case .kuehlschrank: return "refrigerator"
+        case .anwaermen: return "thermometer.sun"
         case .ofenAn: return "flame"
         case .backen: return "flame.fill"
         case .essen: return "fork.knife"
@@ -342,6 +425,14 @@ enum PizzaHinweis: Identifiable, Equatable, Hashable {
     case raumtempHoch(Double)
     case sehrLangeGare(Double)
     case planVerschoben(nettoMinuten: Int, grund: PizzaVerschiebeGrund)
+    /// Warm: wacher Plan gefunden, aber das Fenster ist knapp - etwas mehr Hefe als ideal.
+    case knappesFensterMehrHefe
+    /// Kalt: die Anwaermzeit nach dem Kuehlschrank musste unter das Ideal gekuerzt werden.
+    case kurzeAnwaermzeit
+    /// Kalt: sehr lange Kuehlschrankgare -> rechnerisch sehr wenig Hefe (roher Prozentwert).
+    case sehrWenigHefe(Double)
+    /// Notfall (Essen mitten in der Nacht): so viele Handgriffe lassen sich nicht wach legen.
+    case nachtHandgriffeUnvermeidbar(Int)
 
     var text: String {
         switch self {
@@ -366,6 +457,19 @@ enum PizzaHinweis: Identifiable, Equatable, Hashable {
             case .beides:
                 return "Nachtruhe und Raumtemperatur lassen den 6-Stunden-Standard nicht zu: " + dauern
             }
+        case .knappesFensterMehrHefe:
+            return "Knappes Zeitfenster – der Teig bekommt etwas mehr Hefe als ideal, damit er "
+                + "bis zur Essenszeit sicher fertig ist."
+        case .kurzeAnwaermzeit:
+            return "Kurze Anwärmzeit – die Teiglinge sind beim Backen evtl. noch etwas kühl. "
+                + "Wenn möglich, sie früher aus dem Kühlschrank nehmen."
+        case .sehrWenigHefe(let p):
+            return "Sehr lange Kühlschrankgare – rechnerisch reichen \(PizzaCalculator.prozent(p)) % "
+                + "Frischhefe. Bei so wenig Hefe die Menge lieber knapp abwiegen."
+        case .nachtHandgriffeUnvermeidbar(let n):
+            let handgriffe = n == 1 ? "1 Handgriff" : "\(PizzaCalculator.ganzzahl(n)) Handgriffe"
+            return "Für diese Uhrzeit lassen sich \(handgriffe) in der Nacht nicht vermeiden – "
+                + "dafür muss der Wecker klingeln."
         }
     }
 
@@ -381,46 +485,55 @@ enum PizzaHinweis: Identifiable, Equatable, Hashable {
     var id: String { text }
 }
 
-/// Ein vollstaendig geloester Plan.
+/// Ein vollstaendig geloester Plan - warm (Same-Day) ODER kalt (Kuehlschrankgare).
+///
+/// Fuer beide Varianten sind `stockMinuten`/`stueckMinuten`/`fridgeMinuten` so belegt, dass
+/// `gesamtdauerMinuten` und die UI dieselbe Formel benutzen koennen:
+/// - warm: stock+stueck = netto, fridge = 0.
+/// - kalt: stock = warme Stockgare (bulk), stueck = Anwaermen/Appretto, fridge = Kuehlschrankgare.
 struct PizzaPlan: Equatable {
     let config: PizzaConfig
+    let variante: PizzaVariante
     let zutaten: PizzaZutaten
     let schritte: [PizzaSchritt]
+    /// warm: die Netto-Gare (Raumtemperatur). kalt: die gesamte Gaerzeit bulk+kuehlschrank+appretto.
     let nettoMinuten: Int
+    /// warm: Stockgare. kalt: warme Stockgare (bulk) vor dem Kuehlschrank.
     let stockMinuten: Int
+    /// warm: Stueckgare. kalt: Anwaermen + Stueckgare (appretto) nach dem Kuehlschrank.
     let stueckMinuten: Int
+    /// Passive Kuehlschrankgare in Minuten - 0 bei der warmen Variante.
+    let fridgeMinuten: Int
+    /// Erster Handgriff (Kneten).
     let startzeit: Date
     let essenszeit: Date
     let hinweise: [PizzaHinweis]
 
-    /// Der Solver musste wegen der Nachtruhe vom 6-h-Standard abweichen.
-    var weichtVomStandardAb: Bool { nettoMinuten != PizzaKonstanten.nettoStandard }
-    var gesamtdauerMinuten: Int { PizzaKonstanten.fixSumme + nettoMinuten }
+    /// Nur die warme Variante hat einen 6-h-Standard, von dem sie abweichen kann.
+    var weichtVomStandardAb: Bool { variante == .warm && nettoMinuten != PizzaKonstanten.nettoStandard }
+
+    /// Erster Handgriff bis Essen. Fuer beide Varianten gilt: die vier Fixbloecke plus die drei
+    /// Gaerabschnitte (bei warm ist fridge = 0 und stock+stueck = netto).
+    var gesamtdauerMinuten: Int {
+        PizzaKonstanten.fixSumme + stockMinuten + stueckMinuten + fridgeMinuten
+    }
 }
 
-/// Ein Anzeigezustand, keine Exception: der Nutzer soll lesen koennen, WARUM nichts geht
-/// und was er dagegen tun kann.
-struct PizzaProblem: Equatable {
-    let titel: String
-    let text: String
-    let vorschlag: String?
-}
+/// Das Ergebnis des Solvers: die Essenszeit ist fix, deshalb gibt es NIE ein "geht nicht".
+///
+/// Im Normalfall ist mindestens eine der beiden Varianten gesetzt (oft beide - dann waehlt der
+/// Nutzer in der UI). `fruehestesMoeglichesEssen` ist ausschliesslich dann gesetzt, wenn beide
+/// nil sind - der einzige physische Grenzfall: weniger als 4,5 h Vorlauf ab jetzt. Dann zeigt die
+/// UI einen sanften Hinweis "frühestens HH:MM", KEINE Absage.
+struct PizzaPlanung: Equatable {
+    var warm: PizzaPlan?
+    var kalt: PizzaPlan?
+    var fruehestesMoeglichesEssen: Date?
 
-enum PizzaErgebnis: Equatable {
-    case plan(PizzaPlan)
-    case fehler(PizzaProblem)
-
-    /// Absichtlich nicht `plan` / `fehler` benannt - gleichnamige Cases und Properties
-    /// kollidieren im Member-Namensraum des Enums.
-    var erfolg: PizzaPlan? {
-        if case .plan(let p) = self { return p }
-        return nil
-    }
-
-    var problem: PizzaProblem? {
-        if case .fehler(let f) = self { return f }
-        return nil
-    }
+    /// Bequemer Zugriff: irgendein vorhandener Plan (warm bevorzugt), fuer Vorschau/Kurzstatus.
+    var irgendeiner: PizzaPlan? { warm ?? kalt }
+    /// Es gibt mindestens einen Plan.
+    var hatPlan: Bool { warm != nil || kalt != nil }
 }
 
 // MARK: - Navigation
@@ -480,6 +593,7 @@ struct PizzaRezept: Identifiable, Hashable {
         c.kFaktor = Coerce.double(f["k_faktor"]) ?? c.kFaktor
         c.schlafVon = Coerce.str(f["schlaf_von"]).flatMap(PizzaConfig.minuten(fromHHmm:)) ?? c.schlafVon
         c.schlafBis = Coerce.str(f["schlaf_bis"]).flatMap(PizzaConfig.minuten(fromHHmm:)) ?? c.schlafBis
+        c.fridgeTempC = Coerce.double(f["fridge_temp"]) ?? c.fridgeTempC
         config = c.normalisiert()
     }
 
@@ -498,6 +612,7 @@ struct PizzaRezept: Identifiable, Hashable {
             "k_faktor": c.kFaktor,
             "schlaf_von": c.schlafVonHHmm,
             "schlaf_bis": c.schlafBisHHmm,
+            "fridge_temp": c.fridgeTempC,
             "favorit": favorit ? 1 : 0,
         ]
         b["mehltemp"] = c.mehltempOverride.map { $0 as Any } ?? NSNull()

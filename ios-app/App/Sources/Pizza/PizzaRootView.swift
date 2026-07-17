@@ -54,11 +54,11 @@ struct PizzaRootView: View {
                 }
             }
             Button {
-                if let p = store.plan { shareItem = PizzaShareItem(text: PizzaShare.text(plan: p)) }
+                if let p = store.aktiverPlan { shareItem = PizzaShareItem(text: PizzaShare.text(plan: p)) }
             } label: {
                 Label("Teilen", systemImage: "square.and.arrow.up")
             }
-            .disabled(store.plan == nil)
+            .disabled(store.aktiverPlan == nil)
         } label: {
             Image(systemName: "ellipsis.circle.fill").font(.title2).foregroundStyle(tint)
         }

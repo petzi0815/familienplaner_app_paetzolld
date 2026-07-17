@@ -16,8 +16,11 @@ final class PizzaStore: ObservableObject, NotifiableStore {
 
     // MARK: - Ergebnis + Ansicht
 
-    /// Plan ODER Problem — beides sind Anzeigezustaende, nie eine Exception.
-    @Published var ergebnis: PizzaErgebnis?
+    /// Die Planung des Solvers: warm und/oder kalt. Nie ein "geht nicht" — die Essenszeit ist fix.
+    @Published var planung: PizzaPlanung?
+    /// Die aktuell gewaehlte Variante. Der Umschalter im Planer schreibt sie ueber `waehleVariante`;
+    /// `rechne()` korrigiert sie auf eine tatsaechlich vorhandene, ohne die Nutzerpraeferenz zu aendern.
+    @Published var variante: PizzaVariante = .warm
     @Published var tab: PizzaTab = .planer
     @Published var showAdvanced = false
 
@@ -34,33 +37,60 @@ final class PizzaStore: ObservableObject, NotifiableStore {
     @Published var messageIsError = false
 
     /// Letzte Konfiguration — der Planer soll nach einem Neustart dort weitermachen, wo Lars
-    /// aufgehoert hat (Mehltyp/Raumtemperatur/Nachtruhe aendern sich selten).
+    /// aufgehoert hat (Mehltyp/Raumtemperatur/Nachtruhe/Kuehlschrank aendern sich selten). Die
+    /// Kuehlschranktemperatur ist Teil von `config` und wird darueber automatisch mitgesichert.
     private static let configKey = "pizza.lastConfig"
+    /// Zuletzt vom Nutzer gewaehlte Variante — der Default, wenn beide moeglich sind.
+    private static let varianteKey = "pizza.variante"
 
     init(settings: Settings) {
         api = PizzaAPI(settings: settings)
         config = PizzaStore.gespeicherteConfig()
         essenszeit = PizzaStore.standardEssenszeit()
+        variante = PizzaStore.gespeicherteVariante()
         rechne()
     }
 
     // MARK: - Rechnen
 
     /// Ruft den Rechenkern mit der aktuellen Uhrzeit. Der Kern selbst bleibt rein — `jetzt`
-    /// kommt ausschliesslich von hier.
+    /// kommt ausschliesslich von hier. Danach wird `variante` auf eine vorhandene korrigiert:
+    /// sind beide moeglich, gilt die (persistierte) Nutzerpraeferenz; sonst die einzig moegliche.
     func rechne() {
-        ergebnis = PizzaCalculator.plan(config: config, essen: essenszeit, jetzt: Date())
+        let p = PizzaCalculator.plan(config: config, essen: essenszeit, jetzt: Date())
+        planung = p
+        if p.warm != nil && p.kalt != nil {
+            variante = PizzaStore.gespeicherteVariante()   // beide → zurueck zur Nutzerpraeferenz
+        } else if p.warm != nil {
+            variante = .warm
+        } else if p.kalt != nil {
+            variante = .kalt
+        }
     }
 
-    /// Bequemer Zugriff fuer die Views (statt ueberall `switch` zu schreiben).
-    var plan: PizzaPlan? { ergebnis?.erfolg }
-    var problem: PizzaProblem? { ergebnis?.problem }
+    /// Der aktuell angezeigte Plan. Faellt auf die jeweils andere Variante zurueck, wenn die
+    /// gewaehlte fuer diese Essenszeit nicht existiert (dann zeigt der Planer keinen Umschalter).
+    var aktiverPlan: PizzaPlan? {
+        guard let p = planung else { return nil }
+        switch variante {
+        case .warm: return p.warm ?? p.kalt
+        case .kalt: return p.kalt ?? p.warm
+        }
+    }
 
-    /// Kopfzeile des Bereichs: Menge + Startzeit, bei einem Problem dessen Titel.
+    /// Beide Varianten vorhanden → der Planer bietet den Umschalter an.
+    var beideVarianten: Bool { planung?.warm != nil && planung?.kalt != nil }
+
+    /// Vom Umschalter aufgerufen: setzt die Variante UND merkt sie als Nutzerpraeferenz.
+    func waehleVariante(_ v: PizzaVariante) {
+        variante = v
+        UserDefaults.standard.set(v.rawValue, forKey: PizzaStore.varianteKey)
+    }
+
+    /// Kopfzeile des Bereichs: Menge + Startzeit des aktiven Plans (kein Plan → nur die Menge).
     var zusammenfassung: String {
         let menge = "\(String(config.anzahlPizzen)) × \(PizzaCalculator.gramm(config.teiglingsgewichtG)) g"
-        if let p = plan { return menge + " · Start " + PizzaCalculator.uhrzeit(p.startzeit) }
-        if let f = problem { return f.titel }
+        if let p = aktiverPlan { return menge + " · Start " + PizzaCalculator.uhrzeit(p.startzeit) }
         return menge
     }
 
@@ -85,6 +115,13 @@ final class PizzaStore: ObservableObject, NotifiableStore {
         guard let data = UserDefaults.standard.data(forKey: configKey),
               let c = try? JSONDecoder().decode(PizzaConfig.self, from: data) else { return .standard }
         return c.normalisiert()
+    }
+
+    /// Gemerkte Variante oder — ohne Praeferenz — `.warm` als neutraler Default (kein Erzwingen).
+    private static func gespeicherteVariante() -> PizzaVariante {
+        guard let raw = UserDefaults.standard.string(forKey: varianteKey),
+              let v = PizzaVariante(rawValue: raw) else { return .warm }
+        return v
     }
 
     /// Vorschlag beim Start: das naechste 18-Uhr-Abendessen, das noch mindestens 4,5 h entfernt ist.
@@ -195,10 +232,11 @@ final class PizzaStore: ObservableObject, NotifiableStore {
 
     // MARK: - Erinnerungen
 
-    /// Stellt lokale Erinnerungen fuer alle Handgriffe des aktuellen Plans.
+    /// Stellt lokale Erinnerungen fuer alle Handgriffe des aktiven Plans (die kalte Variante hat
+    /// Handgriffe an mehreren Tagen — `PizzaReminders.plane` terminiert jeden Aktions-Schritt absolut).
     func planeErinnerungen() async {
-        guard let p = plan else {
-            notify(problem?.titel ?? "Ohne gültigen Plan gibt es nichts zu erinnern.", error: true)
+        guard let p = aktiverPlan else {
+            notify("Ohne gültigen Plan gibt es nichts zu erinnern.", error: true)
             return
         }
         let n = await PizzaReminders.plane(plan: p)

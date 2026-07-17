@@ -24,6 +24,15 @@ enum PizzaCalculator {
         return k / nenner
     }
 
+    /// Frischhefe in Prozent aus warm-aequivalenten Stunden (Integral ueber alle Gaerphasen):
+    /// `pct * Σ_i(t_i · r(T_i)) = K / mehlFaktor`. Fuer eine einzige warme Phase ist das
+    /// identisch zu `hefeFrischPct` (dort ist Σ = nettoStunden · r(raumtemp)).
+    static func hefePctVonIntegral(warmEqStunden: Double, mehltyp: Mehltyp, k: Double) -> Double {
+        let nenner = warmEqStunden * mehltyp.mehlFaktor
+        guard nenner > 0, nenner.isFinite else { return PizzaKonstanten.hefePctMax + 1 }
+        return k / nenner
+    }
+
     // MARK: - Zutaten
 
     static func zutaten(config: PizzaConfig, nettoMinuten: Int) -> PizzaZutaten {
@@ -31,6 +40,13 @@ enum PizzaCalculator {
         let netto = begrenztesNetto(nettoMinuten)
         let pctRoh = hefeFrischPct(nettoStunden: Double(netto) / 60,
                                    raumtemp: c.raumtempC, mehltyp: c.mehltyp, k: c.kFaktor)
+        return zutaten(config: c, pctRoh: pctRoh)
+    }
+
+    /// Zutaten zu einem bereits berechneten (ungeclampten) Frischhefe-Prozentsatz. Der Solver der
+    /// kalten Variante rechnet die Hefe aus dem warmEq-Integral und reicht sie hier direkt herein.
+    static func zutaten(config: PizzaConfig, pctRoh: Double) -> PizzaZutaten {
+        let c = config.normalisiert()
         let pct = min(max(pctRoh, PizzaKonstanten.hefePctMin), PizzaKonstanten.hefePctMax)
 
         let mehlRoh = mehlGrammRoh(config: c, hefeFrischPct: pct)
@@ -90,37 +106,6 @@ enum PizzaCalculator {
     private static func tagesminute(_ d: Date, calendar: Calendar) -> Int {
         let comps = calendar.dateComponents([.hour, .minute], from: d)
         return (comps.hour ?? 0) * 60 + (comps.minute ?? 0)
-    }
-
-    /// Liegt im gesamten Planfenster vor `essen` eine Zeitumstellung?
-    ///
-    /// Nur dann duerfen die Schrittzeiten nicht per Int-Arithmetik auf der Tagesminute
-    /// hergeleitet werden: `plus` addiert ABSOLUTE Minuten, die Wanduhr springt an diesen
-    /// zwei Tagen im Jahr aber um eine Stunde - beide Rechnungen laufen dann auseinander.
-    /// An allen anderen Tagen sind sie exakt gleichwertig, und der Solver spart sich pro
-    /// Kandidat sieben Calendar-Roundtrips. Ein Aufruf je `loese` statt Hunderter.
-    private static func zeitumstellungImFenster(essen: Date, calendar: Calendar) -> Bool {
-        let fensterMinuten = PizzaKonstanten.fixSumme + PizzaKonstanten.nettoMax
-        let fensterStart = essen.addingTimeInterval(-Double(fensterMinuten) * 60)
-        guard let naechste = calendar.timeZone.nextDaylightSavingTimeTransition(after: fensterStart) else { return false }
-        return naechste <= essen
-    }
-
-    /// Liegen ALLE Handgriffe eines Kandidaten in der Wachzeit? (Stock- und Stueckgare sind
-    /// passiv und duerfen die Nacht ueberspannen.) Gemeinsame Wahrheit von Solver und Begruendung.
-    private static func alleHandgriffeWach(config c: PizzaConfig, essen: Date, netto: Int,
-                                           essenMinute: Int, exakt: Bool, calendar: Calendar) -> Bool {
-        // Ohne Nachtruhe kann kein Handgriff schlafen - der teure Teil entfaellt komplett.
-        guard c.nachtruheAktiv else { return true }
-        return rohplan(config: c, netto: netto)
-            .filter { $0.art.istAktion }
-            .allSatisfy { zeile in
-                if exakt {
-                    return !istSchlafend(plus(zeile.offset, essen, calendar), config: c, calendar: calendar)
-                }
-                let m = PizzaConfig.normalisierteTagesminute(essenMinute + zeile.offset)
-                return !istSchlafend(tagesminute: m, config: c)
-            }
     }
 
     // MARK: - Zeitplan
@@ -200,6 +185,10 @@ enum PizzaCalculator {
                 + "rund \(dauer(PizzaKonstanten.fixBacken)) für alle."
         case .essen:
             return nil
+        // Die kalte Variante liefert fuer diese beiden Schritte ihren eigenen Text (mit Dauer
+        // und Kuehlschranktemperatur), weil hier der noetige Kontext fehlt.
+        case .kuehlschrank, .anwaermen:
+            return nil
         }
     }
 
@@ -218,11 +207,11 @@ enum PizzaCalculator {
     }
 
     /// Dieselben Kandidaten in Wunschreihenfolge: naeher am 6-h-Standard zuerst, bei Gleichstand
-    /// das laengere netto (laengere Gare = mehr Aroma). Damit kann der Solver beim ersten
+    /// das laengere netto (laengere Gare = mehr Aroma). Damit kann der warme Solver beim ersten
     /// Treffer abbrechen - im Normalfall gewinnt der Standardplan in der ersten Runde.
     ///
-    /// Einmal berechnet, nicht je Aufruf: die Suche nach der fruehestmoeglichen Essenszeit ruft
-    /// `loese` bis zu 577 mal auf, und die Liste haengt von keiner Eingabe ab.
+    /// Einmal berechnet, nicht je Aufruf: die Vorwaertssuche nach der fruehestmoeglichen Essenszeit
+    /// ruft `warmPlanIntern` viele Male auf, und die Liste haengt von keiner Eingabe ab.
     private static let kandidatenPrio: [Int] = nettoKandidaten().sorted { a, b in
         let da = abs(a - PizzaKonstanten.nettoStandard)
         let db = abs(b - PizzaKonstanten.nettoStandard)
@@ -230,70 +219,117 @@ enum PizzaCalculator {
         return a > b
     }
 
-    /// Ergebnis des inneren Loesers.
-    private struct Loesung {
-        /// Bester gueltiger Kandidat.
-        var gewaehlt: Int?
-        /// Bester Kandidat, dessen Handgriffe alle in der Wachzeit liegen - auch wenn er an der
-        /// Hefe scheitert. Unterscheidet Fall (a) von Fall (b).
-        var besterWach: Int?
+    // MARK: Nominale Minuten (Wanduhr, 1440/Tag)
+    //
+    // Die Planungslogik rechnet - wie das validierte Referenzmodell - in ganzen Minuten mit
+    // exakt 1440 Minuten pro Tag; die Nachtruhe wird auf der Tagesminute (mod 1440) geprueft.
+    // Der Tagesindex kommt aus dem Calendar (DST-sichere Tagesdifferenz), sodass `m % 1440`
+    // die WANDUHR-Minute ist. Die Rueckwandlung in ein `Date` addiert Tage UND Minuten wieder
+    // ueber den Calendar - damit bleiben die absoluten Zeitpunkte DST-sicher.
+
+    /// Nominale Minute eines Datums relativ zu Referenz-Mitternacht `ref` (= Tagesbeginn von jetzt).
+    private static func nominalMin(_ d: Date, ref: Date, calendar: Calendar) -> Int {
+        let startD = calendar.startOfDay(for: d)
+        let tage = calendar.dateComponents([.day], from: ref, to: startD).day ?? 0
+        return tage * PizzaKonstanten.minutenProTag + tagesminute(d, calendar: calendar)
     }
 
-    /// Der eigentliche Kandidatenscan - bewusst getrennt von `plan`, damit die Suche nach der
-    /// fruehestmoeglichen Essenszeit sich nicht rekursiv selbst aufruft.
-    /// Erwartet eine bereits normalisierte Config.
-    private static func loese(config c: PizzaConfig, essen: Date, calendar: Calendar) -> Loesung {
-        var l = Loesung()
-        // Beides einmal je Scan statt einmal je Kandidat.
-        let exakt = zeitumstellungImFenster(essen: essen, calendar: calendar)
-        let essenMinute = tagesminute(essen, calendar: calendar)
+    /// Rueckwandlung nominale Minute -> Date (DST-sicher ueber Tages- und Minutenaddition).
+    private static func datum(nominalMin m: Int, ref: Date, calendar: Calendar) -> Date {
+        let tag = floorDiv(m, PizzaKonstanten.minutenProTag)
+        let rest = m - tag * PizzaKonstanten.minutenProTag
+        let tagDate = calendar.date(byAdding: .day, value: tag, to: ref) ?? ref
+        return plus(rest, tagDate, calendar)
+    }
 
+    /// Ganzzahlige Division, die zur negativen Unendlichkeit abrundet (Swift-`/` schneidet zur Null ab).
+    private static func floorDiv(_ a: Int, _ b: Int) -> Int {
+        let q = a / b, r = a % b
+        return (r != 0 && (r < 0) != (b < 0)) ? q - 1 : q
+    }
+
+    /// Schlaeft die Wanduhr zur nominalen Minute? (Tagesminute gegen das Nachtruhe-Fenster.)
+    private static func schlaeftMin(_ m: Int, config c: PizzaConfig) -> Bool {
+        guard c.nachtruheAktiv else { return false }
+        let t = PizzaConfig.normalisierteTagesminute(m)
+        if c.schlafVon < c.schlafBis { return t >= c.schlafVon && t < c.schlafBis }
+        return t >= c.schlafVon || t < c.schlafBis
+    }
+
+    /// Naechste wache nominale Minute >= m (5-Minuten-Raster).
+    private static func naechsteWachzeit(_ m: Int, config c: PizzaConfig) -> Int {
+        var t = m
+        var i = 0
+        while i < 288 * 3 && schlaeftMin(t, config: c) { t += 5; i += 1 }
+        return t
+    }
+
+    /// Letzter Schlafbeginn (Bettzeit) STRIKT vor der nominalen Minute `m`. `von` = Tagesminute
+    /// des Schlafbeginns.
+    private static func letzteBettzeitVor(_ m: Int, von: Int) -> Int {
+        let tag = floorDiv(m, PizzaKonstanten.minutenProTag)
+        var d = tag + 1
+        while d >= tag - 4 {
+            let cand = d * PizzaKonstanten.minutenProTag + von
+            if cand < m { return cand }
+            d -= 1
+        }
+        return m - PizzaKonstanten.minutenProTag
+    }
+
+    // MARK: Warm (Same-Day)
+
+    /// Warmer Plan (Raumtemperatur, alles an einem Tag) - die bisherige, schmeckende Logik.
+    /// Nil nur, wenn kein wacher Kandidat mit `start >= jetzt` existiert; dann uebernimmt `plan`
+    /// den Notfallzweig.
+    static func warmPlan(config: PizzaConfig, essen: Date, jetzt: Date, calendar: Calendar = .current) -> PizzaPlan? {
+        let c = config.normalisiert()
+        let ref = calendar.startOfDay(for: jetzt)
+        return warmPlanIntern(config: c, essen: essen,
+                              essenMin: nominalMin(essen, ref: ref, calendar: calendar),
+                              jetztMin: tagesminute(jetzt, calendar: calendar),
+                              calendar: calendar)
+    }
+
+    private static func warmPlanIntern(config c: PizzaConfig, essen: Date, essenMin: Int,
+                                       jetztMin: Int, calendar: Calendar) -> PizzaPlan? {
+        var fallback: (netto: Int, pct: Double)?
         for netto in kandidatenPrio {
-            // Der erste wache Kandidat kommt in dieser Reihenfolge nie NACH dem ersten gueltigen,
-            // also ist hier bereits alles gefunden.
-            if l.gewaehlt != nil { break }
-
+            let start = essenMin - PizzaKonstanten.fixSumme - netto
             let stock = stockMinuten(netto)
-            guard stock >= PizzaKonstanten.stockMin,
-                  netto - stock >= PizzaKonstanten.stueckMin else { continue }
-
-            let alleWach = alleHandgriffeWach(config: c, essen: essen, netto: netto,
-                                              essenMinute: essenMinute, exakt: exakt, calendar: calendar)
-            guard alleWach else { continue }
-            if l.besterWach == nil { l.besterWach = netto }
-
+            let stueck = netto - stock
+            if stock < PizzaKonstanten.stockMin || stueck < PizzaKonstanten.stueckMin { continue }
+            if start < jetztMin { continue }                                   // nicht in der Vergangenheit
+            if warmAktMinuten(config: c, essenMin: essenMin, netto: netto)
+                .contains(where: { schlaeftMin($0, config: c) }) { continue }   // Handgriff im Schlaf
             let pct = hefeFrischPct(nettoStunden: Double(netto) / 60,
                                     raumtemp: c.raumtempC, mehltyp: c.mehltyp, k: c.kFaktor)
-            // Nur die OBERGRENZE schliesst aus: zu viel Hefe ruiniert den Geschmack.
-            // Die Untergrenze bedeutet lediglich "sehr lange Gare" und wird als Hinweis gefuehrt -
-            // wuerde sie ausschliessen, verloere man die aromatischsten Plaene.
-            if pct <= PizzaKonstanten.hefePctMax { l.gewaehlt = netto }
-        }
-        return l
-    }
-
-    static func plan(config: PizzaConfig, essen: Date, jetzt: Date, calendar: Calendar = .current) -> PizzaErgebnis {
-        let c = config.normalisiert()
-        let frueheste = plus(PizzaKonstanten.minVorlaufMin, jetzt, calendar)
-        // Ein Vorschlag vor jetzt+4,5 h waere wertlos, deshalb ist das in beiden Fehlerfaellen
-        // die Untergrenze der Vorwaertssuche.
-        let ab = max(essen, frueheste)
-
-        if essen < frueheste {
-            return .fehler(problemZuFrueh(config: c, ab: ab, calendar: calendar))
-        }
-
-        let l = loese(config: c, essen: essen, calendar: calendar)
-        guard let netto = l.gewaehlt else {
-            if let wach = l.besterWach {
-                return .fehler(problemHefe(config: c, essen: essen, netto: wach, calendar: calendar))
+            if pct <= PizzaKonstanten.hefePctMax {
+                return baueWarm(config: c, essen: essen, netto: netto, knapp: false, extra: nil, calendar: calendar)
             }
-            return .fehler(problemNachtruhe(config: c, ab: ab, calendar: calendar))
+            // Wach, aber zu viel Hefe -> Fallback mit der KLEINSTEN Ueberschreitung merken.
+            if fallback == nil || pct < fallback!.pct { fallback = (netto, pct) }
         }
-        return .plan(baue(config: c, essen: essen, netto: netto, calendar: calendar))
+        if let fb = fallback {
+            return baueWarm(config: c, essen: essen, netto: fb.netto, knapp: true, extra: nil, calendar: calendar)
+        }
+        return nil
     }
 
-    private static func baue(config c: PizzaConfig, essen: Date, netto: Int, calendar: Calendar) -> PizzaPlan {
+    /// Die Handgriff-Zeitpunkte eines warmen Kandidaten als nominale Minuten (fuer die Wach-Pruefung).
+    private static func warmAktMinuten(config c: PizzaConfig, essenMin: Int, netto: Int) -> [Int] {
+        let start = essenMin - PizzaKonstanten.fixSumme - netto
+        let stockStart = start + PizzaKonstanten.fixKneten + PizzaKonstanten.fixEntspannen
+        let port = stockStart + stockMinuten(netto)
+        var akt = [start, start + PizzaKonstanten.fixKneten, port,
+                   essenMin - PizzaKonstanten.fixBacken - PizzaKonstanten.vorheizMin,
+                   essenMin - PizzaKonstanten.fixBacken, essenMin]
+        if c.mehltyp == .dinkel { akt.append(stockStart + 30); akt.append(stockStart + 60) }
+        return akt
+    }
+
+    private static func baueWarm(config c: PizzaConfig, essen: Date, netto: Int, knapp: Bool,
+                                 extra: PizzaHinweis?, calendar: Calendar) -> PizzaPlan {
         let z = zutaten(config: c, nettoMinuten: netto)
         let s = schritte(config: c, essen: essen, nettoMinuten: netto, calendar: calendar)
         let stock = stockMinuten(netto)
@@ -305,31 +341,34 @@ enum PizzaCalculator {
         let pctRoh = hefeFrischPct(nettoStunden: Double(netto) / 60,
                                    raumtemp: c.raumtempC, mehltyp: c.mehltyp, k: c.kFaktor)
         if pctRoh < PizzaKonstanten.hefePctMin { hinweise.append(.sehrLangeGare(pctRoh)) }
-        if netto != PizzaKonstanten.nettoStandard {
+        // Bei einem knappen Fenster ist die Abweichung schon durch die Mehrhefe erklaert -
+        // dann keinen zusaetzlichen (widerspruechlichen) planVerschoben-Hinweis geben.
+        if !knapp && netto != PizzaKonstanten.nettoStandard {
             hinweise.append(.planVerschoben(nettoMinuten: netto,
                                             grund: verschiebeGrund(config: c, essen: essen, calendar: calendar)))
         }
+        if knapp { hinweise.append(.knappesFensterMehrHefe) }
+        if let extra { hinweise.append(extra) }
 
         return PizzaPlan(config: c,
+                         variante: .warm,
                          zutaten: z,
                          schritte: s,
                          nettoMinuten: netto,
                          stockMinuten: stock,
                          stueckMinuten: netto - stock,
+                         fridgeMinuten: 0,
                          startzeit: plus(-(PizzaKonstanten.fixSumme + netto), essen, calendar),
                          essenszeit: essen,
                          hinweise: hinweise)
     }
 
-    /// Warum ist der 6-h-Standard nicht gewaehlt worden? Wird nur gefragt, wenn er es nicht wurde,
-    /// also ist genau einer der beiden Gruende (oder beide) erfuellt - der Standard ist der erste
-    /// Kandidat der Prioritaetsliste und haette sonst gewonnen.
+    /// Warum weicht der warme Plan vom 6-h-Standard ab? (Nur gefragt, wenn er abweicht.)
     private static func verschiebeGrund(config c: PizzaConfig, essen: Date, calendar: Calendar) -> PizzaVerschiebeGrund {
         let n = PizzaKonstanten.nettoStandard
-        let wach = alleHandgriffeWach(config: c, essen: essen, netto: n,
-                                      essenMinute: tagesminute(essen, calendar: calendar),
-                                      exakt: zeitumstellungImFenster(essen: essen, calendar: calendar),
-                                      calendar: calendar)
+        let essenMin = nominalMin(essen, ref: calendar.startOfDay(for: essen), calendar: calendar)
+        let wach = !warmAktMinuten(config: c, essenMin: essenMin, netto: n)
+            .contains { schlaeftMin($0, config: c) }
         let pct = hefeFrischPct(nettoStunden: Double(n) / 60,
                                 raumtemp: c.raumtempC, mehltyp: c.mehltyp, k: c.kFaktor)
         let hefeOk = pct <= PizzaKonstanten.hefePctMax
@@ -340,87 +379,205 @@ enum PizzaCalculator {
         }
     }
 
+    // MARK: Kalt (Kuehlschrankgare, Kugeln kalt ueber Nacht)
+
+    /// Kalter Plan: kneten -> kurze warme Stockgare -> formen -> KUEHLSCHRANK (passiv, ueber Nacht)
+    /// -> anwaermen/Stueckgare -> backen. Waehlt fuer mehr Aroma die LAENGSTE Kuehlschrankgare bis
+    /// 72 h, die noch an einem Abend mit kneten >= jetzt beginnt. Nil, wenn kein Abend passt.
+    static func coldPlan(config: PizzaConfig, essen: Date, jetzt: Date, calendar: Calendar = .current) -> PizzaPlan? {
+        let c = config.normalisiert()
+        let ref = calendar.startOfDay(for: jetzt)
+        return coldPlanIntern(config: c, ref: ref,
+                              essenMin: nominalMin(essen, ref: ref, calendar: calendar),
+                              jetztMin: tagesminute(jetzt, calendar: calendar),
+                              calendar: calendar)
+    }
+
+    private static func coldPlanIntern(config c: PizzaConfig, ref: Date, essenMin: Int,
+                                       jetztMin: Int, calendar: Calendar) -> PizzaPlan? {
+        let fridge = c.fridgeTempC
+        let bake = essenMin - PizzaKonstanten.fixBacken
+        var warn: [PizzaHinweis] = []
+
+        // 1) Appretto (Anwaermen + Stueckgare) legen; der take-out (Appretto-Start) muss wach sein.
+        var appretto = PizzaKonstanten.apprettoIdeal
+        var appStart = bake - appretto
+        if schlaeftMin(appStart, config: c) {
+            let wake = naechsteWachzeit(appStart, config: c)
+            appStart = min(wake, bake - PizzaKonstanten.apprettoFloor)
+            appretto = bake - appStart
+        }
+        if appretto < PizzaKonstanten.apprettoMin { warn.append(.kurzeAnwaermzeit) }
+        if appretto < PizzaKonstanten.apprettoFloor { return nil }   // Essen mitten in der Nacht
+        // Ofen an / backen / essen muessen wach sein (nahe der fixen Essenszeit).
+        for m in [essenMin - PizzaKonstanten.fixBacken - PizzaKonstanten.vorheizMin, bake, essenMin] {
+            if schlaeftMin(m, config: c) { return nil }
+        }
+
+        // 2) Kuehlschrank-Start = ein Abend (Bettzeit). Fuer mehr Aroma die LAENGSTE Gare bis 72 h,
+        //    die noch mit kneten >= jetzt an einem Abend beginnt.
+        let kneadFix = PizzaKonstanten.fixPortionieren + PizzaKonstanten.bulkIdeal
+            + PizzaKonstanten.fixEntspannen + PizzaKonstanten.fixKneten
+        var bettzeiten: [Int] = []
+        var b = letzteBettzeitVor(appStart, von: c.schlafVon)
+        let untergrenze = appStart - PizzaKonstanten.fridgeGareMax - PizzaKonstanten.minutenProTag
+        while b > untergrenze { bettzeiten.append(b); b -= PizzaKonstanten.minutenProTag }
+        bettzeiten.reverse()   // frueheste zuerst = laengste Gare zuerst
+        var fridgeStart: Int?
+        var fridgeGare = 0
+        for cand in bettzeiten {
+            let f = appStart - cand
+            if f < PizzaKonstanten.fridgeGareMin || f > PizzaKonstanten.fridgeGareMax { continue }
+            if cand - kneadFix < jetztMin { continue }   // kneten laege in der Vergangenheit
+            fridgeStart = cand; fridgeGare = f; break     // erster (= laengster) gueltiger gewinnt
+        }
+        guard let fStart = fridgeStart else { return nil }
+
+        // 3) Abend-Session vor dem Kuehlschrank: kneten -> entspannen -> Stockgare (bulk) -> formen.
+        var bulk = PizzaKonstanten.bulkIdeal
+        let port = fStart - PizzaKonstanten.fixPortionieren
+        var stockStart = port - bulk
+        var kneten = stockStart - PizzaKonstanten.fixEntspannen - PizzaKonstanten.fixKneten
+        func eveningWach() -> Bool {
+            ![kneten, kneten + PizzaKonstanten.fixKneten, port].contains { schlaeftMin($0, config: c) }
+        }
+        if !eveningWach() {
+            // Bulk kuerzen (bis bulkMin), bis alle Abend-Handgriffe wach sind.
+            var bb = PizzaKonstanten.bulkIdeal
+            while bb >= PizzaKonstanten.bulkMin {
+                bulk = bb
+                stockStart = port - bulk
+                kneten = stockStart - PizzaKonstanten.fixEntspannen - PizzaKonstanten.fixKneten
+                if eveningWach() { break }
+                bb -= 15
+            }
+            if !eveningWach() { return nil }
+        }
+        if kneten < jetztMin { return nil }   // muss in der Zukunft starten
+
+        // 4) Hefe aus dem warmEq-Integral: bulk (warm) + Kuehlschrank (kalt) + appretto (warm).
+        let warmEq = Double(bulk + appretto) / 60 * gaerFaktor(c.raumtempC)
+            + Double(fridgeGare) / 60 * gaerFaktor(fridge)
+        let pctRoh = hefePctVonIntegral(warmEqStunden: warmEq, mehltyp: c.mehltyp, k: c.kFaktor)
+        if pctRoh < PizzaKonstanten.hefePctMin { warn.append(.sehrWenigHefe(pctRoh)) }
+
+        return baueKalt(config: c, ref: ref, essenMin: essenMin, kneten: kneten, stockStart: stockStart,
+                        bulk: bulk, port: port, fridgeStart: fStart, fridgeGare: fridgeGare,
+                        appStart: appStart, appretto: appretto, bake: bake, pctRoh: pctRoh,
+                        warn: warn, calendar: calendar)
+    }
+
+    private static func baueKalt(config c: PizzaConfig, ref: Date, essenMin: Int, kneten: Int,
+                                 stockStart: Int, bulk: Int, port: Int, fridgeStart: Int, fridgeGare: Int,
+                                 appStart: Int, appretto: Int, bake: Int, pctRoh: Double,
+                                 warn: [PizzaHinweis], calendar: Calendar) -> PizzaPlan {
+        let z = zutaten(config: c, pctRoh: pctRoh)
+        let wt = wasserTemp(config: c)
+
+        func d(_ m: Int) -> Date { datum(nominalMin: m, ref: ref, calendar: calendar) }
+        func schritt(_ art: PizzaSchrittArt, _ m: Int, _ text: String?) -> PizzaSchritt {
+            PizzaSchritt(art: art, zeit: d(m), detail: text)
+        }
+        // Die geteilten Schrittdetails (kneten/portionieren/backen ...) kommen aus `detail`;
+        // stock=bulk, stueck=appretto reichen ihm dieselben Kontextwerte wie der warmen Variante.
+        func geteilt(_ art: PizzaSchrittArt) -> String? {
+            detail(fuer: art, config: c, stock: bulk, stueck: appretto, wasserTemp: wt.temp)
+        }
+
+        var schritte: [PizzaSchritt] = [
+            schritt(.kneten, kneten, geteilt(.kneten)),
+            schritt(.entspannen, kneten + PizzaKonstanten.fixKneten, geteilt(.entspannen)),
+            schritt(.stockgare, stockStart, "\(dauer(bulk)) warme Stockgare abgedeckt bei \(grad(c.raumtempC)) °C."),
+        ]
+        if c.mehltyp == .dinkel {
+            schritte.append(schritt(.dehnenFalten1, stockStart + 30, "Teig einmal rundum dehnen und falten."))
+            schritte.append(schritt(.dehnenFalten2, stockStart + 60, "Teig einmal rundum dehnen und falten."))
+        }
+        schritte.append(schritt(.portionieren, port, geteilt(.portionieren)))
+        schritte.append(schritt(.kuehlschrank, fridgeStart,
+            "Kugeln abgedeckt in den Kühlschrank – läuft über Nacht, \(dauer(fridgeGare)) bei \(grad(c.fridgeTempC)) °C."))
+        schritte.append(schritt(.anwaermen, appStart,
+            "Kugeln rausnehmen, \(dauer(appretto)) bei \(grad(c.raumtempC)) °C anwärmen und fertig garen."))
+        schritte.append(schritt(.ofenAn, essenMin - PizzaKonstanten.fixBacken - PizzaKonstanten.vorheizMin, geteilt(.ofenAn)))
+        schritte.append(schritt(.backen, bake, geteilt(.backen)))
+        schritte.append(schritt(.essen, essenMin, nil))
+
+        var hinweise: [PizzaHinweis] = []
+        if z.wasserTempGeclampt { hinweise.append(.wasserTempGeclampt(z.wasserTempC)) }
+        if c.raumtempC < 18 { hinweise.append(.raumtempNiedrig(c.raumtempC)) }
+        if c.raumtempC > 28 { hinweise.append(.raumtempHoch(c.raumtempC)) }
+        hinweise.append(contentsOf: warn)
+
+        return PizzaPlan(config: c,
+                         variante: .kalt,
+                         zutaten: z,
+                         schritte: schritte,
+                         nettoMinuten: bulk + fridgeGare + appretto,
+                         stockMinuten: bulk,
+                         stueckMinuten: appretto,
+                         fridgeMinuten: fridgeGare,
+                         startzeit: d(kneten),
+                         essenszeit: d(essenMin),
+                         hinweise: hinweise)
+    }
+
+    // MARK: Solver-Einstieg
+
+    /// Der Solver scheitert NIE: die Essenszeit ist fix. Liefert beide Varianten, wo moeglich;
+    /// mindestens eine ist gesetzt, sofern die Essenszeit >= jetzt + 4,5 h liegt.
+    static func plan(config: PizzaConfig, essen: Date, jetzt: Date, calendar: Calendar = .current) -> PizzaPlanung {
+        let c = config.normalisiert()
+        let ref = calendar.startOfDay(for: jetzt)
+        let essenMin = nominalMin(essen, ref: ref, calendar: calendar)
+        let jetztMin = tagesminute(jetzt, calendar: calendar)
+
+        let warm = warmPlanIntern(config: c, essen: essen, essenMin: essenMin, jetztMin: jetztMin, calendar: calendar)
+        let kalt = coldPlanIntern(config: c, ref: ref, essenMin: essenMin, jetztMin: jetztMin, calendar: calendar)
+        if warm != nil || kalt != nil {
+            return PizzaPlanung(warm: warm, kalt: kalt, fruehestesMoeglichesEssen: nil)
+        }
+
+        // Notfall (Deep-Night-Essen, z. B. 03-08 Uhr): best-effort warmer Plan OHNE Wach-Constraint,
+        // laengste Gare zuerst, mit ehrlicher Warnung - statt "geht nicht".
+        var n = PizzaKonstanten.nettoMax
+        while n >= PizzaKonstanten.nettoMin {
+            let start = essenMin - PizzaKonstanten.fixSumme - n
+            let stock = stockMinuten(n)
+            if stock >= PizzaKonstanten.stockMin, n - stock >= PizzaKonstanten.stueckMin, start >= jetztMin {
+                let nacht = warmAktMinuten(config: c, essenMin: essenMin, netto: n)
+                    .filter { schlaeftMin($0, config: c) }.count
+                let notfall = baueWarm(config: c, essen: essen, netto: n, knapp: false,
+                                       extra: .nachtHandgriffeUnvermeidbar(nacht), calendar: calendar)
+                return PizzaPlanung(warm: notfall, kalt: nil, fruehestesMoeglichesEssen: nil)
+            }
+            n -= 5
+        }
+
+        // Einzig verbleibende physische Grenze: < 4,5 h Vorlauf ab jetzt.
+        let ab = max(essen, plus(PizzaKonstanten.minVorlaufMin, jetzt, calendar))
+        return PizzaPlanung(warm: nil, kalt: nil,
+                            fruehestesMoeglichesEssen: fruehesteEssenszeit(config: c, ab: ab, jetzt: jetzt, calendar: calendar))
+    }
+
     // MARK: - Gegenvorschlaege
 
-    /// Fruehestmoegliche Essenszeit ab `ab`, in 5-Minuten-Schritten, maximal +48 h.
-    static func fruehesteEssenszeit(config: PizzaConfig, ab: Date, calendar: Calendar = .current) -> Date? {
+    /// Fruehestmoegliche Essenszeit ab `ab`, in 5-Minuten-Schritten, maximal +48 h. Nur fuer den
+    /// <4,5-h-Grenzfall gedacht - die Zeit, ab der wieder mindestens eine Variante moeglich ist.
+    static func fruehesteEssenszeit(config: PizzaConfig, ab: Date, jetzt: Date, calendar: Calendar = .current) -> Date? {
         let c = config.normalisiert()
+        let ref = calendar.startOfDay(for: jetzt)
+        let jetztMin = tagesminute(jetzt, calendar: calendar)
         let start = auf5MinutenAufrunden(ab, calendar: calendar)
         let maxSchritte = 48 * 60 / 5
         for i in 0...maxSchritte {
             let kandidat = plus(i * 5, start, calendar)
-            if loese(config: c, essen: kandidat, calendar: calendar).gewaehlt != nil { return kandidat }
-        }
-        return nil
-    }
-
-    /// Kleinste Raumtemperatur (0,5-Schritte, hoechstens 28 °C), bei der ein gueltiger Plan existiert.
-    /// Waermer heisst mehr Gaeraktivitaet heisst weniger Hefe - die Gueltigkeit waechst also
-    /// monoton mit T. Deshalb ist der erste Treffer von unten auch das Minimum.
-    static func kleinsteTauglicheRaumtemp(config: PizzaConfig, essen: Date, calendar: Calendar = .current) -> Double? {
-        let c = config.normalisiert()
-        var t = PizzaKonstanten.raumtempMin
-        while t <= PizzaKonstanten.raumtempMax + 0.001 {
-            var probe = c
-            probe.raumtempC = t
-            if loese(config: probe, essen: essen, calendar: calendar).gewaehlt != nil { return t }
-            t += 0.5
-        }
-        return nil
-    }
-
-    /// Fall (a): es gaebe wache Plaene, aber alle brauchen mehr Hefe als die Geschmacksgrenze erlaubt.
-    private static func problemHefe(config c: PizzaConfig, essen: Date, netto: Int, calendar: Calendar) -> PizzaProblem {
-        // Bewusst der Kandidat, den der Solver GEWAEHLT haette - der Nutzer soll die Zahl zu
-        // "seinem" Plan sehen. Die Menge wird aus dem UNGECLAMPTEN Prozentsatz gerechnet,
-        // denn genau die unzulaessige Menge ist ja die Aussage.
-        let pctRoh = hefeFrischPct(nettoStunden: Double(netto) / 60,
-                                   raumtemp: c.raumtempC, mehltyp: c.mehltyp, k: c.kFaktor)
-        let x = zehntel(mehlGrammRoh(config: c, hefeFrischPct: pctRoh) * pctRoh / 100)
-        let text = "Bei \(grad(c.raumtempC)) °C Raumtemperatur und \(stunden(netto)) Zeitfenster wären "
-            + "\(hefeGramm(x)) g Frischhefe nötig – über der Geschmacksgrenze."
-
-        if let tStrich = kleinsteTauglicheRaumtemp(config: c, essen: essen, calendar: calendar) {
-            var waermer = c
-            waermer.raumtempC = tStrich
-            if let netto2 = loese(config: waermer, essen: essen, calendar: calendar).gewaehlt {
-                let y = zutaten(config: waermer, nettoMinuten: netto2).hefeFrischG
-                return PizzaProblem(
-                    titel: "Zu viel Hefe nötig",
-                    text: text,
-                    vorschlag: "Empfehlung: Gare bei \(grad(tStrich)) °C (Backofenlampe) – dann reichen \(hefeGramm(y)) g Frischhefe.")
+            let em = nominalMin(kandidat, ref: ref, calendar: calendar)
+            if warmPlanIntern(config: c, essen: kandidat, essenMin: em, jetztMin: jetztMin, calendar: calendar) != nil
+                || coldPlanIntern(config: c, ref: ref, essenMin: em, jetztMin: jetztMin, calendar: calendar) != nil {
+                return kandidat
             }
         }
-        return PizzaProblem(titel: "Zu viel Hefe nötig",
-                            text: text,
-                            vorschlag: "Essenszeit später legen – ein längeres Gärfenster braucht weniger Hefe.")
-    }
-
-    /// Fall (b): kein einziger Kandidat bringt alle Handgriffe in die Wachzeit.
-    private static func problemNachtruhe(config c: PizzaConfig, ab: Date, calendar: Calendar) -> PizzaProblem {
-        let text = "Mit der Nachtruhe von \(c.schlafVonHHmm) bis \(c.schlafBisHHmm) fällt bei jeder "
-            + "möglichen Gärdauer mindestens ein Handgriff in den Schlaf."
-        if let e = fruehesteEssenszeit(config: c, ab: ab, calendar: calendar) {
-            return PizzaProblem(titel: "Passt nicht in die Wachzeit",
-                                text: text,
-                                vorschlag: "Frühestmögliche Essenszeit: \(datumUndUhrzeit(e, calendar: calendar)).")
-        }
-        return PizzaProblem(titel: "Passt nicht in die Wachzeit",
-                            text: text,
-                            vorschlag: "In den nächsten 48 Stunden findet sich kein Fenster – Nachtruhe verkürzen.")
-    }
-
-    /// Vorlauf-Validierung: unter 4,5 h ist selbst die kuerzeste Gare nicht unterzubringen.
-    private static func problemZuFrueh(config c: PizzaConfig, ab: Date, calendar: Calendar) -> PizzaProblem {
-        let text = "Ein neapolitanischer Teig braucht mindestens 4,5 Stunden vom ersten Handgriff bis zur Pizza."
-        if let e = fruehesteEssenszeit(config: c, ab: ab, calendar: calendar) {
-            return PizzaProblem(titel: "Zu kurzfristig",
-                                text: text,
-                                vorschlag: "Frühestmögliche Essenszeit: \(datumUndUhrzeit(e, calendar: calendar)).")
-        }
-        return PizzaProblem(titel: "Zu kurzfristig",
-                            text: text,
-                            vorschlag: "In den nächsten 48 Stunden findet sich kein Fenster – Nachtruhe verkürzen.")
+        return nil
     }
 
     // MARK: - Zeit-Helfer
@@ -469,6 +626,10 @@ enum PizzaCalculator {
 
     static func prozent(_ v: Double) -> String { zahl(v, nachkommaMin: 2, nachkommaMax: 2) }
 
+    /// Eine kleine Ganzzahl (Anzahl) als String - bewusst OHNE Tausenderpunkt, damit sie gefahrlos
+    /// in `Text("...\(...)")` interpoliert werden kann (LocalizedStringKey wuerde sonst gruppieren).
+    static func ganzzahl(_ n: Int) -> String { String(n) }
+
     /// Temperatur ohne unnoetige Nachkommastelle: 22 bzw. 22,5.
     static func grad(_ v: Double) -> String { zahl(v, nachkommaMin: 0, nachkommaMax: 1) }
 
@@ -492,6 +653,12 @@ enum PizzaCalculator {
 
     static func datumUndUhrzeit(_ d: Date, calendar: Calendar = .current) -> String {
         formatiere(d, muster: "EE dd.MM., HH:mm", calendar: calendar)
+    }
+
+    /// Voller Wochentag + Datum ohne Uhrzeit - fuer den Tageswechsel-Header im mehrtaegigen
+    /// Zeitplan der kalten Variante, damit jeder Schritt eindeutig einem Tag zuzuordnen ist.
+    static func wochentagDatum(_ d: Date, calendar: Calendar = .current) -> String {
+        formatiere(d, muster: "EEEE, dd.MM.", calendar: calendar)
     }
 
     private static func formatiere(_ d: Date, muster: String, calendar: Calendar) -> String {

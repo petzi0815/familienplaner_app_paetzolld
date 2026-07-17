@@ -15,6 +15,7 @@ enum PizzaShare {
         var zeilen: [String] = []
 
         zeilen.append("🍕 Pizza-Plan für \(String(c.anzahlPizzen)) × \(PizzaCalculator.gramm(c.teiglingsgewichtG)) g")
+        zeilen.append("Variante: \(p.variante.label)")
         zeilen.append("\(c.mehltyp.label) · \(c.hefetyp.label) · \(c.knetmethode.label) · \(PizzaCalculator.grad(c.raumtempC)) °C")
         zeilen.append("")
 
@@ -28,7 +29,14 @@ enum PizzaShare {
         zeilen.append("")
 
         zeilen.append("ZEITPLAN (Essen \(PizzaCalculator.uhrzeit(p.essenszeit, calendar: calendar)) Uhr)")
+        // Datums-Header bei jedem Tageswechsel, damit die kalte Variante ueber mehrere Tage
+        // eindeutig bleibt (die Uhrzeiten allein laufen sonst "23:00 -> 15:50" ohne Tag).
+        var letzterTag: Date?
         for s in p.schritte {
+            if letzterTag == nil || !calendar.isDate(letzterTag!, inSameDayAs: s.zeit) {
+                zeilen.append("— \(PizzaCalculator.wochentagDatum(s.zeit, calendar: calendar)) —")
+                letzterTag = s.zeit
+            }
             let zeit = PizzaCalculator.uhrzeit(s.zeit, calendar: calendar)
             if let d = s.detail, !d.isEmpty { zeilen.append("\(zeit)  \(s.titel) — \(d)") }
             else { zeilen.append("\(zeit)  \(s.titel)") }

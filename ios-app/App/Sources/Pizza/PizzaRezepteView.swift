@@ -276,6 +276,10 @@ private struct PizzaRezeptDetailView: View {
         }
         InfoRow(icon: "🥣", label: "Kneten", value: c.mehltyp.knetzeitText(c.knetmethode))
         InfoRow(icon: "🌙", label: "Nachtruhe", value: PizzaRezeptText.nachtruhe(c))
+        // Nur zeigen, wenn vom ueblichen 5 °C abweichend — bei der warmen Gare ist die Zahl irrelevant.
+        if c.fridgeTempC != PizzaKonstanten.fridgeTempDefault {
+            InfoRow(icon: "❄️", label: "Kühlschrank", value: PizzaCalculator.grad(c.fridgeTempC) + " °C")
+        }
         if c.kFaktor != PizzaKonstanten.kDefault {
             InfoRow(icon: "⚙️", label: "K-Faktor", value: PizzaCalculator.grad(c.kFaktor))
         }
