@@ -308,6 +308,19 @@ final class APIClient {
         _ = try await send("/aufgaben/\(id)/complete", method: "POST")
     }
 
+    /// KI-Rezeptvorschlag aus den bald ablaufenden Lebensmitteln (OpenAI, serverseitig). Wirft bei
+    /// 501 (kein OpenAI-Key) bzw. 422 (keine ablaufenden Lebensmittel) mit der Server-Meldung.
+    func generateRezept() async throws -> Rezept {
+        if let data = UITestFixtures.rezeptVorschlagData {
+            let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+            if let rez = obj?["rezept"] as? [String: Any] { return Rezept(fields: rez) }
+        }
+        let data = try await send("/vorrat/rezept-vorschlag", method: "POST")
+        let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        guard let rez = obj?["rezept"] as? [String: Any] else { throw APIError(status: 0, message: "Kein Rezept erhalten") }
+        return Rezept(fields: rez)
+    }
+
     /// Maschinenlesbarer Ressourcen-Index (alle Bereiche + Spalten + Bild-Spec).
     func capabilities() async throws -> [ResourceInfo] {
         try await get("/agent/capabilities", as: Capabilities.self).resources

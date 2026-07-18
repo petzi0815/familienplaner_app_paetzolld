@@ -9,6 +9,7 @@ struct HeuteView: View {
     @State private var calMessage = ""
     @State private var showSearch = false
     @State private var showAddTask = false
+    @State private var showRezept = false
     @State private var aufgabenFilter: AufgabenFilter = .offen
 
     enum AufgabenFilter: Hashable { case offen, erledigt }
@@ -53,6 +54,7 @@ struct HeuteView: View {
             }
             .sheet(isPresented: $showSearch) { SearchView() }
             .sheet(isPresented: $showAddTask) { AufgabeAddSheet() }
+            .sheet(isPresented: $showRezept) { RezeptVorschlagSheet() }
             .areaToast($app.aufgabenError, isError: true)
             .refreshable { await app.loadDashboard(); await app.loadAlarmo() }
             .task { if app.dashboard == nil { await app.loadDashboard() } }
@@ -216,6 +218,15 @@ struct HeuteView: View {
     // ── Bald ablaufende Lebensmittel (Vorrat) — Name + Lagerort + MHD-Dringlichkeit; Tippen → Vorrat-Bereich ──
     private func vorratCard(_ items: [VorratShort]) -> some View {
         SectionCard(title: "Bald ablaufend", systemImage: "clock.badge.exclamationmark", key: "vorratskammer") {
+            Button { showRezept = true } label: {
+                Label("Was koche ich? – KI-Rezept aus diesen Zutaten", systemImage: "sparkles")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Palette.colors(for: "vorratskammer").first!)
+            .accessibilityIdentifier("vorrat-rezept-ki")
+            Divider()
             let shown = Array(items.prefix(10))
             ForEach(shown) { it in
                 Button { app.openBereich("vorratskammer") } label: {

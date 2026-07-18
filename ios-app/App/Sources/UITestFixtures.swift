@@ -33,6 +33,23 @@ enum UITestFixtures {
         guard UITestMode.isActive else { return nil }
         return try? JSONSerialization.data(withJSONObject: ["latest_build": 999, "testflight_url": "itms-beta://"])
     }
+    /// KI-Rezeptvorschlag (deterministisch, ohne OpenAI/Netz) für den Rezept-Button-Test.
+    static var rezeptVorschlagData: Data? {
+        guard UITestMode.isActive else { return nil }
+        return try? JSONSerialization.data(withJSONObject: [
+            "rezept": [
+                "titel": "UITEST Joghurt-Pfanne",
+                "beschreibung": "Schnelles Gericht, das Joghurt und Hack verbraucht.",
+                "portionen": 4, "dauer_minuten": 25,
+                "verwendete_zutaten": ["Joghurt", "Hack"],
+                "zutaten": [["menge": "500 g", "zutat": "Joghurt"], ["menge": "400 g", "zutat": "Hackfleisch"], ["menge": "1", "zutat": "Zwiebel"]],
+                "schritte": ["Zwiebel anbraten.", "Hack dazugeben.", "Mit Joghurt verrühren."],
+                "tipp": "Mit frischen Kräutern servieren.",
+            ],
+            "verwendet": ["Joghurt", "Hack"], "model": "gpt-4o",
+        ])
+    }
+
     /// Alarmo-Status (unscharf, erreichbar) → die Alarmanlage-Kachel zeigt das „Aktivieren"-Menü.
     static var alarmoData: Data? {
         guard UITestMode.isActive else { return nil }

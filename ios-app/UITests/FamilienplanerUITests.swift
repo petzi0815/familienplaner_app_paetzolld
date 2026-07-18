@@ -183,6 +183,22 @@ final class FamilienplanerUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["UITEST Joghurt"].waitForExistence(timeout: 6), "Ablaufendes Lebensmittel fehlt")
     }
 
+    /// DATENGETRIEBEN (Fixture): der KI-Rezept-Button in „Bald ablaufend" öffnet ein Sheet mit Rezept.
+    func testHomeRezeptVorschlag() {
+        XCTAssertTrue(tabButton("Heute").waitForExistence(timeout: 15), "Heute-Tab fehlt")
+        tabButton("Heute").tap()
+        let btn = app.buttons["vorrat-rezept-ki"]
+        XCTAssertTrue(btn.waitForExistence(timeout: 12), "KI-Rezept-Button fehlt")
+        var tries = 0
+        while !btn.isHittable && tries < 8 { app.swipeUp(); tries += 1 }
+        btn.tap()
+        // Titel trägt die accessibilityIdentifier "rezept-titel" → per ID suchen (Label-Subscript würde
+        // wegen der gesetzten ID nicht auflösen), dann den echten Titel-Text prüfen.
+        let titel = app.staticTexts["rezept-titel"]
+        XCTAssertTrue(titel.waitForExistence(timeout: 8), "KI-Rezept-Sheet zeigt kein Rezept (Fixture nicht geladen?)")
+        XCTAssertTrue(titel.label.contains("Joghurt-Pfanne"), "Rezept-Titel falsch (label=\(titel.label))")
+    }
+
     /// DATENGETRIEBEN (Fixture): der „Erledigt"-Umschalter zeigt kürzlich abgehakte Aufgaben mit
     /// Wieder-Öffnen-Kreis (Undo bei versehentlichem Abhaken).
     func testHomeAufgabenErledigtFilter() {

@@ -5,14 +5,24 @@ import SwiftUI
 
 struct VorratRezepteView: View {
     @EnvironmentObject private var store: VorratStore
+    @State private var showRezept = false
 
     var body: some View {
         ScrollView {
             VStack(spacing: 12) {
+                Button { showRezept = true } label: {
+                    Label("KI-Rezept aus ablaufenden Zutaten", systemImage: "sparkles")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                }
+                .buttonStyle(.glassProminent)
+                .accessibilityIdentifier("vorrat-rezept-ki-tab")
+
                 if store.rezepte.isEmpty {
                     AreaEmptyState(emoji: "🍳", title: "Noch keine Rezeptvorschläge",
-                                   hint: "Sobald Lebensmittel mit MHD erfasst sind, recherchiere ich passende Rezepte!")
-                        .frame(minHeight: 300)
+                                   hint: "Tippe oben auf den KI-Rezept-Button – ich koche dir was aus deinen bald ablaufenden Zutaten zusammen!")
+                        .frame(minHeight: 260)
                 } else {
                     ForEach(store.rezepte) { r in VorratRezeptCard(rezept: r) }
                 }
@@ -20,6 +30,7 @@ struct VorratRezepteView: View {
             .padding(.horizontal, 14).padding(.vertical, 12)
         }
         .refreshable { await store.loadAll() }
+        .sheet(isPresented: $showRezept, onDismiss: { Task { await store.loadAll() } }) { RezeptVorschlagSheet() }
     }
 }
 

@@ -5,7 +5,7 @@ import { config } from "@/server/config";
 
 export function hasOpenAI(): boolean { return !!config.openaiApiKey; }
 
-interface ChatOpts { model?: string; system?: string; imageDataUrl?: string; maxTokens?: number }
+interface ChatOpts { model?: string; system?: string; imageDataUrl?: string; maxTokens?: number; temperature?: number; json?: boolean }
 
 /** Ruft OpenAI Chat Completions (optional mit Bild) und gibt den Text-Inhalt zurück. */
 export async function openaiChat(userPrompt: string, opts: ChatOpts = {}): Promise<string> {
@@ -19,7 +19,12 @@ export async function openaiChat(userPrompt: string, opts: ChatOpts = {}): Promi
   const r = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${config.openaiApiKey}` },
-    body: JSON.stringify({ model, messages, max_tokens: opts.maxTokens ?? 1500, temperature: 0.3 }),
+    body: JSON.stringify({
+      model, messages,
+      max_tokens: opts.maxTokens ?? 1500,
+      temperature: opts.temperature ?? 0.3,
+      ...(opts.json ? { response_format: { type: "json_object" } } : {}),
+    }),
   });
   if (!r.ok) throw new Error(`OpenAI ${r.status}: ${(await r.text()).slice(0, 200)}`);
   const data = (await r.json()) as { choices?: { message?: { content?: string } }[] };
