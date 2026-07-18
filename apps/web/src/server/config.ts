@@ -20,6 +20,9 @@ export const config = {
   adminPassword: env("ADMIN_PASSWORD"),
   sessionSecret: env("SESSION_SECRET"),
   bootstrapAgentApiKey: env("BOOTSTRAP_AGENT_API_KEY"),
+  // Dedizierter Agent-Key für Claude Code (Debugging/Live-Tests gegen Prod). Eigener Key, damit er
+  // unabhängig von Oles Shared-Key rotiert werden kann. Beim Boot als agent-Key angelegt, wenn gesetzt.
+  claudeAgentKey: env("FAMILIENPLANER_AGENT_KEY"),
   /**
    * Per-User-Login-Keys (Lars & Elita) — eigener Key je Person statt Oles Shared-Key.
    * Beim Boot in `api_keys` gehasht angelegt (Rolle agent) mit gesetztem `owner` →

@@ -34,6 +34,7 @@ export function getDb(): Database.Database {
  */
 function bootstrapApiKeys(db: Database.Database): void {
   ensureKey(db, "bootstrap-agent", config.bootstrapAgentApiKey, "agent", null);
+  ensureKey(db, "claude-agent", config.claudeAgentKey, "agent", null);
   for (const k of config.bootstrapUserKeys) {
     ensureKey(db, k.label, k.key, k.role, k.owner);
   }
