@@ -7,6 +7,7 @@ import { reindexRow, removeFromIndex } from "@/server/db/fts";
 import { listResponse, ok, created, fail, notFound } from "@/server/http/respond";
 import { log } from "@/server/observability/logger";
 import type { Auth } from "@/server/auth/auth";
+import { sendPush } from "@/server/push/apns";
 
 // Mappt SQLite-Fehler auf saubere JSON-Antworten (nie leerer 500).
 function dbError(e: unknown, res: Resource): Response {
@@ -120,6 +121,17 @@ export function createRow(res: Resource, body: Record<string, unknown>, auth: Au
     const newId = valid[pk] ?? info.lastInsertRowid;
     logEvent("create", res, newId as number, auth, valid);
     reindexRow(db, res, newId as number);
+    // Optional: die/den konkrete/n Zuständige/n per Push benachrichtigen (z.B. Aufgaben) — nur bei einer
+    // Person (lars/elita), NICHT bei „familie" (sonst Broadcast an alle inkl. Ersteller) und nicht an sich
+    // selbst. Best-effort, fire-and-forget — der Insert ist schon erfolgt; sendPush wirft nie.
+    if (res.notifyOwnerOnCreate) {
+      const owner = valid.owner ? String(valid.owner) : null;
+      if ((owner === "lars" || owner === "elita") && owner !== (auth?.owner ?? null)) {
+        const title = String(valid.title ?? valid.name ?? res.label);
+        const due = valid.due_date ? ` · fällig ${String(valid.due_date)}` : "";
+        void sendPush({ title: "📋 Neue Aufgabe", body: `${title}${due}`, data: { kind: "aufgabe", id: newId }, owner }).catch(() => {});
+      }
+    }
     const row = db.prepare(`SELECT * FROM "${res.table}" WHERE "${pk}" = ?`).get(newId) as Record<string, unknown>;
     if (row) expandImages(row, res.image);
     return created(row ?? { [pk]: newId });

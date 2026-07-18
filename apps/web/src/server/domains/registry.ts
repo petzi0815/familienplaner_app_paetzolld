@@ -20,13 +20,14 @@ export interface Resource {
   readonly?: boolean; // nur lesen
   download?: string;  // Download-URL-Präfix je {id} (z.B. Reise-Dokumente)
   actions?: { label: string; patch: Record<string, unknown> }[]; // Schnellaktionen (Status-PATCH)
+  notifyOwnerOnCreate?: boolean; // beim Anlegen die/den Zuständige(n) (Spalte `owner`) per Push benachrichtigen
 }
 
 export const RESOURCES: Resource[] = [
   // ── Termine ──
   { key: "termine", table: "termine", domain: "termine", label: "Termine", sort: "date ASC, time ASC" },
   // Familien-Aufgaben (Tasks) — API-first (Ole/extern anlegbar). Eigene /complete-Route für recurring.
-  { key: "aufgaben", table: "aufgaben", domain: "aufgaben", label: "Aufgaben", sort: "due_date ASC", searchable: ["title", "description", "owner", "project", "source", "status"], actions: [{ label: "Erledigt", patch: { status: "erledigt" } }, { label: "Offen", patch: { status: "offen" } }] },
+  { key: "aufgaben", table: "aufgaben", domain: "aufgaben", label: "Aufgaben", sort: "due_date ASC", searchable: ["title", "description", "owner", "project", "source", "status"], actions: [{ label: "Erledigt", patch: { status: "erledigt" } }, { label: "Offen", patch: { status: "offen" } }], notifyOwnerOnCreate: true },
   // Generische, per-API befüllbare Erinnerungen/Ereignisse (Quelle des „Anstehendes"-Agenda-Feeds).
   // URL-Key bewusst `erinnerungen` (nicht `reminders`) — kollidiert sonst mit den statischen
   // /api/v1/reminders/due + /api/v1/reminders/[id]/sent-Routen. Tabelle bleibt `reminders`.

@@ -87,6 +87,35 @@ export const JOBS: JobDef[] = [
     },
   },
   {
+    name: "aufgaben-reminders",
+    schedule: "0 8 * * *",
+    timezone: "Europe/Berlin",
+    topic: "aufgaben",
+    description: "Aufgaben-Push: 1 Tag vor Fälligkeit an die/den Zuständige(n) (owner-gezielt, familie=Broadcast).",
+    async run(ctx) {
+      const rows = ctx.db.prepare(
+        "SELECT id, owner, title, due_date, reminder_1d_sent FROM aufgaben " +
+        "WHERE status='offen' AND owner IS NOT NULL AND due_date IS NOT NULL AND due_date<>''",
+      ).all() as { id: number; owner: string; title: string; due_date: string; reminder_1d_sent: number }[];
+      const t0 = todayStart();
+      const messages: string[] = [];
+      let affected = 0;
+      for (const r of rows) {
+        const d = new Date(r.due_date + "T00:00:00");
+        if (isNaN(d.getTime())) continue;
+        const days = Math.round((d.getTime() - t0.getTime()) / 86400000);
+        if (days !== 1 || r.reminder_1d_sent) continue;
+        messages.push(`📋 Morgen fällig (${r.owner}): ${r.title}`);
+        if (!ctx.dryRun) {
+          await sendPush({ title: "📋 Aufgabe morgen fällig", body: `${r.title} — fällig ${r.due_date}`, data: { kind: "aufgabe", id: r.id }, owner: r.owner }).catch(() => {});
+          ctx.db.prepare("UPDATE aufgaben SET reminder_1d_sent=1, updated_at=datetime('now') WHERE id=?").run(r.id);
+          affected++;
+        }
+      }
+      return { messages, affected };
+    },
+  },
+  {
     name: "buecher-wishlist-retry",
     schedule: "0 5 * * 1",
     timezone: "Europe/Berlin",

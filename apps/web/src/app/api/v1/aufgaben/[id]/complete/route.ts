@@ -44,7 +44,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const base = row.due_date && String(row.due_date) > today ? String(row.due_date) : today;
   const next = recurring === "einmalig" ? null : nextDue(base, recurring);
   if (next) {
-    db.prepare("UPDATE aufgaben SET due_date=?, status='offen', done_at=datetime('now'), updated_at=datetime('now') WHERE id=?").run(next, id);
+    db.prepare("UPDATE aufgaben SET due_date=?, status='offen', done_at=datetime('now'), reminder_1d_sent=0, updated_at=datetime('now') WHERE id=?").run(next, id);
   } else {
     db.prepare("UPDATE aufgaben SET status='erledigt', done_at=datetime('now'), updated_at=datetime('now') WHERE id=?").run(id);
   }
