@@ -70,6 +70,7 @@ struct HeuteView: View {
                 Text("Als Nächstes").font(.caption.weight(.bold)).foregroundStyle(.secondary)
                 Text(item.title).font(.headline).lineLimit(1)
                 Text(nextSubtitle(item)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                if let loc = item.location, !loc.isEmpty { LocationLink(location: loc) }
             }
             Spacer(minLength: 6)
             TerminDaysBadge(date: item.date)
@@ -231,6 +232,7 @@ struct AgendaRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.title).font(.subheadline.weight(.semibold)).lineLimit(1)
                 Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                if let loc = item.location, !loc.isEmpty { LocationLink(location: loc) }
             }
             Spacer(minLength: 6)
             TerminDaysBadge(date: item.date)

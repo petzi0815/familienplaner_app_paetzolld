@@ -50,6 +50,9 @@ targets:
         ITSAppUsesNonExemptEncryption: false
         NSCameraUsageDescription: "Zum Aufnehmen von Fotos und Scannen von Barcodes (Bücher-ISBN, Lebensmittel)."
         NSPhotoLibraryUsageDescription: "Zum Auswählen von Fotos aus der Mediathek."
+        # Erlaubt canOpenURL für die Google-Maps-App (Ort auf dem Dashboard antippen).
+        LSApplicationQueriesSchemes:
+          - comgooglemaps
         NSCalendarsWriteOnlyAccessUsageDescription: "Zum Eintragen von Terminen und Ereignissen in deinen iOS-Kalender."
         # Portrait app-weit; Querformat NUR für die Live-Kamera erlaubt (per AppDelegate.orientationLock).
         UISupportedInterfaceOrientations:

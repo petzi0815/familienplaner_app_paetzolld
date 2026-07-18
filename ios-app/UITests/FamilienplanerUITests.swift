@@ -142,6 +142,21 @@ final class FamilienplanerUITests: XCTestCase {
         XCTAssertTrue(app.buttons["update-banner"].waitForExistence(timeout: 10), "Update-Banner fehlt")
     }
 
+    /// DATENGETRIEBEN (Fixture): Agenda-Zeilen mit Ort zeigen einen antippbaren „Ort"-Link (→ Google Maps).
+    /// Fängt das ursprüngliche Manko (Termine ohne Uhrzeit/Ort) — der Fixture-Termin hat beides.
+    func testHomeAgendaShowsTappableLocation() {
+        XCTAssertTrue(tabButton("Heute").waitForExistence(timeout: 15), "Heute-Tab fehlt")
+        tabButton("Heute").tap()
+        // Der Ort ist ein eigener antippbarer Link (mind. einmal: „Als Nächstes"-Karte + Agenda-Zeile).
+        let loc = app.buttons["agenda-location"].firstMatch
+        XCTAssertTrue(loc.waitForExistence(timeout: 10), "Ort-Link in der Agenda fehlt")
+        XCTAssertTrue(loc.label.contains("Dr. Test"), "Ort-Link zeigt den Ortsnamen nicht (label=\(loc.label))")
+        // Die Uhrzeit des Fixture-Termins muss in der Agenda stehen (Untertitel „… · 10:00 · …").
+        // .matching filtert nach dem EIGENEN Label jedes staticText (nicht nach Nachfahren wie .containing).
+        let withTime = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "10:00")).firstMatch
+        XCTAssertTrue(withTime.waitForExistence(timeout: 6), "Uhrzeit fehlt in der Agenda-Zeile")
+    }
+
     /// DATENGETRIEBEN (Fixture): Home zeigt die Alarmanlage-Kachel (Alarmo, unscharf) mit „Aktivieren"-Menü.
     func testHomeShowsAlarmoTile() {
         XCTAssertTrue(tabButton("Heute").waitForExistence(timeout: 15), "Heute-Tab fehlt")

@@ -151,6 +151,7 @@ struct AgendaItem: Decodable, Identifiable {
     let refId: Int?
     let title: String
     let subtitle: String?
+    let location: String?   // Ort (Freitext) — antippbar → Google Maps
     let date: String
     let time: String?
     let endDate: String?

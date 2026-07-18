@@ -19,6 +19,7 @@ export interface AgendaItem {
   ref_id: number;              // Original-Zeilen-ID (für Aktionen)
   title: string;
   subtitle?: string | null;
+  location?: string | null;    // Ort (Freitext) — auf dem Dashboard antippbar → Google Maps
   date: string;                // YYYY-MM-DD
   time?: string | null;        // HH:MM (null = ganztägig)
   end_date?: string | null;
@@ -92,7 +93,7 @@ export function agenda(days = 21, owner?: string | null): AgendaItem[] {
 
   // ── Termine (offen; leicht rückwirkend für „vergessene") + optional per-User read/notify ──
   const termineSql =
-    "SELECT t.id,t.title,t.description,t.category,t.date,t.time,t.end_date,t.person,t.status" +
+    "SELECT t.id,t.title,t.description,t.category,t.date,t.time,t.end_date,t.location,t.person,t.status" +
     (owner ? ", tus.read AS ustate_read, tus.notify AS ustate_notify" : "") +
     " FROM termine t" +
     (owner ? " LEFT JOIN termin_user_state tus ON tus.termin_id=t.id AND tus.owner=@owner" : "") +
@@ -105,7 +106,8 @@ export function agenda(days = 21, owner?: string | null): AgendaItem[] {
       source: "termin", domain: "termine", id: `termin-${t.id}`, ref_id: Number(t.id),
       title: String(t.title ?? ""),
       subtitle: (t.person ? String(t.person) : null),
-      date: String(t.date), time: (t.time ? String(t.time) : null), end_date: (t.end_date ? String(t.end_date) : null),
+      location: (t.location ? String(t.location) : null),
+      date: String(t.date), time: (t.time ? String(t.time).slice(0, 5) : null), end_date: (t.end_date ? String(t.end_date) : null),
       days_until: daysUntil(String(t.date)), done: false,
       read: owner ? !!Number(t.ustate_read ?? 0) : undefined,
       notify: owner ? !!Number(t.ustate_notify ?? 0) : undefined,

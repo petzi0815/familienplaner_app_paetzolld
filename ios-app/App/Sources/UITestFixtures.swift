@@ -123,7 +123,7 @@ enum UITestFixtures {
             ["key": "geschenke", "icon": "gift.fill", "label": "Geschenk-Anlässe", "value": 2, "domain": "geschenkplaner", "target": "bereich:geschenkplaner"],
         ],
         "agenda": [
-            ["source": "termin", "domain": "termine", "id": "termin-1", "ref_id": 1, "title": "UITEST Zahnarzt", "subtitle": "Samu", "date": "2099-09-09", "time": "10:00", "days_until": 9999, "read": false, "notify": false],
+            ["source": "termin", "domain": "termine", "id": "termin-1", "ref_id": 1, "title": "UITEST Zahnarzt", "subtitle": "Samu", "location": "Dr. Test, Musterstraße 1, Hannover", "date": "2099-09-09", "time": "10:00", "days_until": 9999, "read": false, "notify": false],
             ["source": "abfuhr", "domain": "abfuhrkalender", "id": "abfuhr-1", "ref_id": 1, "title": "🗑️ Restmüll", "date": "2099-09-10", "days_until": 9999],
             ["source": "reminder", "domain": "termine", "id": "reminder-1", "ref_id": 1, "title": "UITEST Erinnerung", "subtitle": "per API", "date": "2099-09-11", "days_until": 9999],
         ],
