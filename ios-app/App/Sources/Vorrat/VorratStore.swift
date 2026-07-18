@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Zentraler Zustand der Vorratskammer (Items, Einkaufsliste, Ablaufend, Rezepte, Stats).
 /// Nach jeder Mutation werden die vier zusammenhängenden Listen + Stats frisch geladen
@@ -100,6 +101,12 @@ final class VorratStore: ObservableObject, NotifiableStore {
     func updateItem(_ id: Int, _ fields: [String: Any]) async -> Bool {
         do { try await api.update(id, fields); await refresh(); notify("Gespeichert"); return true }
         catch { notify(errText(error), error: true); return false }
+    }
+
+    /// Foto hochladen → storage_key (für `bild_pfad`). nil bei Fehler (Save läuft dann ohne Bild weiter).
+    func uploadPhoto(_ image: UIImage) async -> String? {
+        guard let jpeg = image.jpegForUpload() else { return nil }
+        return try? await api.uploadPhoto(jpeg: jpeg)
     }
 
     // notify(_:error:) und errText(_:) kommen aus NotifiableStore.

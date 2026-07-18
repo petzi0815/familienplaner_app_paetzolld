@@ -162,16 +162,8 @@ export function agenda(days = 21, owner?: string | null): AgendaItem[] {
     });
   }
 
-  // ── Bald ablaufende Lebensmittel (MHD) ──
-  for (const v of safeDb(() => db.prepare(
-    "SELECT id,name,mhd FROM vorrat_lebensmittel WHERE mhd IS NOT NULL AND mhd<>'' AND mhd >= date('now','localtime','-3 days') AND mhd <= date('now','localtime',@win) AND COALESCE(status,'')<>'verbraucht' ORDER BY mhd ASC",
-  ).all({ win }) as Record<string, unknown>[], [])) {
-    items.push({
-      source: "vorrat", domain: "vorratskammer", id: `vorrat-${v.id}`, ref_id: Number(v.id),
-      title: String(v.name ?? ""), subtitle: "MHD", date: String(v.mhd), time: null,
-      days_until: daysUntil(String(v.mhd)),
-    });
-  }
+  // (Bald ablaufende Lebensmittel laufen NICHT mehr über die Agenda — sie haben auf dem Dashboard
+  //  eine eigene „Bald ablaufend"-Sektion, sonst doppelt sichtbar. Siehe dashboardToday.vorrat_bald_ablaufend.)
 
   // ── Generische Erinnerungen (per API injizierbar); Familie (owner NULL) + eigene ──
   const remSql =
@@ -325,7 +317,7 @@ export function dashboardToday(owner?: string | null): Record<string, unknown> {
   }, null);
 
   const gartenOffen = num("SELECT COUNT(*) c FROM garten_aufgaben WHERE COALESCE(erledigt,0)=0 AND monat=? AND (jahr=? OR jahr IS NULL)", month, year);
-  const vorratBaldAb = safe(() => db.prepare("SELECT id,name,mhd FROM vorrat_lebensmittel WHERE mhd IS NOT NULL AND mhd<>'' AND mhd<=date('now','+14 days') AND COALESCE(status,'')<>'verbraucht' ORDER BY mhd ASC LIMIT 10").all(), []);
+  const vorratBaldAb = safe(() => db.prepare("SELECT id,name,mhd,kategorie,bild_pfad FROM vorrat_lebensmittel WHERE mhd IS NOT NULL AND mhd<>'' AND mhd<=date('now','+14 days') AND COALESCE(status,'')<>'verbraucht' ORDER BY mhd ASC LIMIT 12").all(), []);
   const abfuhrNext = safe(() => nextPerCategory(db).filter((n) => n.datum), [] as unknown[]);
 
   // KPI-Rohwerte

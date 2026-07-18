@@ -108,10 +108,11 @@ enum VorratKat {
     /// Feste Anzeige-Reihenfolge (auch für den Kategorie-Picker im Formular).
     static let order = ["trocken", "kuehlschrank", "gefrierfach"]
 
+    // Lagerorte (die DB-Werte bleiben trocken/kuehlschrank/gefrierfach; Anzeige = Regal/Kühlschrank/Tiefkühl).
     static let map: [String: Info] = [
-        "trocken":      Info(label: "Trocken",     emoji: "🗄️"),
+        "trocken":      Info(label: "Regal",       emoji: "🗄️"),
         "kuehlschrank": Info(label: "Kühlschrank", emoji: "❄️"),
-        "gefrierfach":  Info(label: "Gefrierfach", emoji: "🧊"),
+        "gefrierfach":  Info(label: "Tiefkühl",    emoji: "🧊"),
     ]
 
     static func info(_ k: String) -> Info { map[k] ?? Info(label: k, emoji: "🍽️") }

@@ -232,6 +232,8 @@ struct VorratShort: Decodable, Identifiable {
     let id: Int
     let name: String
     let mhd: String?
+    let kategorie: String?   // Lagerort: trocken | kuehlschrank | gefrierfach
+    let bildPfad: String?
 }
 struct DashboardCounts: Decodable {
     let samuItems: Int

@@ -25,6 +25,7 @@ struct HeuteView: View {
                         if let next = (d.agenda ?? []).first { nextHighlight(next) }
                         kpiGrid(d.kpis ?? [])
                         agendaCard(d.agenda ?? [])
+                        if !d.vorratBaldAblaufend.isEmpty { vorratCard(d.vorratBaldAblaufend) }
                         aufgabenCard(open: d.aufgaben ?? [], done: d.aufgabenErledigt ?? [])
                     }
                     .padding()
@@ -208,6 +209,38 @@ struct HeuteView: View {
             }
             if tasks.count > shown.count {
                 Text("+ \(tasks.count - shown.count) weitere").font(.caption).foregroundStyle(.secondary).padding(.top, 2)
+            }
+        }
+    }
+
+    // ── Bald ablaufende Lebensmittel (Vorrat) — Name + Lagerort + MHD-Dringlichkeit; Tippen → Vorrat-Bereich ──
+    private func vorratCard(_ items: [VorratShort]) -> some View {
+        SectionCard(title: "Bald ablaufend", systemImage: "clock.badge.exclamationmark", key: "vorratskammer") {
+            let shown = Array(items.prefix(10))
+            ForEach(shown) { it in
+                Button { app.openBereich("vorratskammer") } label: {
+                    HStack(spacing: 10) {
+                        Text(it.kategorie.map { VorratKat.info($0).emoji } ?? "🍽️").font(.title3)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(it.name).font(.subheadline.weight(.semibold)).lineLimit(1).foregroundStyle(.primary)
+                            HStack(spacing: 6) {
+                                if let k = it.kategorie { Text(VorratKat.info(k).label) }
+                                if let d = VorratMhd.formatDate(it.mhd) { Text(d) }
+                            }
+                            .font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 6)
+                        if let info = VorratMhd.info(it.mhd) {
+                            Pill(text: info.label, color: info.color, filled: true)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("vorrat-ablaufend-\(it.id)")
+                if it.id != shown.last?.id { Divider() }
+            }
+            if items.count > shown.count {
+                Text("+ \(items.count - shown.count) weitere").font(.caption).foregroundStyle(.secondary).padding(.top, 2)
             }
         }
     }

@@ -174,6 +174,15 @@ final class FamilienplanerUITests: XCTestCase {
         XCTAssertTrue(app.textFields["Was ist zu tun? *"].waitForExistence(timeout: 8), "Aufgabe-Anlegen-Sheet öffnet nicht")
     }
 
+    /// DATENGETRIEBEN (Fixture): Home zeigt die „Bald ablaufend"-Section mit ablaufenden Lebensmitteln.
+    func testHomeShowsVorratAblaufend() {
+        XCTAssertTrue(tabButton("Heute").waitForExistence(timeout: 15), "Heute-Tab fehlt")
+        tabButton("Heute").tap()
+        // Eindeutig die Section (nicht die gleichnamige KPI-Kachel): Zeilen-Button + Produktname aus der Fixture.
+        XCTAssertTrue(app.buttons["vorrat-ablaufend-1"].waitForExistence(timeout: 12), "Bald-ablaufend-Zeile fehlt")
+        XCTAssertTrue(app.staticTexts["UITEST Joghurt"].waitForExistence(timeout: 6), "Ablaufendes Lebensmittel fehlt")
+    }
+
     /// DATENGETRIEBEN (Fixture): der „Erledigt"-Umschalter zeigt kürzlich abgehakte Aufgaben mit
     /// Wieder-Öffnen-Kreis (Undo bei versehentlichem Abhaken).
     func testHomeAufgabenErledigtFilter() {

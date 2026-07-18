@@ -137,6 +137,32 @@ final class APIClient {
         return try Self.decoder.decode(FotoUploadResult.self, from: data)
     }
 
+    /// Bild hochladen (multipart) → storage_key. Optional `resource`+`recordId` → das Backend hängt das Bild
+    /// direkt an den Datensatz (setzt `bild_pfad`), ohne verwaiste Datei bei fehlgeschlagenem Anlegen.
+    @discardableResult
+    func uploadMedia(jpeg: Data, area: String, resource: String? = nil, recordId: String? = nil) async throws -> String {
+        guard let key = settings.apiKey, !key.isEmpty else { throw APIError(status: 401, message: "Nicht angemeldet") }
+        guard let url = URL(string: base + "/api/v1/media/upload") else { throw APIError(status: 0, message: "Ungültige URL") }
+        var fields = ["area": area]
+        if let resource { fields["resource"] = resource }
+        if let recordId { fields["id"] = recordId }
+        let boundary = "fp-" + UUID().uuidString
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        req.httpBody = MultipartBody.make(boundary: boundary,
+                                          fields: fields,
+                                          files: [MultipartFile(field: "file", filename: "foto.jpg", mime: "image/jpeg", data: jpeg)])
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try checkStatus(resp, data)
+        let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        guard let sk = obj?["storage_key"] as? String, !sk.isEmpty else {
+            throw APIError(status: 0, message: "Kein storage_key erhalten")
+        }
+        return sk
+    }
+
     /// APNs-Device-Token registrieren.
     func registerPush(token: String) async throws {
         #if DEBUG

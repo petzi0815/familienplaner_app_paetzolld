@@ -139,7 +139,10 @@ enum UITestFixtures {
         "reminders_due": 1,
         "next_trip": NSNull(),
         "garten_offen": 0,
-        "vorrat_bald_ablaufend": [],
+        "vorrat_bald_ablaufend": [
+            ["id": 1, "name": "UITEST Joghurt", "mhd": "2026-07-20", "kategorie": "kuehlschrank", "bild_pfad": NSNull()],
+            ["id": 2, "name": "UITEST Hack", "mhd": "2026-07-19", "kategorie": "gefrierfach", "bild_pfad": NSNull()],
+        ],
         "abfuhr_next": [],
         "counts": ["samu_items": 0, "geschenke_offen": 6, "buecher": 0, "vertraege": 0, "foto_inbox_neu": 2],
     ]

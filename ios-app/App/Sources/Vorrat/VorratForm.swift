@@ -1,8 +1,9 @@
 import SwiftUI
+import UIKit
 
 /// Anlegen (`item == nil`) UND Bearbeiten (`item != nil`) eines Lebensmittels.
-/// Native Steuerelemente: Kategorie-Picker (auf die 3 CHECK-Werte begrenzt),
-/// Menge als Freitext, MHD als DatePicker (optional), Restock-Toggle.
+/// Native Steuerelemente: Lagerort-Picker (Regal/Kühlschrank/Tiefkühl), Menge als Freitext,
+/// MHD als DatePicker (Pflicht), Foto (Kamera/Mediathek), Restock-Toggle.
 struct VorratItemFormSheet: View {
     let item: VorratItem?
     @EnvironmentObject private var store: VorratStore
@@ -10,15 +11,16 @@ struct VorratItemFormSheet: View {
 
     @State private var name = ""
     @State private var marke = ""
-    @State private var kategorie = "trocken"
+    @State private var kategorie = "kuehlschrank"
     @State private var menge = ""
-    @State private var hatMhd = false
-    @State private var mhd = Date()
+    @State private var mhd = Calendar.current.date(byAdding: .day, value: 7, to: Date()) ?? Date()
     @State private var restock = true
     @State private var notizen = ""
+    @State private var photo: UIImage?
     @State private var saving = false
 
     private var isEdit: Bool { item != nil }
+    private var hasExistingPhoto: Bool { (item?.bildPfad?.isEmpty == false) }
     private static let isoFmt: DateFormatter = {
         let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.locale = Locale(identifier: "en_US_POSIX"); f.timeZone = .current; return f
     }()
@@ -29,19 +31,22 @@ struct VorratItemFormSheet: View {
                 Section("Lebensmittel") {
                     TextField("Name *", text: $name)
                     TextField("Marke", text: $marke)
-                    Picker("Kategorie", selection: $kategorie) {
+                    Picker("Lagerort", selection: $kategorie) {
                         ForEach(VorratKat.order, id: \.self) { k in
                             let i = VorratKat.info(k)
                             Text("\(i.emoji) \(i.label)").tag(k)
                         }
                     }
                 }
-                Section("Menge & Haltbarkeit") {
+                Section("Menge & Ablaufdatum") {
                     TextField("Menge (z.B. 500g, 2 Stk)", text: $menge)
-                    Toggle("MHD angeben", isOn: $hatMhd)
-                    if hatMhd {
-                        DatePicker("Mindestens haltbar bis", selection: $mhd, displayedComponents: .date)
+                    DatePicker("Haltbar bis (MHD)", selection: $mhd, displayedComponents: .date)
+                }
+                Section("Foto") {
+                    if hasExistingPhoto && photo == nil {
+                        Text("Foto vorhanden – neues aufnehmen ersetzt es.").font(.caption).foregroundStyle(.secondary)
                     }
+                    VorratPhotoField(image: $photo)
                 }
                 Section {
                     Toggle("Nachkaufen wenn leer", isOn: $restock)
@@ -69,24 +74,25 @@ struct VorratItemFormSheet: View {
         guard let it = item else { return }
         name = it.name
         marke = it.marke ?? ""
-        kategorie = VorratKat.order.contains(it.kategorie) ? it.kategorie : "trocken"
+        kategorie = VorratKat.order.contains(it.kategorie) ? it.kategorie : "kuehlschrank"
         menge = it.menge ?? ""
-        if let m = it.mhd, let d = Self.isoFmt.date(from: String(m.prefix(10))) { mhd = d; hatMhd = true }
+        if let m = it.mhd, let d = Self.isoFmt.date(from: String(m.prefix(10))) { mhd = d }
         restock = it.restock
         notizen = it.notizen ?? ""
     }
 
     private func save() async {
         saving = true
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "name": name.trimmingCharacters(in: .whitespaces),
             "marke": marke,
             "kategorie": kategorie,
             "menge": menge,
-            "mhd": hatMhd ? Self.isoFmt.string(from: mhd) : "",
+            "mhd": Self.isoFmt.string(from: mhd),
             "restock": restock ? 1 : 0,
             "notizen": notizen,
         ]
+        if let img = photo, let key = await store.uploadPhoto(img) { body["bild_pfad"] = key }
         let ok: Bool
         if let it = item { ok = await store.updateItem(it.id, body) }
         else { ok = await store.createItem(body) }

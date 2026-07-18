@@ -54,4 +54,13 @@ final class VorratAPI {
     func delete(_ id: Int) async throws {
         _ = try await c.send("/vorratskammer/\(id)", method: "DELETE")
     }
+
+    /// Bild hochladen → storage_key (für `bild_pfad`). Nutzt den v1-Media-Endpunkt via CompatClient.
+    func uploadPhoto(jpeg: Data) async throws -> String? {
+        let payload: [String: Any] = [
+            "area": "vorrat", "filename": "foto.jpg", "mime": "image/jpeg",
+            "data_base64": jpeg.base64EncodedString(),
+        ]
+        return try await c.send("/v1/media/upload", method: "POST", body: payload)["storage_key"] as? String
+    }
 }

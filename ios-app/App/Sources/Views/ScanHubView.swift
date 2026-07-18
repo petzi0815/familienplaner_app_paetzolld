@@ -239,15 +239,17 @@ struct VorratScanSheet: View {
 
     @State private var name = ""
     @State private var marke = ""
-    @State private var kategorie = "trocken"
-    @State private var hasMHD = false
-    @State private var mhd = Date()
+    @State private var menge = ""
+    @State private var kategorie = "kuehlschrank"
+    @State private var mhd = Calendar.current.date(byAdding: .day, value: 7, to: Date()) ?? Date()
+    @State private var photo: UIImage?
+    @State private var autoFilled = false
     @State private var phase: Phase = .scan
     @State private var busy = false
     @State private var message = ""
     enum Phase { case scan, confirm }
 
-    private static let mhdFmt: DateFormatter = { let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f }()
+    private static let mhdFmt: DateFormatter = { let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.locale = Locale(identifier: "en_US_POSIX"); f.timeZone = .current; return f }()
 
     var body: some View {
         NavigationStack {
@@ -285,19 +287,30 @@ struct VorratScanSheet: View {
 
     private var confirmPhase: some View {
         Form {
-            Section("Produkt") {
+            Section {
                 TextField("Name", text: $name)
                 TextField("Marke (optional)", text: $marke)
+                TextField("Menge (z.B. 400 g)", text: $menge)
+            } header: {
+                Text("Produkt")
+            } footer: {
+                if autoFilled { Text("Automatisch aus dem Barcode ausgefüllt – bitte prüfen.") }
             }
-            Section("Lagerung") {
-                Picker("Kategorie", selection: $kategorie) {
-                    Text("Trocken").tag("trocken")
+            Section("Lagerort") {
+                Picker("Lagerort", selection: $kategorie) {
+                    Text("Regal").tag("trocken")
                     Text("Kühlschrank").tag("kuehlschrank")
-                    Text("Gefrierfach").tag("gefrierfach")
+                    Text("Tiefkühl").tag("gefrierfach")
                 }
                 .pickerStyle(.segmented)
-                Toggle("Mindesthaltbarkeit", isOn: $hasMHD.animation())
-                if hasMHD { DatePicker("MHD", selection: $mhd, displayedComponents: .date) }
+                .accessibilityIdentifier("vorrat-lagerort")
+            }
+            Section("Ablaufdatum / MHD") {
+                DatePicker("Haltbar bis", selection: $mhd, displayedComponents: .date)
+                    .accessibilityIdentifier("vorrat-mhd")
+            }
+            Section("Foto") {
+                VorratPhotoField(image: $photo)
             }
             if !message.isEmpty { Section { Text(message).foregroundStyle(.secondary).font(.footnote) } }
             Section {
@@ -307,7 +320,7 @@ struct VorratScanSheet: View {
                     HStack { if busy { ProgressView().padding(.trailing, 4) }; Text("In die Vorratskammer") }
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.glassProminent).disabled(busy || name.isEmpty)
+                .buttonStyle(.glassProminent).disabled(busy || name.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         }
     }
@@ -317,18 +330,40 @@ struct VorratScanSheet: View {
         let info = await ProductLookup.food(ean: code)
         name = info.name ?? ""
         marke = info.brand ?? ""
+        if let q = info.quantity { menge = q }
+        if info.found { kategorie = ProductLookup.lagerort(categoryTags: info.categoryTags) }
+        autoFilled = info.found
         message = info.name == nil ? "Nicht gefunden – bitte Namen eingeben." : ""
+        // Produktbild als Foto-Vorschlag laden (überschreibbar). Nur wenn noch keins gewählt.
+        if photo == nil, let img = await downloadImage(info.imageURL) { photo = img }
         busy = false
+    }
+
+    private func downloadImage(_ urlString: String?) async -> UIImage? {
+        guard let s = urlString, let url = URL(string: s),
+              let (data, _) = try? await URLSession.shared.data(from: url) else { return nil }
+        return UIImage(data: data)
     }
 
     private func save() async {
         busy = true; message = ""
-        var fields: [String: Any] = ["name": name, "kategorie": kategorie]
+        var fields: [String: Any] = [
+            "name": name.trimmingCharacters(in: .whitespaces),
+            "kategorie": kategorie,
+            "mhd": Self.mhdFmt.string(from: mhd),
+        ]
         if !marke.isEmpty { fields["marke"] = marke }
-        if hasMHD { fields["mhd"] = Self.mhdFmt.string(from: mhd) }
+        if !menge.trimmingCharacters(in: .whitespaces).isEmpty { fields["menge"] = menge.trimmingCharacters(in: .whitespaces) }
         do {
-            try await app.api.createRecord("vorrat-lebensmittel", fields: fields)
+            // Erst den Datensatz anlegen, dann das Foto anhängen (best effort) — so entstehen weder
+            // verwaiste Medien-Dateien noch Duplikate, falls der Upload scheitert.
+            let created = try await app.api.createRecord("vorrat-lebensmittel", fields: fields)
+            if let jpeg = photo?.jpegForUpload(), let idVal = created["id"] {
+                _ = try? await app.api.uploadMedia(jpeg: jpeg, area: "vorrat",
+                                                   resource: "vorrat-lebensmittel", recordId: "\(idVal)")
+            }
             UINotificationFeedbackGenerator().notificationOccurred(.success)
+            await app.loadDashboard()   // „Bald ablaufend" auf „Heute" sofort aktualisieren
             dismiss()
         } catch {
             message = (error as? APIError)?.errorDescription ?? "Speichern fehlgeschlagen."

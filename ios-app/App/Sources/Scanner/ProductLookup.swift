@@ -15,6 +15,10 @@ struct BookInfo {
 struct FoodInfo {
     var name: String?
     var brand: String?
+    var quantity: String?          // z.B. "400 g" (OFF `quantity`)
+    var categoryTags: [String] = [] // OFF `categories_tags` (en:-Tags) → Lagerort-Heuristik
+    var imageURL: String?          // Produkt-Frontbild (OFF) — als Foto-Vorschlag
+    var found: Bool = false
 }
 
 /// Öffentliche Kataloge (kein Auth): Open Library für Bücher, Open Food Facts für Lebensmittel.
@@ -78,16 +82,37 @@ enum ProductLookup {
         if info.pageCount == nil { info.pageCount = entry["number_of_pages"] as? Int }
     }
 
+    /// Lebensmittel-Metadaten via Open Food Facts (öffentlich, kein Key, keine Limits). Liefert Name (de
+    /// bevorzugt), Marke, Menge, Kategorie-Tags (für die Lagerort-Heuristik) und ein Produktbild.
     static func food(ean: String) async -> FoodInfo {
         var info = FoodInfo()
-        guard let url = URL(string: "https://world.openfoodfacts.org/api/v2/product/\(ean).json?fields=product_name,product_name_de,brands") else { return info }
+        let fields = "product_name,product_name_de,brands,quantity,categories_tags,image_front_small_url,image_front_url,image_url"
+        guard let url = URL(string: "https://world.openfoodfacts.org/api/v2/product/\(ean).json?fields=\(fields)") else { return info }
         guard let (data, _) = try? await session.data(from: url),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               (obj["status"] as? Int) == 1,
               let product = obj["product"] as? [String: Any] else { return info }
+        info.found = true
         info.name = (product["product_name_de"] as? String).flatMap { $0.isEmpty ? nil : $0 }
-            ?? (product["product_name"] as? String)
+            ?? (product["product_name"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         info.brand = (product["brands"] as? String)?.split(separator: ",").first.map { String($0).trimmingCharacters(in: .whitespaces) }
+        info.quantity = (product["quantity"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        info.categoryTags = (product["categories_tags"] as? [String]) ?? []
+        info.imageURL = ((product["image_front_small_url"] ?? product["image_front_url"] ?? product["image_url"]) as? String)
+            .flatMap { $0.isEmpty ? nil : $0 }
         return info
+    }
+
+    /// Heuristische Lagerort-Zuordnung aus den OFF-Kategorien: Tiefkühl > Kühlschrank > Regal (Default).
+    /// Nur ein Vorschlag — der Nutzer kann den Lagerort im Formular ändern.
+    static func lagerort(categoryTags tags: [String]) -> String {
+        let s = tags.joined(separator: " ").lowercased()
+        let frozen = ["frozen", "ice-cream", "ice cream", "tiefkuhl", "tiefkühl", "gefror", "surgel"]
+        let fridge = ["dair", "milk", "yogurt", "yoghurt", "cheese", "butter", "cream", "quark",
+                      "fresh", "chilled", "refrigerat", "meat", "poultry", "sausage", "charcuterie",
+                      "ham", "fish", "seafood", "egg", "tofu", "deli", "wurst", "kase", "käse"]
+        if frozen.contains(where: { s.contains($0) }) { return "gefrierfach" }
+        if fridge.contains(where: { s.contains($0) }) { return "kuehlschrank" }
+        return "trocken"
     }
 }
