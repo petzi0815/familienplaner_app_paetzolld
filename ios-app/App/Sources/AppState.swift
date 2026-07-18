@@ -232,6 +232,28 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Aufgabe umschalten: offene abhaken, erledigte wieder öffnen (Undo bei Versehen).
+    func toggleTask(_ task: TaskItem) async {
+        if task.isDone { await reopenTask(task) } else { await completeTask(task) }
+    }
+
+    /// Eine erledigte Aufgabe wieder öffnen (versehentlich abgehakt). Familie → status='offen',
+    /// Garten → erledigt=0. Danach Dashboard neu laden (verschiebt sie zurück in „Offen").
+    func reopenTask(_ task: TaskItem) async {
+        guard let rid = task.refId else { return }
+        do {
+            if task.source == "garten" {
+                try await api.patchRecord("garten-aufgaben", id: String(rid), fields: ["erledigt": 0])
+            } else {
+                try await api.patchRecord("aufgaben", id: String(rid), fields: ["status": "offen"])
+            }
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            await loadDashboard()
+        } catch {
+            aufgabenError = (error as? APIError)?.errorDescription ?? "Aufgabe konnte nicht wieder geöffnet werden."
+        }
+    }
+
     /// Neue Familien-Aufgabe anlegen (generisches CRUD). Gibt Erfolg zurück (Sheet schließt dann).
     func createAufgabe(_ fields: [String: Any]) async -> Bool {
         do {

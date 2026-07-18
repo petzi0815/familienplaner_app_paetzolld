@@ -51,6 +51,7 @@ export interface TaskItem {
   recurring?: string | null;   // einmalig | taeglich | woechentlich | monatlich | jaehrlich (garten: wiederholung)
   project?: string | null;
   termin_id?: number | null;   // optionale Verknüpfung zu einem Termin
+  done_at?: string | null;     // Erledigt-Zeitpunkt (nur im Erledigt-Feed gesetzt)
 }
 
 const MONTHS_DE = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
@@ -255,6 +256,55 @@ export function aufgabenFeed(): TaskItem[] {
   });
 }
 
+/**
+ * Kürzlich ERLEDIGTE Aufgaben (Familie + Garten) — für die „Erledigt"-Ansicht auf dem Dashboard, damit
+ * man versehentlich Abgehaktes wieder öffnen kann. Nur die letzten `days` Tage, neueste zuerst, gedeckelt.
+ */
+export function aufgabenErledigt(days = 30, limit = 25): TaskItem[] {
+  const db = getDb();
+  const items: TaskItem[] = [];
+  const cut = `-${Math.max(1, Math.min(days, 365))} days`;
+  const now = new Date();
+  const y = now.getFullYear();
+  const mo = now.getMonth() + 1;
+
+  for (const a of safeDb(() => db.prepare(
+    "SELECT id,title,description,owner,due_date,termin_id,project,priority,recurring,done_at FROM aufgaben WHERE status='erledigt' AND done_at IS NOT NULL AND done_at >= date('now',@cut) ORDER BY done_at DESC LIMIT @limit",
+  ).all({ cut, limit }) as Record<string, unknown>[], [])) {
+    items.push({
+      source: "aufgabe", domain: "aufgaben", id: `aufgabe-${a.id}`, ref_id: Number(a.id),
+      title: String(a.title ?? ""), description: (a.description ? String(a.description) : null),
+      owner: (a.owner ? String(a.owner) : null),
+      due_date: (a.due_date ? String(a.due_date) : null), due_label: null,
+      days_until: null, overdue: false, status: "erledigt",
+      priority: (a.priority ? String(a.priority) : null),
+      recurring: (a.recurring ? String(a.recurring) : null),
+      project: (a.project ? String(a.project) : null),
+      termin_id: (a.termin_id != null ? Number(a.termin_id) : null),
+      done_at: (a.done_at ? String(a.done_at) : null),
+    });
+  }
+  // Nur Garten-Aufgaben des AKTUELLEN Monats — konsistent mit dem Offen-Feed (der auch nur den aktuellen
+  // Monat zeigt), damit das Wieder-Öffnen sie zuverlässig zurück in „Offen" bringt (kein Verschwinden).
+  for (const g of safeDb(() => db.prepare(
+    "SELECT id,titel,beschreibung,monat,jahr,prioritaet,wiederholung,erledigt_am FROM garten_aufgaben WHERE COALESCE(erledigt,0)=1 AND jahr=@y AND monat=@mo ORDER BY erledigt_am DESC LIMIT @limit",
+  ).all({ y, mo, limit }) as Record<string, unknown>[], [])) {
+    items.push({
+      source: "garten", domain: "garten", id: `garten-${g.id}`, ref_id: Number(g.id),
+      title: String(g.titel ?? ""), description: (g.beschreibung ? String(g.beschreibung) : null),
+      owner: null, due_date: null, due_label: monthLabel(Number(g.monat), Number(g.jahr)),
+      days_until: null, overdue: false, status: "erledigt",
+      priority: (g.prioritaet ? String(g.prioritaet) : null),
+      recurring: (g.wiederholung ? String(g.wiederholung) : null),
+      project: "Garten", termin_id: null,
+      done_at: (g.erledigt_am ? String(g.erledigt_am) : null),
+    });
+  }
+  // Nach Erledigt-Zeitpunkt absteigend (Formate 'YYYY-MM-DD HH:MM:SS' vs. ISO 'YYYY-MM-DDT…Z' vereinheitlichen).
+  const key = (s?: string | null) => (s ?? "").slice(0, 19).replace("T", " ");
+  return items.sort((a, b) => key(b.done_at).localeCompare(key(a.done_at))).slice(0, limit);
+}
+
 /** Kompakter Tageszustand (KPI-Kacheln + Agenda). `owner` = Per-User-Sicht (aus dem API-Key). */
 export function dashboardToday(owner?: string | null): Record<string, unknown> {
   const db = getDb();
@@ -316,6 +366,7 @@ export function dashboardToday(owner?: string | null): Record<string, unknown> {
     kpis,
     agenda: safe(() => agenda(30, owner), []),
     aufgaben: safe(() => aufgabenFeed(), []),
+    aufgaben_erledigt: safe(() => aufgabenErledigt(), []),
     // Legacy-Keys (WidgetKit / ältere Clients) unverändert beibehalten:
     termine_upcoming: termineUpcoming,
     reminders_due: remindersDueCount,

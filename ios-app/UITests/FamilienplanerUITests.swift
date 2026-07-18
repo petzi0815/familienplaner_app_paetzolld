@@ -174,6 +174,23 @@ final class FamilienplanerUITests: XCTestCase {
         XCTAssertTrue(app.textFields["Was ist zu tun? *"].waitForExistence(timeout: 8), "Aufgabe-Anlegen-Sheet öffnet nicht")
     }
 
+    /// DATENGETRIEBEN (Fixture): der „Erledigt"-Umschalter zeigt kürzlich abgehakte Aufgaben mit
+    /// Wieder-Öffnen-Kreis (Undo bei versehentlichem Abhaken).
+    func testHomeAufgabenErledigtFilter() {
+        XCTAssertTrue(tabButton("Heute").waitForExistence(timeout: 15), "Heute-Tab fehlt")
+        tabButton("Heute").tap()
+        XCTAssertTrue(app.staticTexts["Aufgaben"].waitForExistence(timeout: 12), "Aufgaben-Section fehlt")
+        // Segment „Erledigt" wählen — robust: erst innerhalb des SegmentedControls, sonst app-weit als Button.
+        let scoped = app.segmentedControls.buttons["Erledigt"]
+        let erledigt = scoped.waitForExistence(timeout: 4) ? scoped : app.buttons["Erledigt"]
+        var tries = 0
+        while !erledigt.isHittable && tries < 8 { app.swipeUp(); tries += 1 }
+        XCTAssertTrue(erledigt.waitForExistence(timeout: 6), "Erledigt-Segment fehlt")
+        erledigt.tap()
+        XCTAssertTrue(app.staticTexts["UITEST Erledigt Paket"].waitForExistence(timeout: 6), "Erledigte Aufgabe fehlt")
+        XCTAssertTrue(app.buttons["aufgabe-complete-aufgabe-9"].waitForExistence(timeout: 4), "Wieder-Öffnen-Kreis fehlt")
+    }
+
     /// DATENGETRIEBEN (Fixture): Home zeigt die Alarmanlage-Kachel (Alarmo, unscharf) mit „Aktivieren"-Menü.
     func testHomeShowsAlarmoTile() {
         XCTAssertTrue(tabButton("Heute").waitForExistence(timeout: 15), "Heute-Tab fehlt")

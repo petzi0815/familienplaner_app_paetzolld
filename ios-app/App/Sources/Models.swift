@@ -123,7 +123,8 @@ struct DashboardToday: Decodable {
     let date: String
     let kpis: [KpiTile]?               // datengetriebene KPI-Kacheln („Aktions-Fokus")
     let agenda: [AgendaItem]?          // vereinheitlichter „Anstehendes"-Feed
-    let aufgaben: [TaskItem]?          // Aufgaben-Feed (Familien-Aufgaben + fällige Garten-Aufgaben)
+    let aufgaben: [TaskItem]?          // Aufgaben-Feed (offen: Familien-Aufgaben + fällige Garten-Aufgaben)
+    let aufgabenErledigt: [TaskItem]?  // kürzlich erledigte Aufgaben (zum Wieder-Öffnen)
     let termineUpcoming: [TerminShort]
     let remindersDue: Int
     let nextTrip: NextTrip?
@@ -181,6 +182,8 @@ struct TaskItem: Decodable, Identifiable {
     let recurring: String?   // einmalig | taeglich | woechentlich | monatlich | jaehrlich
     let project: String?
     let terminId: Int?
+    let doneAt: String?      // Erledigt-Zeitpunkt (nur im Erledigt-Feed)
+    var isDone: Bool { status == "erledigt" }
 }
 
 // ── Abfuhrkalender (nächster Termin je Kategorie) ──

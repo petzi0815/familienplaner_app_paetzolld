@@ -132,6 +132,9 @@ enum UITestFixtures {
             ["source": "aufgabe", "domain": "aufgaben", "id": "aufgabe-2", "ref_id": 2, "title": "UITEST Blumen giessen", "description": "Balkon Ostseite", "owner": "elita", "due_date": NSNull(), "days_until": NSNull(), "overdue": false, "status": "offen", "priority": "normal", "recurring": "woechentlich", "project": NSNull(), "termin_id": NSNull()],
             ["source": "garten", "domain": "garten", "id": "garten-1", "ref_id": 5, "title": "UITEST Rasen mähen", "description": "Vorgarten", "owner": NSNull(), "due_date": NSNull(), "due_label": "Juli 2026", "days_until": NSNull(), "overdue": false, "status": "offen", "priority": "normal", "recurring": "jaehrlich", "project": "Garten", "termin_id": NSNull()],
         ],
+        "aufgaben_erledigt": [
+            ["source": "aufgabe", "domain": "aufgaben", "id": "aufgabe-9", "ref_id": 9, "title": "UITEST Erledigt Paket", "description": "abgeholt", "owner": "elita", "due_date": NSNull(), "days_until": NSNull(), "overdue": false, "status": "erledigt", "priority": "normal", "recurring": "einmalig", "project": NSNull(), "termin_id": NSNull(), "done_at": "2026-07-17 10:00:00"],
+        ],
         "termine_upcoming": [],
         "reminders_due": 1,
         "next_trip": NSNull(),
