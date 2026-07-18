@@ -25,6 +25,8 @@ export interface Resource {
 export const RESOURCES: Resource[] = [
   // ── Termine ──
   { key: "termine", table: "termine", domain: "termine", label: "Termine", sort: "date ASC, time ASC" },
+  // Familien-Aufgaben (Tasks) — API-first (Ole/extern anlegbar). Eigene /complete-Route für recurring.
+  { key: "aufgaben", table: "aufgaben", domain: "aufgaben", label: "Aufgaben", sort: "due_date ASC", searchable: ["title", "description", "owner", "project", "source", "status"], actions: [{ label: "Erledigt", patch: { status: "erledigt" } }, { label: "Offen", patch: { status: "offen" } }] },
   // Generische, per-API befüllbare Erinnerungen/Ereignisse (Quelle des „Anstehendes"-Agenda-Feeds).
   // URL-Key bewusst `erinnerungen` (nicht `reminders`) — kollidiert sonst mit den statischen
   // /api/v1/reminders/due + /api/v1/reminders/[id]/sent-Routen. Tabelle bleibt `reminders`.

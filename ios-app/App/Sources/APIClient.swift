@@ -276,6 +276,12 @@ final class APIClient {
         return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
     }
 
+    /// Aufgabe abhaken. Serverseitig recurring-aware: einmalige → erledigt, wiederholende rücken auf
+    /// die nächste Fälligkeit vor. (Garten-Aufgaben laufen dagegen über patchRecord("garten-aufgaben").)
+    func completeAufgabe(id: Int) async throws {
+        _ = try await send("/aufgaben/\(id)/complete", method: "POST")
+    }
+
     /// Maschinenlesbarer Ressourcen-Index (alle Bereiche + Spalten + Bild-Spec).
     func capabilities() async throws -> [ResourceInfo] {
         try await get("/agent/capabilities", as: Capabilities.self).resources

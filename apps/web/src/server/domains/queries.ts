@@ -33,6 +33,29 @@ export interface AgendaItem {
 /** Datengetriebene KPI-Kachel fürs Home (iOS rendert sie generisch). */
 export interface KpiTile { key: string; icon: string; label: string; value: number; domain: string; target: string }
 
+/** Normalisiertes Element des Aufgaben-Feeds (Familien-Aufgaben + fällige Garten-Aufgaben). */
+export interface TaskItem {
+  source: "aufgabe" | "garten";
+  domain: string;              // Gradient/Icon-Key ("aufgaben" | "garten")
+  id: string;                  // stabile Feed-ID, z.B. "aufgabe-5" / "garten-12"
+  ref_id: number;              // Original-Zeilen-ID (für /complete bzw. PATCH)
+  title: string;
+  description?: string | null;
+  owner?: string | null;       // Zuständig: 'lars' | 'elita' | 'familie' (garten: null)
+  due_date?: string | null;    // YYYY-MM-DD (aufgabe; garten ist monatsbasiert → null)
+  due_label?: string | null;   // menschenlesbare Fälligkeit (garten: "März 2026")
+  days_until?: number | null;
+  overdue: boolean;
+  status: string;              // offen | erledigt
+  priority?: string | null;    // niedrig | normal | hoch
+  recurring?: string | null;   // einmalig | taeglich | woechentlich | monatlich | jaehrlich (garten: wiederholung)
+  project?: string | null;
+  termin_id?: number | null;   // optionale Verknüpfung zu einem Termin
+}
+
+const MONTHS_DE = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
+const monthLabel = (m: number, y: number): string => `${MONTHS_DE[Math.max(1, Math.min(12, m)) - 1]} ${y}`;
+
 const DAY_MS = 86400000;
 /** Ganztägige Tages-Differenz (negativ = vergangen, null = unparsbar). */
 function daysUntil(dateStr: string): number | null {
@@ -167,6 +190,71 @@ export function agenda(days = 21, owner?: string | null): AgendaItem[] {
   return items.sort((a, b) => (a.date === b.date ? (a.time ?? "").localeCompare(b.time ?? "") : a.date.localeCompare(b.date)));
 }
 
+/**
+ * Aufgaben-Feed fürs Home: mergt die generische `aufgaben`-Tabelle (offen; per API/Ole befüllbar) mit
+ * den FÄLLIGEN offenen Garten-Aufgaben (aktueller Monat oder überfällig). Überfällige zuerst, dann nach
+ * Fälligkeit. Garten-Aufgaben sind monatsbasiert (kein Tagesdatum) → `due_label` „Monat Jahr".
+ */
+export function aufgabenFeed(): TaskItem[] {
+  const db = getDb();
+  const items: TaskItem[] = [];
+  const now = new Date();
+  const y = now.getFullYear();
+  const mo = now.getMonth() + 1;
+
+  // ── Familien-Aufgaben (offen) ──
+  for (const a of safeDb(() => db.prepare(
+    "SELECT id,title,description,owner,due_date,termin_id,project,priority,recurring FROM aufgaben WHERE status='offen'",
+  ).all() as Record<string, unknown>[], [])) {
+    const due = a.due_date ? String(a.due_date) : null;
+    const du = due ? daysUntil(due) : null;
+    items.push({
+      source: "aufgabe", domain: "aufgaben", id: `aufgabe-${a.id}`, ref_id: Number(a.id),
+      title: String(a.title ?? ""),
+      description: (a.description ? String(a.description) : null),
+      owner: (a.owner ? String(a.owner) : null),
+      due_date: due, due_label: null,
+      days_until: du, overdue: du != null && du < 0,
+      status: "offen",
+      priority: (a.priority ? String(a.priority) : null),
+      recurring: (a.recurring ? String(a.recurring) : null),
+      project: (a.project ? String(a.project) : null),
+      termin_id: (a.termin_id != null ? Number(a.termin_id) : null),
+    });
+  }
+
+  // ── Garten-Aufgaben des AKTUELLEN Monats (offen). Ältere Monate bewusst NICHT, sonst flutet der
+  //    nie-abgehakte Jahresplan das Dashboard (Pflanzfenster sind ohnehin vorbei). „Diesen Monat im Garten". ──
+  for (const g of safeDb(() => db.prepare(
+    "SELECT id,titel,beschreibung,monat,jahr,prioritaet,wiederholung FROM garten_aufgaben WHERE COALESCE(erledigt,0)=0 AND jahr = @y AND monat = @mo",
+  ).all({ y, mo }) as Record<string, unknown>[], [])) {
+    items.push({
+      source: "garten", domain: "garten", id: `garten-${g.id}`, ref_id: Number(g.id),
+      title: String(g.titel ?? ""),
+      description: (g.beschreibung ? String(g.beschreibung) : null),
+      owner: null,
+      due_date: null, due_label: monthLabel(mo, y),
+      days_until: null, overdue: false,
+      status: "offen",
+      priority: (g.prioritaet ? String(g.prioritaet) : null),
+      recurring: (g.wiederholung ? String(g.wiederholung) : null),
+      project: "Garten",
+      termin_id: null,
+    });
+  }
+
+  // Reihenfolge: überfällig zuerst, dann Familien-Aufgaben vor Garten (Garten = hilfreiche Beigabe),
+  // dann nach Priorität (hoch→niedrig), dann datierte nach Fälligkeit.
+  const prioRank = (p?: string | null) => (p === "hoch" ? 0 : p === "niedrig" ? 2 : 1);
+  const srcRank = (s: string) => (s === "aufgabe" ? 0 : 1);
+  return items.sort((a, b) => {
+    if (a.overdue !== b.overdue) return a.overdue ? -1 : 1;
+    if (srcRank(a.source) !== srcRank(b.source)) return srcRank(a.source) - srcRank(b.source);
+    if (prioRank(a.priority) !== prioRank(b.priority)) return prioRank(a.priority) - prioRank(b.priority);
+    return (a.due_date ?? "9999-99-99").localeCompare(b.due_date ?? "9999-99-99");
+  });
+}
+
 /** Kompakter Tageszustand (KPI-Kacheln + Agenda). `owner` = Per-User-Sicht (aus dem API-Key). */
 export function dashboardToday(owner?: string | null): Record<string, unknown> {
   const db = getDb();
@@ -227,6 +315,7 @@ export function dashboardToday(owner?: string | null): Record<string, unknown> {
     date: new Date().toISOString().slice(0, 10),
     kpis,
     agenda: safe(() => agenda(30, owner), []),
+    aufgaben: safe(() => aufgabenFeed(), []),
     // Legacy-Keys (WidgetKit / ältere Clients) unverändert beibehalten:
     termine_upcoming: termineUpcoming,
     reminders_due: remindersDueCount,

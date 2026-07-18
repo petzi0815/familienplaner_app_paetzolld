@@ -46,6 +46,7 @@ enum Palette {
         "ebooks": ["FF2D55", "FF6B6B", "FF9500"],
         "wunschliste": ["AF52DE", "FF2D55", "FF9500"],
         "termine": ["007AFF", "5856D6", "34C759"],
+        "aufgaben": ["7C3AED", "6366F1", "0EA5E9"],
         "abfuhrkalender": ["10B981", "059669", "0D9488"],
         "reisen": ["FF9500", "FF6B6B", "5856D6"],
         "geschenkplaner": ["F59E0B", "EF4444", "8B5CF6"],

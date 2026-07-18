@@ -214,6 +214,39 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Eine Aufgabe abhaken. Familien-Aufgaben laufen über die recurring-aware /complete-Route,
+    /// Garten-Aufgaben über ein PATCH auf garten-aufgaben (erledigt=1). Danach Dashboard neu laden.
+    func completeTask(_ task: TaskItem) async {
+        guard let rid = task.refId else { return }
+        do {
+            if task.source == "garten" {
+                try await api.patchRecord("garten-aufgaben", id: String(rid),
+                                          fields: ["erledigt": 1, "erledigt_am": ISO8601DateFormatter().string(from: Date())])
+            } else {
+                try await api.completeAufgabe(id: rid)
+            }
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            await loadDashboard()
+        } catch {
+            aufgabenError = (error as? APIError)?.errorDescription ?? "Aufgabe konnte nicht aktualisiert werden."
+        }
+    }
+
+    /// Neue Familien-Aufgabe anlegen (generisches CRUD). Gibt Erfolg zurück (Sheet schließt dann).
+    func createAufgabe(_ fields: [String: Any]) async -> Bool {
+        do {
+            _ = try await api.createRecord("aufgaben", fields: fields)
+            await loadDashboard()
+            return true
+        } catch {
+            aufgabenError = (error as? APIError)?.errorDescription ?? "Aufgabe konnte nicht angelegt werden."
+            return false
+        }
+    }
+
+    /// Kurzlebige Fehlermeldung rund um Aufgaben (Toast auf „Heute").
+    @Published var aufgabenError: String?
+
     /// APNs-Device-Token ans Backend melden (nur wenn angemeldet).
     func registerPushToken(_ token: String) async {
         guard settings.isConfigured else { return }

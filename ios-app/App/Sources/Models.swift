@@ -123,6 +123,7 @@ struct DashboardToday: Decodable {
     let date: String
     let kpis: [KpiTile]?               // datengetriebene KPI-Kacheln („Aktions-Fokus")
     let agenda: [AgendaItem]?          // vereinheitlichter „Anstehendes"-Feed
+    let aufgaben: [TaskItem]?          // Aufgaben-Feed (Familien-Aufgaben + fällige Garten-Aufgaben)
     let termineUpcoming: [TerminShort]
     let remindersDue: Int
     let nextTrip: NextTrip?
@@ -160,6 +161,26 @@ struct AgendaItem: Decodable, Identifiable {
     let done: Bool?
     let read: Bool?
     let notify: Bool?
+}
+
+// ── Aufgaben-Feed (Familien-Aufgaben + fällige Garten-Aufgaben) ──
+struct TaskItem: Decodable, Identifiable {
+    let source: String       // aufgabe | garten
+    let domain: String       // Gradient/Icon-Key (aufgaben | garten)
+    let id: String           // stabile Feed-ID, z.B. "aufgabe-5" / "garten-12"
+    let refId: Int?          // Original-Zeilen-ID (für Complete/PATCH)
+    let title: String
+    let description: String?
+    let owner: String?       // lars | elita | familie (Zuständig); garten: nil
+    let dueDate: String?     // YYYY-MM-DD (aufgabe)
+    let dueLabel: String?    // menschenlesbar (garten: "März 2026")
+    let daysUntil: Int?
+    let overdue: Bool
+    let status: String
+    let priority: String?    // niedrig | normal | hoch
+    let recurring: String?   // einmalig | taeglich | woechentlich | monatlich | jaehrlich
+    let project: String?
+    let terminId: Int?
 }
 
 // ── Abfuhrkalender (nächster Termin je Kategorie) ──

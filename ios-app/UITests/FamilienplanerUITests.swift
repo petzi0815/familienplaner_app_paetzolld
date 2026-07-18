@@ -157,6 +157,23 @@ final class FamilienplanerUITests: XCTestCase {
         XCTAssertTrue(withTime.waitForExistence(timeout: 6), "Uhrzeit fehlt in der Agenda-Zeile")
     }
 
+    /// DATENGETRIEBEN (Fixture): Home zeigt die neue „Aufgaben"-Section mit Aufgaben (Familie + Garten),
+    /// dem Hinzufügen-Button (öffnet das Anlege-Sheet) und den Abhaken-Kreisen.
+    func testHomeShowsAufgabenSection() {
+        XCTAssertTrue(tabButton("Heute").waitForExistence(timeout: 15), "Heute-Tab fehlt")
+        tabButton("Heute").tap()
+        XCTAssertTrue(app.staticTexts["Aufgaben"].waitForExistence(timeout: 12), "Aufgaben-Section fehlt")
+        XCTAssertTrue(app.staticTexts["UITEST Steuer"].waitForExistence(timeout: 8), "Fixture-Aufgabe fehlt")
+        XCTAssertTrue(app.buttons["aufgabe-complete-aufgabe-1"].waitForExistence(timeout: 6), "Abhaken-Kreis fehlt")
+        // Hinzufügen-Button in Sicht scrollen und Anlege-Sheet öffnen.
+        let addBtn = app.buttons["aufgabe-add"]
+        XCTAssertTrue(addBtn.waitForExistence(timeout: 6), "Hinzufügen-Button fehlt")
+        var tries = 0
+        while !addBtn.isHittable && tries < 8 { app.swipeUp(); tries += 1 }
+        addBtn.tap()
+        XCTAssertTrue(app.textFields["Was ist zu tun? *"].waitForExistence(timeout: 8), "Aufgabe-Anlegen-Sheet öffnet nicht")
+    }
+
     /// DATENGETRIEBEN (Fixture): Home zeigt die Alarmanlage-Kachel (Alarmo, unscharf) mit „Aktivieren"-Menü.
     func testHomeShowsAlarmoTile() {
         XCTAssertTrue(tabButton("Heute").waitForExistence(timeout: 15), "Heute-Tab fehlt")

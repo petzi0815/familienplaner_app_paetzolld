@@ -8,6 +8,7 @@ struct HeuteView: View {
     @EnvironmentObject private var app: AppState
     @State private var calMessage = ""
     @State private var showSearch = false
+    @State private var showAddTask = false
 
     private let statCols = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
 
@@ -21,6 +22,7 @@ struct HeuteView: View {
                         if let next = (d.agenda ?? []).first { nextHighlight(next) }
                         kpiGrid(d.kpis ?? [])
                         agendaCard(d.agenda ?? [])
+                        aufgabenCard(d.aufgaben ?? [])
                     }
                     .padding()
                 } else if let err = app.dashboardError {
@@ -46,6 +48,8 @@ struct HeuteView: View {
                 }
             }
             .sheet(isPresented: $showSearch) { SearchView() }
+            .sheet(isPresented: $showAddTask) { AufgabeAddSheet() }
+            .areaToast($app.aufgabenError, isError: true)
             .refreshable { await app.loadDashboard(); await app.loadAlarmo() }
             .task { if app.dashboard == nil { await app.loadDashboard() } }
             .task { if app.alarmo == nil { await app.loadAlarmo() } }
@@ -69,7 +73,7 @@ struct HeuteView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text("Als Nächstes").font(.caption.weight(.bold)).foregroundStyle(.secondary)
                 Text(item.title).font(.headline).lineLimit(1)
-                Text(nextSubtitle(item)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                AgendaMeta(item: item)
                 if let loc = item.location, !loc.isEmpty { LocationLink(location: loc) }
             }
             Spacer(minLength: 6)
@@ -86,12 +90,6 @@ struct HeuteView: View {
         case "reminder": return "bell.fill"
         default: return "calendar"
         }
-    }
-    private func nextSubtitle(_ item: AgendaItem) -> String {
-        var parts: [String] = [DateText.pretty(item.date)]
-        if let t = item.time, !t.isEmpty { parts.append(t) }
-        if let s = item.subtitle, !s.isEmpty { parts.append(s) }
-        return parts.joined(separator: " · ")
     }
 
     // ── Update-Banner (neuer TestFlight-Build) ──
@@ -164,6 +162,35 @@ struct HeuteView: View {
         }
     }
 
+    // ── Aufgaben (Familien-Aufgaben + fällige Garten-Aufgaben) — abhakbar, per + hinzufügbar ──
+    private func aufgabenCard(_ tasks: [TaskItem]) -> some View {
+        SectionCard(title: "Aufgaben", systemImage: "checklist", key: "aufgaben") {
+            Button { showAddTask = true } label: {
+                Label("Aufgabe hinzufügen", systemImage: "plus.circle.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Palette.colors(for: "aufgaben").first!)
+            .accessibilityIdentifier("aufgabe-add")
+            Divider()
+            if tasks.isEmpty {
+                Text("Keine offenen Aufgaben. 🎉")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 6)
+            } else {
+                let shown = Array(tasks.prefix(10))
+                ForEach(shown) { task in
+                    AufgabeRow(task: task) { await app.completeTask(task) }
+                    if task.id != shown.last?.id { Divider() }
+                }
+                if tasks.count > shown.count {
+                    Text("+ \(tasks.count - shown.count) weitere").font(.caption).foregroundStyle(.secondary).padding(.top, 2)
+                }
+            }
+        }
+    }
+
     /// Ganzen Kalender-Feed (Termine + Abfuhr + Reisen) als ICS abonnieren (webcal → iOS-Abo-Dialog).
     private func subscribeCalendar() async {
         do {
@@ -220,18 +247,12 @@ struct AgendaRow: View {
         default: return "calendar"
         }
     }
-    private var subtitle: String {
-        var parts: [String] = [DateText.pretty(item.date)]
-        if let t = item.time, !t.isEmpty { parts.append(t) }
-        if let s = item.subtitle, !s.isEmpty { parts.append(s) }
-        return parts.joined(separator: " · ")
-    }
     var body: some View {
         HStack(spacing: 12) {
             GradientIcon(systemName: icon, gradientKey: item.domain, size: 36)
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.title).font(.subheadline.weight(.semibold)).lineLimit(1)
-                Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                AgendaMeta(item: item)
                 if let loc = item.location, !loc.isEmpty { LocationLink(location: loc) }
             }
             Spacer(minLength: 6)
@@ -239,6 +260,189 @@ struct AgendaRow: View {
         }
         .padding(.vertical, 2)
         .opacity(item.read == true ? 0.6 : 1)
+    }
+}
+
+/// Meta-Zeile eines Agenda-Eintrags: die Uhrzeit (falls vorhanden) steht fett + `fixedSize` VORNE,
+/// damit sie nie vom langen Datum abgeschnitten wird (lineLimit(1) kappte bisher „… · 15:45"); Datum
+/// und Person/Ort-Text folgen sekundär und dürfen kürzen.
+struct AgendaMeta: View {
+    let item: AgendaItem
+    private var dateAndExtra: String {
+        var parts = [DateText.pretty(item.date)]
+        if let s = item.subtitle, !s.isEmpty { parts.append(s) }
+        return parts.joined(separator: " · ")
+    }
+    var body: some View {
+        HStack(spacing: 5) {
+            if let t = item.time, !t.isEmpty {
+                Text(t).font(.caption.weight(.bold)).foregroundStyle(.primary).fixedSize()
+                Text("·").font(.caption).foregroundStyle(.secondary)
+            }
+            Text(dateAndExtra).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+        }
+    }
+}
+
+/// Eine Aufgaben-Zeile: Abhaken-Kreis + Titel + Beschreibung + Badges (Zuständig, Fällig/Überfällig,
+/// Wiederholung, Quelle/Projekt). Tippen auf den Kreis hakt die Aufgabe ab.
+struct AufgabeRow: View {
+    let task: TaskItem
+    let onComplete: () async -> Void
+    @State private var busy = false
+
+    private func ownerLabel(_ o: String) -> String {
+        switch o {
+        case "lars": return "Lars"
+        case "elita": return "Elita"
+        case "familie": return "Familie"
+        default: return o.prefix(1).uppercased() + o.dropFirst()
+        }
+    }
+    private func ownerColor(_ o: String) -> Color {
+        switch o {
+        case "lars": return Color(hex: "007AFF")
+        case "elita": return Color(hex: "EC4899")
+        default: return Color(hex: "6B7280")
+        }
+    }
+    private var dueText: String? {
+        if task.overdue {
+            if let du = task.daysUntil, du < 0 { return "Überfällig · \(-du) T" }
+            return "Überfällig"
+        }
+        if let d = task.dueDate, !d.isEmpty { return DateText.pretty(d) }
+        if let l = task.dueLabel, !l.isEmpty { return l }
+        return nil
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Button {
+                Task { busy = true; await onComplete(); busy = false }
+            } label: {
+                Image(systemName: busy ? "circle.dotted" : "circle")
+                    .font(.title3)
+                    .foregroundStyle(task.overdue ? Color.red : Color.secondary)
+            }
+            .buttonStyle(.plain)
+            .disabled(busy)
+            .accessibilityIdentifier("aufgabe-complete-\(task.id)")
+            .accessibilityLabel("Aufgabe \(task.title) abhaken")
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(task.title).font(.subheadline.weight(.semibold)).lineLimit(2)
+                if let d = task.description, !d.isEmpty {
+                    Text(d).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                }
+                HStack(spacing: 6) {
+                    if let o = task.owner, !o.isEmpty {
+                        Pill(text: ownerLabel(o), systemImage: "person.fill", color: ownerColor(o))
+                    }
+                    if let due = dueText {
+                        Pill(text: due, systemImage: "calendar",
+                             color: task.overdue ? .red : Color(hex: "F59E0B"), filled: task.overdue)
+                    }
+                    if let r = task.recurring, r != "einmalig", !r.isEmpty {
+                        Image(systemName: "repeat").font(.caption2).foregroundStyle(.secondary)
+                    }
+                    if task.source == "garten" {
+                        Pill(text: "Garten", systemImage: "leaf.fill", color: Color(hex: "34C759"), filled: false)
+                    } else if let p = task.project, !p.isEmpty {
+                        Pill(text: p, color: Color(hex: "6366F1"), filled: false)
+                    }
+                }
+            }
+            Spacer(minLength: 4)
+        }
+        .padding(.vertical, 3)
+    }
+}
+
+/// Neue Familien-Aufgabe anlegen: Titel + Pflicht-Beschreibung + Zuständig + optionale Fälligkeit,
+/// Wiederholung, Priorität, Projekt. Schreibt über das generische CRUD (POST /api/v1/aufgaben).
+struct AufgabeAddSheet: View {
+    @EnvironmentObject private var app: AppState
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var title = ""
+    @State private var beschreibung = ""
+    @State private var owner = "familie"
+    @State private var hasDue = false
+    @State private var due = Date()
+    @State private var priority = "normal"
+    @State private var recurring = "einmalig"
+    @State private var project = ""
+    @State private var saving = false
+    @State private var error: String?
+
+    private static let isoFmt: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX"); f.timeZone = .current; return f
+    }()
+    private let owners = [("lars", "👨 Lars"), ("elita", "👩 Elita"), ("familie", "👨‍👩‍👦 Familie")]
+    private let prios = [("niedrig", "Niedrig"), ("normal", "Normal"), ("hoch", "Hoch")]
+    private let recurrings = [("einmalig", "Einmalig"), ("taeglich", "Täglich"), ("woechentlich", "Wöchentlich"), ("monatlich", "Monatlich"), ("jaehrlich", "Jährlich")]
+
+    private var canSave: Bool {
+        !title.trimmingCharacters(in: .whitespaces).isEmpty
+            && !beschreibung.trimmingCharacters(in: .whitespaces).isEmpty && !saving
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Was ist zu tun? *", text: $title)
+                    TextField("Beschreibung *", text: $beschreibung, axis: .vertical).lineLimit(2...5)
+                    Picker("Zuständig", selection: $owner) {
+                        ForEach(owners, id: \.0) { Text($0.1).tag($0.0) }
+                    }
+                }
+                Section("Fälligkeit") {
+                    Toggle("Terminiert", isOn: $hasDue)
+                    if hasDue { DatePicker("Fällig am", selection: $due, displayedComponents: .date) }
+                    Picker("Wiederholung", selection: $recurring) {
+                        ForEach(recurrings, id: \.0) { Text($0.1).tag($0.0) }
+                    }
+                }
+                Section("Details") {
+                    Picker("Priorität", selection: $priority) {
+                        ForEach(prios, id: \.0) { Text($0.1).tag($0.0) }
+                    }
+                    TextField("Projekt (optional)", text: $project)
+                }
+                if let e = error {
+                    Text(e).font(.caption).foregroundStyle(.red)
+                }
+            }
+            .navigationTitle("✅ Neue Aufgabe")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Abbrechen") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Anlegen") { Task { await save() } }.disabled(!canSave)
+                }
+            }
+        }
+    }
+
+    private func save() async {
+        saving = true; error = nil
+        var fields: [String: Any] = [
+            "title": title.trimmingCharacters(in: .whitespaces),
+            "description": beschreibung.trimmingCharacters(in: .whitespaces),
+            "owner": owner,
+            "priority": priority,
+            "recurring": recurring,
+            "source": "manuell",
+        ]
+        if hasDue { fields["due_date"] = Self.isoFmt.string(from: due) }
+        let p = project.trimmingCharacters(in: .whitespaces)
+        if !p.isEmpty { fields["project"] = p }
+        let ok = await app.createAufgabe(fields)
+        saving = false
+        if ok { dismiss() } else { error = app.aufgabenError ?? "Konnte nicht anlegen." }
     }
 }
 

@@ -127,6 +127,11 @@ enum UITestFixtures {
             ["source": "abfuhr", "domain": "abfuhrkalender", "id": "abfuhr-1", "ref_id": 1, "title": "🗑️ Restmüll", "date": "2099-09-10", "days_until": 9999],
             ["source": "reminder", "domain": "termine", "id": "reminder-1", "ref_id": 1, "title": "UITEST Erinnerung", "subtitle": "per API", "date": "2099-09-11", "days_until": 9999],
         ],
+        "aufgaben": [
+            ["source": "aufgabe", "domain": "aufgaben", "id": "aufgabe-1", "ref_id": 1, "title": "UITEST Steuer", "description": "Unterlagen sortieren", "owner": "lars", "due_date": "2020-01-01", "days_until": -9999, "overdue": true, "status": "offen", "priority": "hoch", "recurring": "einmalig", "project": "Finanzen", "termin_id": NSNull()],
+            ["source": "aufgabe", "domain": "aufgaben", "id": "aufgabe-2", "ref_id": 2, "title": "UITEST Blumen giessen", "description": "Balkon Ostseite", "owner": "elita", "due_date": NSNull(), "days_until": NSNull(), "overdue": false, "status": "offen", "priority": "normal", "recurring": "woechentlich", "project": NSNull(), "termin_id": NSNull()],
+            ["source": "garten", "domain": "garten", "id": "garten-1", "ref_id": 5, "title": "UITEST Rasen mähen", "description": "Vorgarten", "owner": NSNull(), "due_date": NSNull(), "due_label": "Juli 2026", "days_until": NSNull(), "overdue": false, "status": "offen", "priority": "normal", "recurring": "jaehrlich", "project": "Garten", "termin_id": NSNull()],
+        ],
         "termine_upcoming": [],
         "reminders_due": 1,
         "next_trip": NSNull(),
