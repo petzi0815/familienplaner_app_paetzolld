@@ -34,6 +34,9 @@ struct TermineListView: View {
             }
         }
     }
+    // Deep-Links (`familienplaner://termin/<id>`) werden bewusst in TermineRootView eingelöst:
+    // diese View wird nur im Listenmodus ohne aktive Suche gerendert, ein Widget-/Push-Tipp im
+    // Kalendermodus würde hier nie ankommen.
 
     /// Termin-Karte als List-Zeile (transparente Zeile) mit nativen Wisch-Aktionen (Erledigen + Löschen).
     private func row(_ t: Termin) -> some View {
@@ -84,6 +87,8 @@ struct TerminCard: View {
     private var catColor: Color { TermineStyle.color(cat.color) }
     /// Vergangen & noch offen → gedimmt.
     private var dimmed: Bool { (TermineDates.daysUntil(termin.date) ?? 0) < 0 && termin.status == "offen" }
+    /// Persönlich stummgeschaltet („nicht mehr erinnern").
+    private var muted: Bool { store.isMuted(termin) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -136,6 +141,9 @@ struct TerminCard: View {
                 Pill(text: "\(TermineStyle.personEmoji(p)) \(p)", color: catColor, filled: false)
             }
             Pill(text: cat.label, color: catColor, filled: false)
+            if muted {
+                Pill(text: "🔕 Stumm", color: .gray, filled: false)
+            }
         }
     }
 
@@ -159,7 +167,7 @@ struct TerminCard: View {
             .accessibilityIdentifier("termin-read-\(termin.id)")
             .accessibilityLabel(termin.read ? "Als ungelesen markieren" : "Als gelesen markieren")
 
-            // Persönlich: Benachrichtigung (Dropdown) — 2 & 1 Tag vorher an/aus.
+            // Persönlich: Benachrichtigung (Dropdown) — 2 & 1 Tag vorher an/aus + Stummschaltung.
             Menu {
                 Button { Task { await store.setNotify(termin, true) } } label: {
                     Label("2 & 1 Tag vorher", systemImage: termin.notify ? "checkmark" : "bell")
@@ -167,12 +175,26 @@ struct TerminCard: View {
                 Button { Task { await store.setNotify(termin, false) } } label: {
                     Label("Keine Benachrichtigung", systemImage: termin.notify ? "bell.slash" : "checkmark")
                 }
+                Divider()
+                // „Stumm" schaltet auch die Standard-Erinnerungen (Vorabend/Termintag) ab —
+                // gleiche Route wie der Push-Knopf „Nicht mehr erinnern" am Sperrbildschirm.
+                if muted {
+                    Button { Task { await store.setMuted(termin, false) } } label: {
+                        Label("Wieder erinnern", systemImage: "bell.badge")
+                    }
+                    .accessibilityIdentifier("termin-unmute-\(termin.id)")
+                } else {
+                    Button(role: .destructive) { Task { await store.setMuted(termin, true) } } label: {
+                        Label("Stumm – nicht mehr erinnern", systemImage: "bell.slash.fill")
+                    }
+                    .accessibilityIdentifier("termin-mute-\(termin.id)")
+                }
             } label: {
-                Image(systemName: termin.notify ? "bell.fill" : "bell")
+                Image(systemName: muted ? "bell.slash.fill" : (termin.notify ? "bell.fill" : "bell"))
             }
-            .foregroundStyle(termin.notify ? Theme.accent : .secondary)
+            .foregroundStyle(muted ? Color.secondary : (termin.notify ? Theme.accent : Color.secondary))
             .accessibilityIdentifier("termin-notify-\(termin.id)")
-            .accessibilityLabel("Benachrichtigung wählen")
+            .accessibilityLabel(muted ? "Stumm – Benachrichtigung wählen" : "Benachrichtigung wählen")
 
             Spacer()
 

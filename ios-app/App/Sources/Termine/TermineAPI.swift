@@ -62,6 +62,12 @@ final class TermineAPI {
         _ = try await c.send("/termine/\(id)/mystate", method: "POST", body: body)
     }
 
+    /// Termin quittieren (gleiche Route wie die Push-Aktionen am Sperrbildschirm).
+    /// `action` = gelesen | erledigt | stumm | laut.
+    func ack(_ id: Int, action: String) async throws {
+        _ = try await c.send("/termine/\(id)/ack", method: "POST", body: ["action": action])
+    }
+
     func delete(_ id: Int) async throws {
         _ = try await c.send("/termine/\(id)", method: "DELETE")
     }

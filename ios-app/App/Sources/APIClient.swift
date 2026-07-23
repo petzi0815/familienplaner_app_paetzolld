@@ -174,6 +174,49 @@ final class APIClient {
         _ = try await send("/push/register", method: "POST", body: body)
     }
 
+    /// Live-Activity-Token melden. `kind` = "start" (push-to-start, pro Gerät) oder
+    /// "update" (Token einer konkreten laufenden Activity).
+    func registerLiveActivityToken(token: String, kind: String,
+                                   activityId: String? = nil, terminId: Int? = nil) async throws {
+        #if DEBUG
+        let env = "sandbox"
+        #else
+        let env = "production"
+        #endif
+        var payload: [String: Any] = ["token": token, "kind": kind, "environment": env]
+        if let activityId { payload["activity_id"] = activityId }
+        if let terminId { payload["termin_id"] = terminId }
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        _ = try await send("/push/live-activity", method: "POST", body: body)
+    }
+
+    /// Schlanker Termin-Feed für Widgets/Live Activity (`GET /api/v1/widget/termine`).
+    /// **Bewusst mit eigenem Decoder:** `WidgetTerminFeed` liegt in `Shared/` und bringt eigene
+    /// snake_case-CodingKeys mit — die globale `.convertFromSnakeCase`-Strategie würde die Keys
+    /// vorher umschreiben und damit nicht mehr passen.
+    func widgetTermine(days: Int = 14) async throws -> WidgetTerminFeed {
+        let (data, resp) = try await Self.session.data(
+            for: request("/widget/termine", query: [URLQueryItem(name: "days", value: String(days))]))
+        try checkStatus(resp, data)
+        return try JSONDecoder().decode(WidgetTermineEnvelope.self, from: data).data
+    }
+
+    /// Termin quittieren. `action` = gelesen | erledigt | stumm | laut.
+    /// Kompat-Route außerhalb von `/api/v1` (wie `/api/termine/{id}/mystate`).
+    func terminAck(id: Int, action: String) async throws {
+        guard let key = settings.apiKey, !key.isEmpty else { throw APIError(status: 401, message: "Nicht angemeldet") }
+        guard let url = URL(string: base + "/api/termine/\(id)/ack") else {
+            throw APIError(status: 0, message: "Ungültige URL")
+        }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["action": action])
+        let (data, resp) = try await Self.session.data(for: req)
+        try checkStatus(resp, data)
+    }
+
     /// Kompakter Tageszustand fürs „Heute"-Dashboard.
     func dashboard() async throws -> DashboardToday {
         if let data = UITestFixtures.dashboardData {
@@ -401,3 +444,5 @@ final class APIClient {
 
 struct EmptyOK: Decodable {}
 struct FeedSubscribeInfo: Decodable { let url: String; let webcal: String }
+/// v1-Envelope von `GET /api/v1/widget/termine` ({data:{…}, total:n}).
+struct WidgetTermineEnvelope: Decodable { let data: WidgetTerminFeed }

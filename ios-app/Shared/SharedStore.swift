@@ -16,5 +16,30 @@ enum SharedStore {
         get { defaults?.string(forKey: "apiKey") }
         set { defaults?.set(newValue, forKey: "apiKey") }
     }
-    static func clearKey() { defaults?.removeObject(forKey: "apiKey") }
+    /// Person hinter dem Login-Key ("lars" | "elita" | nil) — das Widget zeigt damit an,
+    /// wer einen Termin quittiert hat, ohne selbst /auth/me abzufragen.
+    static var owner: String? {
+        get { defaults?.string(forKey: "owner") }
+        set { defaults?.set(newValue, forKey: "owner") }
+    }
+    static func clearKey() {
+        defaults?.removeObject(forKey: "apiKey")
+        defaults?.removeObject(forKey: "owner")
+    }
+
+    /// Vollständige URL zu einem API-Pfad (führender Slash), oder nil wenn nicht konfiguriert.
+    static func url(_ path: String) -> URL? {
+        guard let base = baseURL, !base.isEmpty else { return nil }
+        return URL(string: base.hasSuffix("/") ? String(base.dropLast()) + path : base + path)
+    }
+
+    /// Authentifizierte Anfrage (Bearer aus der App-Group). nil = nicht angemeldet.
+    static func request(_ path: String, method: String = "GET") -> URLRequest? {
+        guard let url = url(path), let key = apiKey, !key.isEmpty else { return nil }
+        var req = URLRequest(url: url)
+        req.httpMethod = method
+        req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        req.timeoutInterval = 12
+        return req
+    }
 }

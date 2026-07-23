@@ -40,9 +40,17 @@ final class Settings: ObservableObject {
     }
 
     func logout() {
+        // REIHENFOLGE: erst serverseitig abmelden, DANN den Key verwerfen. Beide Aufrufe bauen
+        // ihre DELETE-Requests synchron mit dem noch gültigen Key und schicken sie best-effort im
+        // Hintergrund ab. Ohne das bliebe die push-to-start-Zeile mit ihrem owner stehen und der
+        // Server würde weiter Push/Live Activities auf dieses abgemeldete Gerät schicken.
+        LiveActivityManager.shared.stopAll(unregisterRemote: true)
+        AppDelegate.unregisterPushToken()
+
         Keychain.delete("apiKey")
         apiKey = nil
         SharedStore.clearKey()
+        WidgetCache.clear()
         WidgetCenter.shared.reloadAllTimelines()
     }
 }

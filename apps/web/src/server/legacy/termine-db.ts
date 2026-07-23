@@ -52,10 +52,10 @@ export function getCategoryInfo(cat: string) {
 }
 
 /* ── CRUD ── */
-// `owner` (Per-User-Key) → LEFT JOIN termin_user_state, ergänzt read/notify je Termin (0/1).
+// `owner` (Per-User-Key) → LEFT JOIN termin_user_state, ergänzt read/notify/muted je Termin (0/1).
 export function getAllTermine(opts?: { from?: string; to?: string; category?: string; status?: string; person?: string }, owner?: string | null): Termin[] {
   const db = getDb();
-  const sel = owner ? "t.*, COALESCE(tus.read,0) AS read, COALESCE(tus.notify,0) AS notify" : "t.*";
+  const sel = owner ? "t.*, COALESCE(tus.read,0) AS read, COALESCE(tus.notify,0) AS notify, COALESCE(tus.muted,0) AS muted" : "t.*";
   let sql = `SELECT ${sel} FROM termine t`
     + (owner ? " LEFT JOIN termin_user_state tus ON tus.termin_id=t.id AND tus.owner=@owner" : "")
     + " WHERE 1=1";
@@ -115,29 +115,74 @@ export function updateTermin(id: number, data: Partial<Termin>): boolean {
     }
   }
   if (fields.length === 0) { return false; }
+  // Altes Datum VOR dem Update merken — der Marker-Reset unten darf nur bei einer echten
+  // Verschiebung greifen. Das iOS-Bearbeiten-Formular (TermineForm) schickt `date` IMMER mit,
+  // auch wenn nur der Titel geändert wurde; ohne diesen Vergleich würde jedes Speichern die
+  // Quittierungen aller Personen löschen und den 07-Uhr-Push erneut scharf schalten.
+  const dayOf = (v: unknown) => (typeof v === 'string' ? v.trim().slice(0, 10) : '');
+  const prevDate = 'date' in data
+    ? dayOf((db.prepare('SELECT date FROM termine WHERE id = ?').get(id) as { date?: string } | undefined)?.date)
+    : '';
   fields.push("updated_at = datetime('now')");
   params.push(id);
   const result = db.prepare(`UPDATE termine SET ${fields.join(', ')} WHERE id = ?`).run(...params);
-  // Datum geändert → Per-User-Push-Marker zurücksetzen (sonst würde der 2d/1d-Push fälschlich unterdrückt).
-  if ('date' in data) {
-    db.prepare("UPDATE termin_user_state SET reminder_2d_sent=0, reminder_1d_sent=0, updated_at=datetime('now') WHERE termin_id=?").run(id);
+  // Datum geändert → Per-User-Push-Marker zurücksetzen (sonst würde der Push fälschlich unterdrückt).
+  // `reminder_0d_sent` MUSS mit zurück: der 07-Uhr-Slot („Heute") feuert ausschließlich, solange er 0 ist —
+  // ohne Reset bekäme ein verschobener Termin nie wieder eine Erinnerung. `ack_at` ebenfalls, denn eine
+  // Quittierung galt dem ALTEN Termin; sonst startet die Live Activity des neuen Datums sofort als erledigt.
+  if ('date' in data && dayOf((data as Record<string, unknown>).date) !== prevDate) {
+    db.prepare(
+      "UPDATE termin_user_state SET reminder_2d_sent=0, reminder_1d_sent=0, reminder_0d_sent=0, ack_at=NULL," +
+      " updated_at=datetime('now') WHERE termin_id=?",
+    ).run(id);
   }
   return result.changes > 0;
 }
 
 /* ── Per-User-Zustand (owner = 'lars' | 'elita') ── */
-export function setTerminUserState(terminId: number, owner: string, patch: { read?: boolean; notify?: boolean }): void {
+export interface TerminUserState { read: boolean; notify: boolean; muted: boolean; ack_at: string | null }
+
+/**
+ * Setzt/aktualisiert den Per-User-Zustand. Nur übergebene Felder werden geändert (Weglassen = unverändert).
+ * `muted` = dieser User will für DIESEN Termin keine Erinnerung mehr (Migration 0018).
+ * `ack_at` = Quittier-Zeitpunkt; `'now'` als Kürzel für datetime('now').
+ *   undefined/null → unverändert (gleiche COALESCE-Semantik wie read/notify)
+ *   `''`           → Quittierung ZURÜCKNEHMEN (ack_at = NULL), z.B. Ack-Aktion 'laut'.
+ * Ohne diesen Sentinel wäre einmal quittiert = dauerhaft quittiert (Live Activity/statusOf).
+ */
+export function setTerminUserState(terminId: number, owner: string, patch: { read?: boolean; notify?: boolean; muted?: boolean; ack_at?: string | null }): void {
   const db = getDb();
   const read = patch.read === undefined ? null : (patch.read ? 1 : 0);
   const notify = patch.notify === undefined ? null : (patch.notify ? 1 : 0);
+  const muted = patch.muted === undefined ? null : (patch.muted ? 1 : 0);
+  const clearAck = patch.ack_at === '';
+  const ackAt = patch.ack_at === undefined || patch.ack_at === null || clearAck
+    ? null
+    : (patch.ack_at === 'now' ? new Date().toISOString().slice(0, 19).replace('T', ' ') : patch.ack_at);
   db.prepare(
-    `INSERT INTO termin_user_state (termin_id, owner, read, notify)
-     VALUES (@id, @owner, COALESCE(@read,0), COALESCE(@notify,0))
+    `INSERT INTO termin_user_state (termin_id, owner, read, notify, muted, ack_at)
+     VALUES (@id, @owner, COALESCE(@read,0), COALESCE(@notify,0), COALESCE(@muted,0), @ack_at)
      ON CONFLICT(termin_id, owner) DO UPDATE SET
        read   = COALESCE(@read, read),
        notify = COALESCE(@notify, notify),
+       muted  = COALESCE(@muted, muted),
+       ack_at = CASE WHEN @clear_ack = 1 THEN NULL ELSE COALESCE(@ack_at, ack_at) END,
        updated_at = datetime('now')`,
-  ).run({ id: terminId, owner, read, notify });
+  ).run({ id: terminId, owner, read, notify, muted, ack_at: ackAt, clear_ack: clearAck ? 1 : 0 });
+}
+
+/** Liest den Per-User-Zustand (fehlende Zeile = alles false/null — der Default vor der ersten Aktion). */
+export function getTerminUserState(terminId: number, owner: string): TerminUserState {
+  const db = getDb();
+  const row = db.prepare(
+    'SELECT read, notify, muted, ack_at FROM termin_user_state WHERE termin_id = ? AND owner = ?',
+  ).get(terminId, owner) as { read?: number; notify?: number; muted?: number; ack_at?: string | null } | undefined;
+  return {
+    read: !!Number(row?.read ?? 0),
+    notify: !!Number(row?.notify ?? 0),
+    muted: !!Number(row?.muted ?? 0),
+    ack_at: row?.ack_at ?? null,
+  };
 }
 
 export function deleteTermin(id: number): boolean {
@@ -163,7 +208,7 @@ export function getTermineForMonth(year: number, month: number, owner?: string |
 export function searchTermine(query: string, owner?: string | null): Termin[] {
   const db = getDb();
   const q = `%${query}%`;
-  const sel = owner ? "t.*, COALESCE(tus.read,0) AS read, COALESCE(tus.notify,0) AS notify" : "t.*";
+  const sel = owner ? "t.*, COALESCE(tus.read,0) AS read, COALESCE(tus.notify,0) AS notify, COALESCE(tus.muted,0) AS muted" : "t.*";
   const join = owner ? " LEFT JOIN termin_user_state tus ON tus.termin_id=t.id AND tus.owner=@owner" : "";
   const results = db.prepare(
     `SELECT ${sel} FROM termine t${join}

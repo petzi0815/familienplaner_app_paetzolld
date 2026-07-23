@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import WidgetKit
 
 @MainActor
 final class AppState: ObservableObject {
@@ -22,6 +23,46 @@ final class AppState: ObservableObject {
         if target == "inbox" { selectedTab = .inbox }
         else if target == "heute" { selectedTab = .heute }
         else if target.hasPrefix("bereich:") { openBereich(String(target.dropFirst("bereich:".count))) }
+    }
+
+    // ── Deep-Links (familienplaner://…) aus Widgets, Live Activity und Push ──
+
+    /// Offener Deep-Link-Wunsch „diesen Termin zeigen" — der Termine-Bereich löst ihn ein.
+    @Published var pendingTerminId: Int?
+    /// Offener Deep-Link-Wunsch „neuen Termin anlegen".
+    @Published var pendingTerminNew = false
+    /// Offener Deep-Link-Wunsch „neue Aufgabe anlegen" (Home-Sheet).
+    @Published var pendingAufgabeNew = false
+
+    /// Einen Termin öffnen (Push-Tap / Widget): Termine-Bereich + Detail für die ID.
+    func openTermin(id: Int) {
+        pendingTerminId = id
+        openBereich("termine")
+    }
+
+    /// Deep-Link auflösen. Hosts: heute, termine, termin/<id>, foto, scan, aufgabe-neu,
+    /// termin-neu, inbox. Unbekannte Ziele landen auf „Heute".
+    func handleDeepLink(_ url: URL) {
+        guard url.scheme?.lowercased() == "familienplaner" else { return }
+        let host = (url.host ?? "").lowercased()
+        // familienplaner://termin/12 → host "termin", erster Pfadbestandteil "12"
+        let firstPath = url.pathComponents.first { $0 != "/" } ?? ""
+        switch host {
+        case "heute": selectedTab = .heute
+        case "inbox": selectedTab = .inbox
+        case "scan": selectedTab = .scan
+        case "foto": requestCamera()
+        case "termine": openBereich("termine")
+        case "termin":
+            if let id = Int(firstPath) { openTermin(id: id) } else { openBereich("termine") }
+        case "termin-neu":
+            pendingTerminNew = true
+            openBereich("termine")
+        case "aufgabe-neu":
+            pendingAufgabeNew = true
+            selectedTab = .heute
+        default: selectedTab = .heute
+        }
     }
     @Published var lebensbereiche: [Lebensbereich] = []
     @Published var inbox: [FotoInboxItem] = []
@@ -71,6 +112,8 @@ final class AppState: ObservableObject {
         Task { await checkForUpdate() }
         Task { await loadMe() }
         Task { await loadAlarmo() }
+        // Live Activities (Termine am Sperrbildschirm): Token melden + lokalen Start-Fallback.
+        if settings.isConfigured && !UITestMode.isActive { LiveActivityManager.shared.start(api: api) }
     }
 
     /// Alarmo-Status laden (unabhängig vom Dashboard, damit ein unerreichbares HA das Home nicht blockiert).
@@ -167,7 +210,14 @@ final class AppState: ObservableObject {
     }
 
     /// Angemeldete Identität laden (Rolle + Person) — für die Begrüßung.
-    func loadMe() async { if let m = try? await api.authMe() { me = m } }
+    /// Der `owner` wandert zusätzlich in die App-Group, damit Widgets/Live Activity zeigen können,
+    /// wer quittiert hat, ohne selbst `/auth/me` abzufragen.
+    func loadMe() async {
+        if let m = try? await api.authMe() {
+            me = m
+            SharedStore.owner = m.owner
+        }
+    }
 
     /// Prüft, ob im TestFlight ein neuerer Build als der installierte liegt.
     func checkForUpdate() async {
@@ -209,9 +259,28 @@ final class AppState: ObservableObject {
             // Termine laufen jetzt über den serverseitigen Per-User-Push (2 & 1 Tag vorher) →
             // lokal nur noch Vorrat (MHD) + Abfuhr planen (kein Doppel-Push).
             LocalReminders.reschedule(vorrat: d.vorratBaldAblaufend, abfuhr: d.abfuhrNext ?? [])
+            // Widgets mit frischem Termin-Feed versorgen (läuft nebenher, blockt Pull-to-Refresh nicht).
+            Task { await refreshWidgets() }
         } catch {
             dashboardError = (error as? APIError)?.errorDescription ?? "Konnte Heute-Übersicht nicht laden."
         }
+    }
+
+    /// Widget-Cache (App-Group) mit dem schlanken Termin-Feed auffrischen und alle Timelines
+    /// neu bauen. Der Cache verhindert leere Widgets, wenn die Extension gerade kein Netz hat.
+    func refreshWidgets() async {
+        if let feed = try? await api.widgetTermine(days: 14) { WidgetCache.save(feed) }
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    /// Termin quittieren (Push-Aktion, Widget-Intent oder Termine-Bereich).
+    /// `action` = gelesen | erledigt | stumm | laut.
+    func ackTermin(id: Int, action: String) async {
+        try? await api.terminAck(id: id, action: action)
+        // Laufende Live Activity sofort nachziehen (der Server-Push folgt zusätzlich).
+        if action == "gelesen" { await LiveActivityManager.shared.markAcked(terminId: id) }
+        else if action == "erledigt" || action == "stumm" { await LiveActivityManager.shared.end(terminId: id) }
+        await refreshWidgets()
     }
 
     /// Eine Aufgabe abhaken. Familien-Aufgaben laufen über die recurring-aware /complete-Route,

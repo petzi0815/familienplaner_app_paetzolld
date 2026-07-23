@@ -28,6 +28,12 @@ export interface AgendaItem {
   done?: boolean;              // geteilter Erledigt-Status
   read?: boolean;              // persönliches „gelesen" (nur wenn owner)
   notify?: boolean;            // persönliches Push-Opt-in (nur wenn owner)
+  // ── additiv (Widgets/Live Activity): absolute Zeitpunkte + Kategorie/Stummschaltung ──
+  start_at?: number;           // Unix-Sekunden des Beginns (Wanduhrzeit Europe/Berlin → UTC)
+  end_at?: number | null;      // Unix-Sekunden des Endes (null = unbekannt)
+  all_day?: boolean;           // ganztägig (keine Uhrzeit) → start_at = 00:00 lokal
+  category?: string | null;    // Quell-Kategorie (Termin-Kategorie, Abfuhr-Kategorie …) für Emoji/Farbe
+  muted?: boolean;             // persönlich stummgeschaltet (nur wenn owner, nur Termine)
 }
 
 /** Datengetriebene KPI-Kachel fürs Home (iOS rendert sie generisch). */
@@ -58,12 +64,76 @@ const MONTHS_DE = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli",
 const monthLabel = (m: number, y: number): string => `${MONTHS_DE[Math.max(1, Math.min(12, m)) - 1]} ${y}`;
 
 const DAY_MS = 86400000;
-/** Ganztägige Tages-Differenz (negativ = vergangen, null = unparsbar). */
+
+// ── Wanduhrzeit → Unix-Sekunden (Europe/Berlin) ────────────────────────────────────────────────
+// ANNAHME zur Serverzeitzone: die DB hält AUSSCHLIESSLICH lokale Datums-/Zeitstrings der Familie
+// (YYYY-MM-DD / HH:MM in Europe/Berlin), die Prozess-Zeitzone des Containers ist aber NICHT gesetzt
+// (Coolify/Node ⇒ i.d.R. UTC). `new Date("2026-07-24T15:45:00")` würde also je nach Host anders
+// auflösen. Darum rechnen wir explizit über `Intl` mit der IANA-Zone „Europe/Berlin" — unabhängig
+// von der Prozess-Zeitzone, inkl. Sommer-/Winterzeit.
+const BERLIN_TZ = "Europe/Berlin";
+const BERLIN_FMT = new Intl.DateTimeFormat("en-US", {
+  timeZone: BERLIN_TZ, hour12: false,
+  year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit",
+});
+
+/** UTC-Offset (Sekunden) von Europe/Berlin zum gegebenen absoluten Zeitpunkt. */
+function berlinOffsetSeconds(utcMs: number): number {
+  const parts = BERLIN_FMT.formatToParts(new Date(utcMs));
+  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? 0);
+  const hour = get("hour") % 24; // manche Engines liefern "24" für Mitternacht
+  const asUtc = Date.UTC(get("year"), get("month") - 1, get("day"), hour, get("minute"), get("second"));
+  return Math.round((asUtc - utcMs) / 1000);
+}
+
+/**
+ * Lokale Wanduhrzeit (Europe/Berlin) → Unix-Sekunden. `time` leer/null ⇒ 00:00 (ganztägig).
+ * Zwei Durchläufe, damit auch die DST-Umschalttage korrekt sind (Offset am Zieltag, nicht am Rohwert).
+ */
+function berlinEpoch(date?: string | null, time?: string | null): number | undefined {
+  if (!date) return undefined;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(date).slice(0, 10));
+  if (!m) return undefined;
+  const hm = /^(\d{1,2}):(\d{2})/.exec(String(time ?? "").trim());
+  const naive = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), hm ? Number(hm[1]) : 0, hm ? Number(hm[2]) : 0, 0);
+  if (isNaN(naive)) return undefined;
+  let ts = Math.round(naive / 1000) - berlinOffsetSeconds(naive);
+  ts = Math.round(naive / 1000) - berlinOffsetSeconds(ts * 1000);
+  return ts;
+}
+
+/** Heutiges Datum ('YYYY-MM-DD') in Europe/Berlin — unabhängig von der Prozess-Zeitzone (Container = UTC). */
+function berlinToday(utcMs: number = Date.now()): string {
+  const parts = BERLIN_FMT.formatToParts(new Date(utcMs));
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+/** Jahr + Monat (1–12) von HEUTE in Europe/Berlin — gemeinsame Basis für monatsbasierte Abfragen. */
+function berlinYearMonth(utcMs: number = Date.now()): { y: number; mo: number } {
+  const t = berlinToday(utcMs);
+  return { y: Number(t.slice(0, 4)), mo: Number(t.slice(5, 7)) };
+}
+
+/** 'YYYY-MM-DD' → UTC-Mitternacht in ms (reiner Kalenderwert, KEIN Zeitzonenbezug). */
+function calendarMs(dateStr: string): number | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateStr).slice(0, 10));
+  if (!m) return null;
+  const ms = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return isNaN(ms) ? null : ms;
+}
+
+/**
+ * Ganztägige Tages-Differenz zu HEUTE in Europe/Berlin (negativ = vergangen, null = unparsbar).
+ * Bewusst reine UTC-Kalenderarithmetik auf beiden Seiten (⇒ DST-unabhängig) mit dem Berliner
+ * Heute-Datum als Basis — sonst driften `days_until` und `start_at`/`berlinEpoch` zwischen
+ * 00:00 und 02:00 Berliner Zeit um einen Tag auseinander (Container läuft in UTC).
+ */
 function daysUntil(dateStr: string): number | null {
-  const d = new Date(dateStr.slice(0, 10) + "T00:00:00");
-  if (isNaN(d.getTime())) return null;
-  const t0 = new Date(); t0.setHours(0, 0, 0, 0);
-  return Math.round((d.getTime() - t0.getTime()) / DAY_MS);
+  const target = calendarMs(dateStr);
+  const today = calendarMs(berlinToday());
+  if (target == null || today == null) return null;
+  return Math.round((target - today) / DAY_MS);
 }
 
 /** Cross-Domain-Volltextsuche (FTS5 mit LIKE-Fallback). */
@@ -113,52 +183,88 @@ const safeDb = <T>(fn: () => T, fb: T): T => { try { return fn(); } catch { retu
 export function agenda(days = 21, owner?: string | null): AgendaItem[] {
   const db = getDb();
   const win = `+${Math.max(1, Math.min(days, 365))} days`;
+  // Fenstergrenzen gegen das BERLINER Heute rechnen (nicht `date('now','localtime')` — die
+  // Prozess-Zeitzone des Containers ist UTC, das Fenster läge zwischen 00:00 und 02:00 Berliner
+  // Zeit sonst einen Tag daneben und driftete gegen `days_until`/`start_at`).
+  const today = berlinToday();
   const items: AgendaItem[] = [];
 
-  // ── Termine (offen; leicht rückwirkend für „vergessene") + optional per-User read/notify ──
+  // ── Termine (offen; leicht rückwirkend für „vergessene") + optional per-User read/notify/muted ──
   const termineSql =
-    "SELECT t.id,t.title,t.description,t.category,t.date,t.time,t.end_date,t.location,t.person,t.status" +
-    (owner ? ", tus.read AS ustate_read, tus.notify AS ustate_notify" : "") +
+    "SELECT t.id,t.title,t.description,t.category,t.date,t.time,t.end_date,t.end_time,t.location,t.person,t.status" +
+    (owner ? ", tus.read AS ustate_read, tus.notify AS ustate_notify, tus.muted AS ustate_muted" : "") +
     " FROM termine t" +
     (owner ? " LEFT JOIN termin_user_state tus ON tus.termin_id=t.id AND tus.owner=@owner" : "") +
-    " WHERE t.date IS NOT NULL AND t.date<>'' AND t.date >= date('now','localtime','-7 days')" +
-    " AND t.date <= date('now','localtime',@win) AND COALESCE(t.status,'')<>'erledigt'" +
+    " WHERE t.date IS NOT NULL AND t.date<>'' AND COALESCE(t.status,'')<>'erledigt'" +
+    // Im Fenster beginnend ODER bereits laufend: ein am 20. gestarteter, bis zum 25. laufender
+    // Termin muss sichtbar bleiben, auch wenn sein Startdatum aus dem Rückwärts-Fenster fällt.
+    " AND ((t.date >= date(@today,'-7 days') AND t.date <= date(@today,@win))" +
+    "   OR (t.end_date IS NOT NULL AND t.end_date<>'' AND t.date <= date(@today,@win)" +
+    "       AND t.end_date >= @today))" +
     " ORDER BY t.date ASC, t.time ASC";
-  const termineParams = owner ? { owner, win } : { win };
+  const termineParams = owner ? { owner, win, today } : { win, today };
   for (const t of safeDb(() => db.prepare(termineSql).all(termineParams) as Record<string, unknown>[], [])) {
+    const time = t.time ? String(t.time).slice(0, 5) : null;
+    const endTime = t.end_time ? String(t.end_time).slice(0, 5) : null;
+    const endDate = t.end_date ? String(t.end_date) : null;
+    // Ende: `end_time` gewinnt (am `end_date`, sonst am Starttag); ohne `end_time` bleibt es bei
+    // 00:00 des Endtages — diesen Tag zählt der Client inklusive mit (WidgetTermin.swift::allDayEnd).
+    // ENTSCHEIDEND ist die Absicherung danach: das iOS-Formular schreibt NUR ein End-DATUM (nie eine
+    // End-ZEIT). Bei einem GETIMTEN Termin mit end_date = Starttag ergäbe die Formel 00:00 des
+    // Starttages, also ein Ende VOR dem Beginn — der Termin gälte den ganzen Tag als vorbei und
+    // verschwände aus allen Widgets (vgl. server/jobs/registry.ts::terminWindow, das `end` darum
+    // ausschliesslich aus `end_time` ableitet).
+    const startAt = berlinEpoch(String(t.date), time);
+    const endRaw = endTime ? berlinEpoch(endDate ?? String(t.date), endTime)
+      : (endDate ? berlinEpoch(endDate, null) : undefined);
+    // Ein Ende, das nicht NACH dem Beginn liegt, ist kein Ende. Fängt genau den obigen Fall ab und
+    // ausserdem den ganztägigen Ein-Tages-Termin (end == start ⇒ null, der Client fällt ohnehin auf
+    // den Starttag zurück). Ein GETIMTER MEHRTÄGIGER Termin behält bewusst 00:00 des Endtages —
+    // sonst wäre er im Widget nach einer Stunde am ersten Tag „vorbei".
+    const endAt = endRaw != null && startAt != null && endRaw <= startAt ? null : (endRaw ?? null);
     items.push({
       source: "termin", domain: "termine", id: `termin-${t.id}`, ref_id: Number(t.id),
       title: String(t.title ?? ""),
       subtitle: (t.person ? String(t.person) : null),
       location: (t.location ? String(t.location) : null),
-      date: String(t.date), time: (t.time ? String(t.time).slice(0, 5) : null), end_date: (t.end_date ? String(t.end_date) : null),
+      date: String(t.date), time, end_date: (t.end_date ? String(t.end_date) : null),
       days_until: daysUntil(String(t.date)), done: false,
       read: owner ? !!Number(t.ustate_read ?? 0) : undefined,
       notify: owner ? !!Number(t.ustate_notify ?? 0) : undefined,
+      start_at: startAt,
+      end_at: endAt,
+      all_day: !time,
+      category: (t.category ? String(t.category) : null),
+      muted: owner ? !!Number(t.ustate_muted ?? 0) : undefined,
     });
   }
 
   // ── Abfuhr ──
   for (const a of safeDb(() => db.prepare(
-    "SELECT id,kategorie,summary,datum FROM abfuhr_termine WHERE datum >= date('now','localtime') AND datum <= date('now','localtime',@win) ORDER BY datum ASC",
-  ).all({ win }) as Record<string, unknown>[], [])) {
+    "SELECT id,kategorie,summary,datum FROM abfuhr_termine WHERE datum >= @today AND datum <= date(@today,@win) ORDER BY datum ASC",
+  ).all({ win, today }) as Record<string, unknown>[], [])) {
     const cat = abfuhrCategory(String(a.kategorie));
     items.push({
       source: "abfuhr", domain: "abfuhrkalender", id: `abfuhr-${a.id}`, ref_id: Number(a.id),
       title: `${cat?.emoji ?? "🗑️"} ${cat?.label ?? a.summary ?? a.kategorie}`,
       date: String(a.datum), time: null, days_until: daysUntil(String(a.datum)),
+      start_at: berlinEpoch(String(a.datum), null), end_at: null, all_day: true,
+      category: (a.kategorie ? String(a.kategorie) : null),
     });
   }
 
   // ── Reisen (Recherche-/Ideen-Trips status='idee' ausblenden) ──
   for (const r of safeDb(() => db.prepare(
-    "SELECT id,title,destination,start_date,end_date FROM reisen_trips WHERE start_date IS NOT NULL AND start_date<>'' AND COALESCE(status,'')<>'idee' AND start_date >= date('now','localtime') AND start_date <= date('now','localtime',@win) ORDER BY start_date ASC",
-  ).all({ win }) as Record<string, unknown>[], [])) {
+    "SELECT id,title,destination,start_date,end_date FROM reisen_trips WHERE start_date IS NOT NULL AND start_date<>'' AND COALESCE(status,'')<>'idee' AND start_date >= @today AND start_date <= date(@today,@win) ORDER BY start_date ASC",
+  ).all({ win, today }) as Record<string, unknown>[], [])) {
     items.push({
       source: "reise", domain: "reisen", id: `reise-${r.id}`, ref_id: Number(r.id),
       title: `${r.title}`, subtitle: (r.destination ? String(r.destination) : null),
       date: String(r.start_date), time: null, end_date: (r.end_date ? String(r.end_date) : null),
       days_until: daysUntil(String(r.start_date)),
+      start_at: berlinEpoch(String(r.start_date), null),
+      end_at: berlinEpoch(r.end_date ? String(r.end_date) : null, null) ?? null,
+      all_day: true, category: null,
     });
   }
 
@@ -168,15 +274,18 @@ export function agenda(days = 21, owner?: string | null): AgendaItem[] {
   // ── Generische Erinnerungen (per API injizierbar); Familie (owner NULL) + eigene ──
   const remSql =
     "SELECT id,title,body,date,time,domain,owner FROM reminders WHERE status='offen' AND date IS NOT NULL AND date<>''" +
-    " AND date >= date('now','localtime','-7 days') AND date <= date('now','localtime',@win)" +
+    " AND date >= date(@today,'-7 days') AND date <= date(@today,@win)" +
     (owner ? " AND (owner IS NULL OR owner=@owner)" : "") +
     " ORDER BY date ASC";
-  for (const r of safeDb(() => db.prepare(remSql).all(owner ? { owner, win } : { win }) as Record<string, unknown>[], [])) {
+  for (const r of safeDb(() => db.prepare(remSql).all(owner ? { owner, win, today } : { win, today }) as Record<string, unknown>[], [])) {
+    const time = r.time ? String(r.time) : null;
     items.push({
       source: "reminder", domain: (r.domain ? String(r.domain) : "termine"), id: `reminder-${r.id}`, ref_id: Number(r.id),
       title: String(r.title ?? ""), subtitle: (r.body ? String(r.body) : null),
-      date: String(r.date), time: (r.time ? String(r.time) : null),
+      date: String(r.date), time,
       days_until: daysUntil(String(r.date)), owner: (r.owner ? String(r.owner) : null),
+      start_at: berlinEpoch(String(r.date), time), end_at: null, all_day: !time,
+      category: (r.domain ? String(r.domain) : null),
     });
   }
 
@@ -191,9 +300,7 @@ export function agenda(days = 21, owner?: string | null): AgendaItem[] {
 export function aufgabenFeed(): TaskItem[] {
   const db = getDb();
   const items: TaskItem[] = [];
-  const now = new Date();
-  const y = now.getFullYear();
-  const mo = now.getMonth() + 1;
+  const { y, mo } = berlinYearMonth(); // Monatswechsel nach Berliner Kalender, nicht nach UTC
 
   // ── Familien-Aufgaben (offen) ──
   for (const a of safeDb(() => db.prepare(
@@ -256,9 +363,7 @@ export function aufgabenErledigt(days = 30, limit = 25): TaskItem[] {
   const db = getDb();
   const items: TaskItem[] = [];
   const cut = `-${Math.max(1, Math.min(days, 365))} days`;
-  const now = new Date();
-  const y = now.getFullYear();
-  const mo = now.getMonth() + 1;
+  const { y, mo } = berlinYearMonth(); // konsistent zu aufgabenFeed()
 
   for (const a of safeDb(() => db.prepare(
     "SELECT id,title,description,owner,due_date,termin_id,project,priority,recurring,done_at FROM aufgaben WHERE status='erledigt' AND done_at IS NOT NULL AND done_at >= date('now',@cut) ORDER BY done_at DESC LIMIT @limit",
@@ -301,8 +406,12 @@ export function aufgabenErledigt(days = 30, limit = 25): TaskItem[] {
 export function dashboardToday(owner?: string | null): Record<string, unknown> {
   const db = getDb();
   const safe = safeDb;
-  const month = new Date().getMonth() + 1;
-  const year = new Date().getFullYear();
+  // Heute/Monat/Jahr immer aus `berlinToday()` (einzige Heute-Quelle) — die Prozess-Zeitzone ist UTC.
+  // ANMERKUNG: die reinen Zähl-Abfragen unten arbeiten weiterhin mit dem SQLite-`date('now')`
+  // (= UTC-Datum). Zwischen 00:00 und 02:00 Berliner Zeit zählen sie darum noch mit dem Vortag.
+  // Bewusst nicht umgebaut: `num()` bindet positionell, ein Mischen mit benannten Parametern ist in
+  // better-sqlite3 nicht erlaubt — der Umbau träfe ~10 breit genutzte Kennzahlen auf einmal.
+  const { y: year, mo: month } = berlinYearMonth();
   const num = (sql: string, ...p: unknown[]) => safe(() => (db.prepare(sql).get(...p) as { c: number }).c, 0);
 
   const termineUpcoming = safe(() => db.prepare(
@@ -354,7 +463,7 @@ export function dashboardToday(owner?: string | null): Record<string, unknown> {
   ];
 
   return {
-    date: new Date().toISOString().slice(0, 10),
+    date: berlinToday(),
     kpis,
     agenda: safe(() => agenda(30, owner), []),
     aufgaben: safe(() => aufgabenFeed(), []),
@@ -377,16 +486,19 @@ export function remindersDue(owner?: string | null): { count: number; data: Reco
   const rows = db.prepare(
     "SELECT * FROM termine WHERE COALESCE(reminder_sent,0)=0 AND COALESCE(status,'')<>'erledigt' AND date IS NOT NULL AND date<>''",
   ).all() as { id: number; title: string; date: string; reminder_days?: number }[];
-  const today = new Date(); today.setHours(0, 0, 0, 0);
+  // Heute-Basis = Berliner Kalendertag (einzige Heute-Quelle); Vergleich als reine UTC-Kalender-
+  // arithmetik ⇒ DST-unabhängig und deckungsgleich mit `daysUntil()`.
+  const today = berlinToday();
+  const todayMs = calendarMs(today);
   const dueTermine = rows.filter((t) => {
-    const d = new Date(t.date + "T00:00:00");
-    if (isNaN(d.getTime())) return false;
-    const ws = new Date(d); ws.setDate(d.getDate() - (t.reminder_days ?? 0));
-    return today >= ws && today <= d;
+    const d = calendarMs(String(t.date));
+    if (d == null || todayMs == null) return false;
+    const ws = d - Number(t.reminder_days ?? 0) * DAY_MS;
+    return todayMs >= ws && todayMs <= d;
   }).map((t) => ({ ...t, source: "termin" }));
-  const remSql = "SELECT id,title,body,date,time,domain,owner FROM reminders WHERE status='offen' AND date IS NOT NULL AND date<>'' AND date<=date('now','localtime')"
+  const remSql = "SELECT id,title,body,date,time,domain,owner FROM reminders WHERE status='offen' AND date IS NOT NULL AND date<>'' AND date<=@today"
     + (owner ? " AND (owner IS NULL OR owner=@owner)" : "");
-  const dueReminders = safeDb(() => (owner ? db.prepare(remSql).all({ owner }) : db.prepare(remSql).all()) as Record<string, unknown>[], [])
+  const dueReminders = safeDb(() => (owner ? db.prepare(remSql).all({ owner, today }) : db.prepare(remSql).all({ today })) as Record<string, unknown>[], [])
     .map((r) => ({ ...r, source: "reminder" }));
   const data = [...dueTermine, ...dueReminders] as unknown as Record<string, unknown>[];
   data.sort((a, b) => String(a.date).localeCompare(String(b.date)));

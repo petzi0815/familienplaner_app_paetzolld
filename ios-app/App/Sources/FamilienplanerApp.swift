@@ -19,6 +19,8 @@ struct FamilienplanerApp: App {
                 .environmentObject(settings)
                 .tint(Theme.accent)
                 .onAppear { AppDelegate.appState = app }
+                // Deep-Links aus Widgets, Live Activity und Push (familienplaner://…).
+                .onOpenURL { app.handleDeepLink($0) }
         }
     }
 }

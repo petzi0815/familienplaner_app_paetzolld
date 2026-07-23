@@ -63,6 +63,28 @@ final class FamilienplanerUITests: XCTestCase {
         if back.exists { back.tap() }
     }
 
+    /// Deep-Link genau so auslösen, wie es Widget, Live Activity und Push tun: über das System
+    /// (`familienplaner://…`). Die laufende Test-Instanz wird dadurch nach vorn geholt und bekommt
+    /// den Link via `.onOpenURL` — der `-uitest`-Startzustand bleibt erhalten (kein Neustart).
+    /// Gibt zurück, ob die App danach wieder im Vordergrund ist.
+    @discardableResult
+    private func openDeepLink(_ link: String) -> Bool {
+        guard let url = URL(string: link) else {
+            XCTFail("Ungültiger Deep-Link: \(link)")
+            return false
+        }
+        XCUIDevice.shared.system.open(url)
+        return waitUntil(self.app.state == .runningForeground, timeout: 15)
+    }
+
+    /// Element irgendwo im Baum über ein Identifier-Präfix suchen (Menü-Einträge sind je nach
+    /// Rendering Button ODER anderer Elementtyp → `.any` statt `app.buttons`).
+    private func anyElement(idPrefix: String) -> XCUIElement {
+        app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", idPrefix))
+            .firstMatch
+    }
+
     // MARK: - Tests
 
     /// App startet in die Tab-Bar (nicht in den Login).
@@ -360,5 +382,89 @@ final class FamilienplanerUITests: XCTestCase {
 
         goBack()
         XCTAssertTrue(waitUntil(tileEl.isHittable), "Zurück aus dem Pizza-Bereich fehlgeschlagen")
+    }
+
+    // MARK: - Termin-Widgets / Push-Quittierung (das in XCUITest Testbare)
+    //
+    // Widgets, Live Activities und die Sperrbildschirm-Aktionen selbst laufen in eigenen Prozessen
+    // (WidgetKit-Extension bzw. SpringBoard) und sind mit XCUITest NICHT ansteuerbar. Testbar ist
+    // die App-Seite dieser Features: das Deep-Link-Routing (Widget-/Push-Tap) und die neue
+    // Stumm-Aktion in der Termin-Karte.
+
+    /// Deep-Link `familienplaner://termine` (Widget-Tap / Push-Tap) öffnet den Termine-Bereich.
+    /// Vorher wird bewusst auf einen anderen Tab gewechselt, damit der Test nicht nur den
+    /// Startzustand misst, sondern die tatsächliche Navigation.
+    func testDeepLinkOpensTermineBereich() {
+        XCTAssertTrue(tabButton("Inbox").waitForExistence(timeout: 15), "Tab-Bar fehlt")
+        tabButton("Inbox").tap()
+        XCTAssertTrue(waitUntil(!self.app.staticTexts["Familie Paetzold-Stilke"].exists),
+                      "Termine-Bereich war schon vor dem Deep-Link offen")
+
+        XCTAssertTrue(openDeepLink("familienplaner://termine"),
+                      "App ist nach dem Deep-Link nicht in den Vordergrund gekommen")
+        XCTAssertTrue(app.staticTexts["Familie Paetzold-Stilke"].waitForExistence(timeout: 15),
+                      "Deep-Link 'termine' hat nicht in den Termine-Bereich navigiert")
+    }
+
+    /// Deep-Link `familienplaner://termin-neu` (Quick-Actions-Widget) öffnet den Termine-Bereich
+    /// UND direkt das Anlege-Formular. Deckt die Kette AppState.handleDeepLink →
+    /// pendingTerminNew → TermineListView.consumeDeepLink → Sheet ab (läuft ohne Backend).
+    func testDeepLinkTerminNeuOpensFormular() {
+        XCTAssertTrue(tabButton("Heute").waitForExistence(timeout: 15), "Tab-Bar fehlt")
+
+        XCTAssertTrue(openDeepLink("familienplaner://termin-neu"),
+                      "App ist nach dem Deep-Link nicht in den Vordergrund gekommen")
+        XCTAssertTrue(app.textFields["Was steht an? *"].waitForExistence(timeout: 20),
+                      "Deep-Link 'termin-neu' hat das Anlege-Formular nicht geöffnet")
+    }
+
+    /// Deep-Link `familienplaner://inbox` (Foto-Push) schaltet auf den Inbox-Tab.
+    func testDeepLinkOpensInbox() {
+        XCTAssertTrue(tabButton("Heute").waitForExistence(timeout: 15), "Tab-Bar fehlt")
+        tabButton("Heute").tap()
+
+        XCTAssertTrue(openDeepLink("familienplaner://inbox"),
+                      "App ist nach dem Deep-Link nicht in den Vordergrund gekommen")
+        let inbox = tabButton("Inbox")
+        XCTAssertTrue(inbox.waitForExistence(timeout: 10), "Inbox-Tab fehlt")
+        // Doppelt abgesichert: ausgewählter Tab ODER die Inbox-Navigationsleiste ist da
+        // (die Auswahl-Markierung der Liquid-Glass-Tab-Bar ist je nach Layout nicht gesetzt).
+        XCTAssertTrue(waitUntil(inbox.isSelected || self.app.navigationBars["Inbox"].exists, timeout: 10),
+                      "Deep-Link 'inbox' hat nicht auf den Inbox-Tab geschaltet")
+    }
+
+    /// Die neue Stumm-Aktion im Benachrichtigungs-Menü der Termin-Karte (gleiche Route wie die
+    /// Push-Aktion „Nicht mehr erinnern" am Sperrbildschirm).
+    ///
+    /// EHRLICHER HINWEIS: der `-uitest`-Lauf hat kein Backend, und für `/termine` gibt es (Stand
+    /// jetzt) KEINE Fixture in `UITestFixtures` → es existiert keine Termin-Karte, an der das Menü
+    /// hängen könnte. Statt einen Scheintest grün zu melden, wird der Test dann sauber
+    /// ÜBERSPRUNGEN. Sobald eine `/termine`-Fixture ergänzt ist (`UITestFixtures.array` →
+    /// `case "/termine"`), greift er automatisch und prüft das Menü echt.
+    func testTerminCardNotifyMenuHasMuteAction() throws {
+        openBereiche()
+        let t = tile("termine")
+        XCTAssertTrue(t.waitForExistence(timeout: 10), "Termine-Kachel fehlt")
+        t.tap()
+        XCTAssertTrue(app.staticTexts["Familie Paetzold-Stilke"].waitForExistence(timeout: 15),
+                      "Termine-Bereich öffnet nicht")
+
+        // Menü-Anker der Karte: Glocke mit Identifier "termin-notify-<id>".
+        let notify = anyElement(idPrefix: "termin-notify-")
+        try XCTSkipUnless(
+            notify.waitForExistence(timeout: 8),
+            "Keine Termin-Karte im -uitest-Lauf (kein Backend, keine /termine-Fixture) — Stumm-Menü nicht prüfbar")
+        notify.tap()
+
+        // Menü-Einträge über den Identifier suchen (Label-Subscript matcht bei gesetzter ID nicht).
+        // Fallback über das Label nur, falls SwiftUI die ID nicht ins UIMenu durchreicht.
+        let byId = app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH 'termin-mute-' OR identifier BEGINSWITH 'termin-unmute-'")
+        ).firstMatch
+        let byLabel = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS %@", "erinnern")
+        ).firstMatch
+        XCTAssertTrue(waitUntil(byId.exists || byLabel.exists, timeout: 8),
+                      "Benachrichtigungs-Menü der Termin-Karte enthält keinen Stumm-Eintrag")
     }
 }

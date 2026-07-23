@@ -59,7 +59,17 @@ struct HeuteView: View {
             .refreshable { await app.loadDashboard(); await app.loadAlarmo() }
             .task { if app.dashboard == nil { await app.loadDashboard() } }
             .task { if app.alarmo == nil { await app.loadAlarmo() } }
+            // Deep-Link `familienplaner://aufgabe-neu` (Schnellaktionen-Widget) → Anlege-Sheet.
+            .task { consumeAufgabeDeepLink() }
+            .onChange(of: app.pendingAufgabeNew) { _, _ in consumeAufgabeDeepLink() }
         }
+    }
+
+    /// Offenen Deep-Link-Wunsch „neue Aufgabe" einlösen (einmalig, Flag wird zurückgesetzt).
+    private func consumeAufgabeDeepLink() {
+        guard app.pendingAufgabeNew else { return }
+        app.pendingAufgabeNew = false
+        showAddTask = true
     }
 
     private var greeting: String {

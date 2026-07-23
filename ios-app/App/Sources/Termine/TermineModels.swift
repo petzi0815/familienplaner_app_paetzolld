@@ -28,6 +28,7 @@ struct Termin: Identifiable, Equatable {
     var updatedAt: String?
     var read: Bool              // PERSÖNLICH (nur bei Per-User-Key gesetzt)
     var notify: Bool            // PERSÖNLICH: Push-Opt-in (2 & 1 Tag vorher)
+    var muted: Bool             // PERSÖNLICH: „nicht mehr erinnern" (Serverzustand, Migration 0018)
 
     init(fields f: [String: Any]) {
         id = Coerce.int(f["id"]) ?? 0
@@ -52,6 +53,7 @@ struct Termin: Identifiable, Equatable {
         updatedAt = Coerce.str(f["updated_at"])
         read = Coerce.bool(f["read"])
         notify = Coerce.bool(f["notify"])
+        muted = Coerce.bool(f["muted"])
     }
 
     var isDone: Bool { status == "erledigt" }

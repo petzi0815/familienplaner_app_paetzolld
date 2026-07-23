@@ -48,6 +48,15 @@ targets:
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         UILaunchScreen: {}
         ITSAppUsesNonExemptEncryption: false
+        # Live Activities (Termine am Sperrbildschirm + Dynamic Island); FrequentUpdates erlaubt
+        # engmaschige Push-Updates (Status bevorstehend → läuft → quittiert).
+        NSSupportsLiveActivities: true
+        NSSupportsLiveActivitiesFrequentUpdates: true
+        # Deep-Links aus Widgets/Live Activity/Push: familienplaner://termin/12 usw.
+        CFBundleURLTypes:
+          - CFBundleURLName: app.yagemi.familienplaner
+            CFBundleURLSchemes:
+              - familienplaner
         NSCameraUsageDescription: "Zum Aufnehmen von Fotos und Scannen von Barcodes (Bücher-ISBN, Lebensmittel)."
         NSPhotoLibraryUsageDescription: "Zum Auswählen von Fotos aus der Mediathek."
         # Erlaubt canOpenURL für die Google-Maps-App (Ort auf dem Dashboard antippen).

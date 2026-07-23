@@ -42,6 +42,10 @@ final class TermineStore: ObservableObject, NotifiableStore {
         rebuildCategoryLookup()
     }
 
+    /// Persönlich stummgeschaltet („nicht mehr erinnern"). Kommt als `muted` aus dem Kompat-Feed
+    /// (Liste, Monat und Suche liefern es bei Per-User-Key) — kein lokaler Cache, kein Drift.
+    func isMuted(_ t: Termin) -> Bool { t.muted }
+
     // MARK: - Laden
 
     func loadAll() async {
@@ -211,6 +215,16 @@ final class TermineStore: ObservableObject, NotifiableStore {
         do {
             try await api.setState(t.id, notify: on)
             notify(on ? "Benachrichtigung an (2 & 1 Tag vorher)" : "Benachrichtigung aus")
+            await reloadList(); await reloadMonth()
+        } catch { notify(errText(error), error: true) }
+    }
+
+    /// Persönlich stummschalten bzw. wieder erinnern lassen — dieselbe Route wie die
+    /// Push-Aktion „Nicht mehr erinnern" am Sperrbildschirm (`stumm` setzt zusätzlich notify=0).
+    func setMuted(_ t: Termin, _ on: Bool) async {
+        do {
+            try await api.ack(t.id, action: on ? "stumm" : "laut")
+            notify(on ? "Stumm – keine Erinnerung mehr" : "Erinnerungen wieder aktiv")
             await reloadList(); await reloadMonth()
         } catch { notify(errText(error), error: true) }
     }

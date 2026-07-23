@@ -4,6 +4,9 @@ import SwiftUI
 /// Kopf + Stat-Pillen + Listen/Kalender-Umschalter + Live-Suche + Kategorie-Chips + aktive Ansicht.
 struct TermineRootView: View {
     @StateObject private var store: TermineStore
+    @EnvironmentObject private var app: AppState
+    /// Termin-ID, für die wir Filter/Liste schon einmal nachgeladen haben (verhindert Reload-Schleifen).
+    @State private var resolveAttempt: Int?
 
     init(settings: Settings) { _store = StateObject(wrappedValue: TermineStore(settings: settings)) }
 
@@ -31,10 +34,16 @@ struct TermineRootView: View {
                 }
             }
         }
-        .task { if store.termine.isEmpty && store.loading { await store.loadAll() } }
+        .task {
+            if store.termine.isEmpty && store.loading { await store.loadAll() }
+            await consumeDeepLink()
+        }
         .environmentObject(store)
         .areaToast($store.message, isError: store.messageIsError)
         .onChange(of: store.search) { _, _ in store.searchChanged() }
+        .onChange(of: app.pendingTerminId) { _, _ in Task { await consumeDeepLink() } }
+        .onChange(of: app.pendingTerminNew) { _, _ in Task { await consumeDeepLink() } }
+        .onChange(of: store.termine.count) { _, _ in Task { await consumeDeepLink() } }
         .sheet(item: $store.formRef) { ref in
             TermineFormSheet(termin: ref.termin, initialDate: ref.initialDate).environmentObject(store)
         }
@@ -49,6 +58,54 @@ struct TermineRootView: View {
             }
             Button("Abbrechen", role: .cancel) { store.deleteTarget = nil }
         }
+    }
+
+    // ── Deep-Links (Widget / Push / Live Activity) ──
+
+    /// Offene Deep-Link-Wünsche einlösen (`familienplaner://termin/<id>` bzw. `…/termin-neu`).
+    ///
+    /// Liegt bewusst hier und nicht in `TermineListView`: die Liste wird im Kalendermodus und bei
+    /// aktiver Suche gar nicht gerendert — ein Tipp auf einen Termin im Widget wäre dann im Bereich
+    /// gelandet, aber nicht im Termin. Deshalb erzwingen wir für einen Termin-Wunsch den
+    /// Listenmodus, räumen die Suche weg und heben notfalls den Kategorie-Filter auf.
+    private func consumeDeepLink() async {
+        if app.pendingTerminNew {
+            app.pendingTerminNew = false
+            store.formRef = TermineFormRef(termin: nil, initialDate: nil)
+        }
+        guard let id = app.pendingTerminId else { return }
+
+        // Der Termin soll sichtbar sein, wenn das Sheet zugeht.
+        if store.mode != .liste { store.mode = .liste }
+        if !store.search.isEmpty { store.search = "" }
+
+        if openTermin(id: id) { return }
+
+        // Nicht in `store.termine` — meist filtert nur die Kategorie ihn weg (die Liste ist
+        // kategorie-gefiltert). Einmal je ID nachladen, sonst drehte sich das mit dem
+        // `termine.count`-onChange im Kreis.
+        guard resolveAttempt != id else { return }
+        resolveAttempt = id
+        if store.selectedCategory != nil {
+            store.selectedCategory = nil
+            await store.reloadList()
+        } else if store.termine.isEmpty {
+            await store.reloadList()
+        }
+        if !openTermin(id: id) && !store.termine.isEmpty {
+            // Liste ist da, der Termin aber nicht (z. B. inzwischen gelöscht) → Wunsch verwerfen,
+            // sonst zwänge er die Ansicht bei jedem Reload erneut in den Listenmodus.
+            // Leere Liste (offline/noch nicht geladen) bleibt offen — ein späterer Load löst ein.
+            app.pendingTerminId = nil
+        }
+    }
+
+    /// Termin aus der geladenen Liste öffnen. `false` = (noch) nicht gefunden.
+    private func openTermin(id: Int) -> Bool {
+        guard let t = store.termine.first(where: { $0.id == id }) else { return false }
+        app.pendingTerminId = nil
+        store.formRef = TermineFormRef(termin: t, initialDate: nil)
+        return true
     }
 
     // ── Stat-Pillen ──
