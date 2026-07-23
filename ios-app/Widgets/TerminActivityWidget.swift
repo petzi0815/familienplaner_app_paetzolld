@@ -13,8 +13,8 @@ struct TerminActivityWidget: Widget {
         ActivityConfiguration(for: TerminActivityAttributes.self) { context in
             // ── Sperrbildschirm / Banner ──
             TerminActivityLockScreenView(context: context)
-                .activityBackgroundTint(WTheme.mid.opacity(0.16))
-                .activitySystemActionForegroundColor(WTheme.mid)
+                .activityBackgroundTint(TerminActivityStyle.surface)
+                .activitySystemActionForegroundColor(TerminActivityStyle.onSurface)
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
@@ -35,7 +35,7 @@ struct TerminActivityWidget: Widget {
                         if let sub = TerminActivityStyle.subline(context.state) {
                             Text(sub)
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(TerminActivityStyle.onSurfaceMuted)
                                 .lineLimit(1)
                         }
                     }
@@ -45,7 +45,7 @@ struct TerminActivityWidget: Widget {
                     HStack(spacing: 8) {
                         Text(TerminActivityStyle.timeLine(context.state))
                             .font(.caption.weight(.medium))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(TerminActivityStyle.onSurfaceMuted)
                             .lineLimit(1)
                         Spacer(minLength: 0)
                         if context.state.isAcked(by: SharedStore.owner) {
@@ -97,7 +97,7 @@ struct TerminActivityLockScreenView: View {
                     if let sub = TerminActivityStyle.subline(state) {
                         Text(sub)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(TerminActivityStyle.onSurfaceMuted)
                             .lineLimit(1)
                     }
                 }
@@ -128,6 +128,13 @@ struct TerminActivityLockScreenView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        // Die Fläche wird ZUSÄTZLICH hier gezeichnet, nicht nur per `activityBackgroundTint`:
+        // es gibt Fälle, in denen iOS den Tint ignoriert (Fokus/„Nicht stören", Asset-Varianten).
+        // Ohne diesen Rückfall stünde dann fest kodiertes Weiß auf hellem System-Material.
+        .background(TerminActivityStyle.surface)
+        // Grundfarbe für alle Texte der Ansicht — die Fläche darunter ist fest dunkel.
+        .foregroundStyle(TerminActivityStyle.onSurface)
         .widgetURL(TerminActivityStyle.deepLink(context.attributes.terminId))
     }
 }
@@ -150,9 +157,11 @@ struct TerminActivityAckButton: View {
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
                 .frame(maxWidth: prominent ? CGFloat.infinity : nil)
-                .background(prominent ? WTheme.mid.opacity(0.22) : Color.secondary.opacity(0.14),
+                // Deckende Flächen: die frühere Transparenz liess das Wallpaper durchscheinen,
+                // „Gelesen" stand dann violett auf violett und war kaum lesbar.
+                .background(prominent ? TerminActivityStyle.accent : Color.white.opacity(0.18),
                             in: Capsule())
-                .foregroundStyle(prominent ? WTheme.mid : Color.primary)
+                .foregroundStyle(prominent ? TerminActivityStyle.surface : TerminActivityStyle.onSurface)
         }
         .buttonStyle(.plain)
     }
@@ -166,7 +175,7 @@ struct TerminActivityAckedLabel: View {
         Label(TerminActivityStyle.ackedText(state), systemImage: "checkmark.circle.fill")
             .font(.caption.weight(.semibold))
             .lineLimit(1)
-            .foregroundStyle(WTheme.running)
+            .foregroundStyle(TerminActivityStyle.ok)
     }
 }
 
@@ -198,16 +207,31 @@ enum TerminActivityStyle {
         case text(String)
     }
 
+    // ── Farben ──
+    // Die Live Activity liegt über dem Hintergrundbild des Sperrbildschirms. Mit einer
+    // durchscheinenden Fläche hängt die Lesbarkeit vom Wallpaper ab — bei einem hellen Foto
+    // waren Untertitel und Knöpfe kaum zu erkennen. Deshalb eine FESTE dunkle Fläche und
+    // Farben, die genau darauf abgestimmt sind (statt der helleren App-Palette WTheme).
+
+    /// Deckende dunkle Fläche — macht den Kontrast unabhängig vom Hintergrundbild.
+    static let surface = Color(red: 0.07, green: 0.08, blue: 0.14)
+    static let onSurface = Color.white
+    /// Sekundärtext: hell genug für die Lesbarkeit, aber klar nachrangig (`.secondary` war zu blass).
+    static let onSurfaceMuted = Color.white.opacity(0.75)
+    static let accent = Color(red: 0.62, green: 0.64, blue: 1.00)
+    static let ok = Color(red: 0.36, green: 0.88, blue: 0.52)
+    static let soon = Color(red: 1.00, green: 0.76, blue: 0.28)
+
     static func emoji(_ s: TerminActivityAttributes.ContentState) -> String {
         s.emoji.isEmpty ? "📅" : s.emoji
     }
 
     static func tint(_ s: TerminActivityAttributes.ContentState) -> Color {
-        if s.isAckedByAnyone { return WTheme.running }
-        if s.isRunning { return WTheme.running }
-        if s.status == "vorbei" { return .secondary }
+        if s.isAckedByAnyone { return ok }
+        if s.isRunning { return ok }
+        if s.status == "vorbei" { return onSurfaceMuted }
         let minutes = s.startAt.timeIntervalSinceNow / 60
-        return minutes <= 60 ? WTheme.soon : WTheme.mid
+        return minutes <= 60 ? soon : accent
     }
 
     /// Zeile unter dem Titel: Ort bevorzugt, sonst Person/Kategorie.

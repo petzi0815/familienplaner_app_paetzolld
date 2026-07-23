@@ -10,7 +10,7 @@ struct HeuteWidget: Widget {
                 .containerBackground(for: .widget) { WTheme.grad.opacity(0.14) }
         }
         .configurationDisplayName("Heute")
-        .description("Termine, Erinnerungen und neue Fotos auf einen Blick.")
+        .description("Nächste Termine links, was heute ganztägig läuft rechts.")
         .supportedFamilies([.systemSmall, .systemMedium, .accessoryRectangular, .accessoryInline, .accessoryCircular])
     }
 }
@@ -38,15 +38,31 @@ struct HeuteWidgetView: View {
     /// Bezugszeitpunkt = Entry-Zeit (die Timeline liefert Entries an jeder Termin-Grenze).
     private var now: Date { entry.date }
     private var upcoming: [WidgetTermin] { (entry.feed?.items ?? []).filter { !$0.isPast(at: now) } }
-    /// Ganztägige Dauerläufer (Ferien/Reisen), die an einem früheren Tag begonnen haben — sie sind
-    /// Hintergrund-Information und dürfen die Schlagzeile nicht belegen.
-    private var scheduled: [WidgetTermin] { upcoming.filter { !$0.isLongRunning(at: now) } }
-    /// Der gerade laufende Termin hat Vorrang, sonst der nächste ECHTE Termin; Dauerläufer zuletzt.
+    /// Schlagzeile der einspaltigen Ansichten (klein, Sperrbildschirm): ein Termin MIT UHRZEIT
+    /// heute schlägt alles; danach was heute ganztägig läuft; erst dann der nächste Termin
+    /// überhaupt. Sonst stünde „Ganztägig · Gelbe Tonne" über einem Arzttermin am selben Tag.
     private var focus: WidgetTermin? {
-        scheduled.first { $0.isRunning(at: now) } ?? scheduled.first ?? upcoming.first
+        let heuteGetimt = timed.filter { Calendar.current.isDate($0.startDate, inSameDayAs: now) }
+        return heuteGetimt.first { $0.isRunning(at: now) }
+            ?? heuteGetimt.first
+            ?? allDayActive.first
+            ?? timed.first
+            ?? upcoming.first
     }
     private var followers: [WidgetTermin] { upcoming.filter { $0.id != focus?.id } }
     private var offline: Bool { snap == nil && entry.feed == nil }
+
+    // ── Zweispaltige Aufteilung (systemMedium): links Termine mit Uhrzeit, rechts ganztägig ──
+    /// Termine mit Uhrzeit — auch an kommenden Tagen, damit die linke Spalte nicht leer bleibt,
+    /// wenn heute nichts Getimtes ansteht.
+    private var timed: [WidgetTermin] { upcoming.filter { !$0.allDay } }
+    /// Ganztägige Einträge, die JETZT aktiv sind (inkl. mehrtägiger Ferien/Reisen).
+    private var allDayActive: [WidgetTermin] { upcoming.filter { $0.allDay && $0.isRunning(at: now) } }
+    /// Ganztägige, die erst noch kommen — füllen die rechte Spalte auf, mit Tagesangabe.
+    private var allDayNext: [WidgetTermin] { upcoming.filter { $0.allDay && !$0.isRunning(at: now) } }
+    private var allDayShown: [WidgetTermin] { Array((allDayActive + allDayNext).prefix(3)) }
+    /// Kopf der linken Spalte: der laufende getimte Termin, sonst der nächste.
+    private var timedFocus: WidgetTermin? { timed.first { $0.isRunning(at: now) } ?? timed.first }
 
     // ── Home Screen ──
     private var small: some View {
@@ -54,35 +70,106 @@ struct HeuteWidgetView: View {
             header
             statusOrTermin
             Spacer(minLength: 0)
-            HStack(spacing: 10) {
-                pill("\(snap?.fotoInboxNeu ?? 0)", "photo", WTheme.start)
-                pill("\(snap?.remindersDue ?? 0)", "bell", WTheme.end)
-                Spacer(minLength: 0)
-            }
+            allDayChip
             stampLine
         }
     }
 
+    /// Zweispaltig: links die Termine mit Uhrzeit (auch kommende), rechts was ganztägig läuft.
     private var medium: some View {
-        HStack(spacing: 12) {
+        HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 6) {
                 header
-                statusOrTermin
-                if !followers.isEmpty {
-                    VStack(alignment: .leading, spacing: 3) {
-                        ForEach(Array(followers.prefix(3))) { t in row(t) }
-                    }
-                }
+                terminColumn
                 Spacer(minLength: 0)
                 stampLine
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
             Divider()
-            VStack(alignment: .leading, spacing: 8) {
-                stat("photo.fill", "\(snap?.fotoInboxNeu ?? 0)", "Fotos", WTheme.start)
-                stat("bell.badge.fill", "\(snap?.remindersDue ?? 0)", "Erinnerungen", WTheme.mid)
-                stat("clock.badge.exclamationmark", "\(snap?.mhdCount ?? 0)", "MHD bald", WTheme.end)
+
+            allDayColumn
+                .frame(width: 118, alignment: .leading)
+        }
+    }
+
+    /// Linke Spalte: der wichtigste Termin mit Uhrzeit + die nächsten beiden.
+    @ViewBuilder private var terminColumn: some View {
+        if !entry.configured {
+            Text("In der App anmelden").font(.caption).foregroundStyle(.secondary)
+        } else if let t = timedFocus {
+            // Nur EINE Folgezeile: in systemMedium bleiben nach Kopfzeile und Hero rund 20 pt —
+            // zwei Zeilen haben den Hero gestaucht und den Ort abgeschnitten.
+            terminHero(t, titleLines: 1)
+            if let next = timed.first(where: { $0.id != t.id }) { row(next) }
+        } else if let titel = snap?.termineTitel {
+            // Termin-Feed fehlt, aber der Dashboard-Snapshot kennt einen Termin — dann NICHT
+            // „keine Termine" behaupten (der Feed-Fehler ist kein leerer Kalender).
+            VStack(alignment: .leading, spacing: 1) {
+                Text(titel).font(.subheadline.weight(.semibold)).lineLimit(2)
+                if let d = snap?.termineDatum {
+                    Text(prettyDate(d)).font(.caption2).foregroundStyle(.secondary)
+                }
             }
-            .frame(width: 118, alignment: .leading)
+        } else {
+            Text(offline ? "Keine Verbindung" : "Keine Termine mit Uhrzeit")
+                .font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
+        }
+    }
+
+    /// Rechte Spalte: ganztägige Einträge — laufende zuerst, danach die nächsten.
+    @ViewBuilder private var allDayColumn: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Label("Ganztägig", systemImage: "sun.max.fill")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(WTheme.end)
+                .lineLimit(1)
+            if allDayShown.isEmpty {
+                Text("Nichts").font(.caption2).foregroundStyle(.secondary)
+            } else {
+                ForEach(allDayShown) { t in allDayRow(t) }
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func allDayRow(_ t: WidgetTermin) -> some View {
+        HStack(alignment: .top, spacing: 5) {
+            WDot(color: WTheme.color(hex: t.color), size: 6).padding(.top, 4)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(t.title).font(.caption2.weight(.medium)).lineLimit(1)
+                if let hint = allDayHint(t) {
+                    Text(hint).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .opacity(t.read ? 0.65 : 1)
+    }
+
+    /// Zusatz unter dem Titel: bei Dauerläufern das Ende, bei künftigen der Tag; heute aktive
+    /// brauchen keinen — sie stehen ohnehin unter „Ganztägig".
+    private func allDayHint(_ t: WidgetTermin) -> String? {
+        if t.isLongRunning(at: now) { return t.endDate.map { "bis \(WDate.shortDate($0))" } }
+        if !t.isRunning(at: now) { return WDate.dayHeader(t.startDate, now: now) }
+        return nil
+    }
+
+    /// Kompakter Ganztägig-Hinweis für die kleine Ansicht (dort ist keine zweite Spalte drin).
+    @ViewBuilder private var allDayChip: some View {
+        // Ohne den Ausschluss stuende derselbe Eintrag zweimal untereinander, sobald der Hero
+        // mangels getimtem Termin selbst auf den ganztägigen zurückfällt.
+        let rest = allDayActive.filter { $0.id != focus?.id }
+        if let t = rest.first {
+            HStack(spacing: 4) {
+                WDot(color: WTheme.color(hex: t.color), size: 6)
+                Text(t.title).font(.caption2).lineLimit(1)
+                if rest.count > 1 {
+                    Text("+\(rest.count - 1)")
+                        .font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+            }
         }
     }
 
@@ -165,13 +252,16 @@ struct HeuteWidgetView: View {
     }
 
     /// Der wichtigste Termin: Uhrzeit groß, Läuft-Badge, Countdown, Titel, Ort.
-    private func terminHero(_ t: WidgetTermin) -> some View {
+    private func terminHero(_ t: WidgetTermin, titleLines: Int = 2) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 5) {
                 WDot(color: WTheme.color(hex: t.color))
-                Text(t.allDay ? "Ganztägig" : WDate.time(t.startDate))
+                // Wochentag mit in die grosse Zeile, wenn der Termin nicht heute ist — „14:30"
+                // allein liest sich sonst wie „gleich", auch wenn er neun Tage entfernt ist.
+                Text(heroTime(t))
                     .font(.title3.weight(.bold))
-                    .fixedSize()
+                    .minimumScaleFactor(0.7)
+                    .lineLimit(1)
                 if t.isRunning(at: now) { WRunningBadge() }
                 Spacer(minLength: 0)
             }
@@ -181,7 +271,7 @@ struct HeuteWidgetView: View {
                 .lineLimit(1)
             Text(t.title)
                 .font(.subheadline.weight(.semibold))
-                .lineLimit(2)
+                .lineLimit(titleLines)
             if let loc = t.location, !loc.isEmpty {
                 Label(loc, systemImage: "mappin.and.ellipse")
                     .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
@@ -204,17 +294,33 @@ struct HeuteWidgetView: View {
         return Text("in ") + Text(t.startDate, style: .relative)
     }
 
-    /// Kompakte Folgezeile für die nächsten Termine.
+    /// Kompakte Folgezeile für die nächsten Termine. Termine an einem anderen Tag bekommen den
+    /// Wochentag davor („Fr 15:30"), sonst wäre eine Uhrzeit ohne Datum irreführend.
     private func row(_ t: WidgetTermin) -> some View {
         HStack(spacing: 5) {
             WDot(color: WTheme.color(hex: t.color), size: 6)
-            Text(t.allDay ? "ganztg." : WDate.time(t.startDate))
+            Text(rowTime(t))
                 .font(.caption2.weight(.semibold))
                 .fixedSize()
             Text(t.title).font(.caption2).lineLimit(1)
             Spacer(minLength: 0)
         }
         .opacity(t.read ? 0.6 : 1)
+    }
+
+    /// Grosse Zeile des Hero: „15:45" heute, sonst „Fr 15:45"; ganztägig ohne Uhrzeit.
+    private func heroTime(_ t: WidgetTermin) -> String {
+        if t.allDay { return "Ganztägig" }
+        let zeit = WDate.time(t.startDate)
+        guard !Calendar.current.isDate(t.startDate, inSameDayAs: now) else { return zeit }
+        return "\(WDate.weekday(t.startDate)) \(zeit)"
+    }
+
+    private func rowTime(_ t: WidgetTermin) -> String {
+        if t.allDay { return "ganztg." }
+        let zeit = WDate.time(t.startDate)
+        guard !Calendar.current.isDate(t.startDate, inSameDayAs: now) else { return zeit }
+        return "\(WDate.weekday(t.startDate)) \(zeit)"
     }
 
     /// Offline-Hinweis mit dem Zeitpunkt des letzten erfolgreichen Ladens.
@@ -233,22 +339,6 @@ struct HeuteWidgetView: View {
     private func nextHint(_ t: WidgetTermin) -> String {
         let zeit = t.allDay ? "ganztägig" : WDate.time(t.startDate)
         return "Danach \(zeit) · \(t.title)"
-    }
-
-    private func pill(_ value: String, _ icon: String, _ color: Color) -> some View {
-        HStack(spacing: 4) {
-            Image(systemName: icon).font(.caption2)
-            Text(value).font(.caption.weight(.bold))
-        }
-        .foregroundStyle(color)
-    }
-
-    private func stat(_ icon: String, _ value: String, _ label: String, _ color: Color) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: icon).font(.footnote).foregroundStyle(color).frame(width: 18)
-            Text(value).font(.subheadline.weight(.bold))
-            Text(label).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
-        }
     }
 
     private func prettyDate(_ s: String) -> String {

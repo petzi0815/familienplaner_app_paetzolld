@@ -41,6 +41,10 @@ enum WDate {
     /// Kurzes Datum ohne Wochentag („30. Jul") — für Zeitspannen wie „noch bis 30. Jul".
     static func shortDate(_ d: Date) -> String { dayMonth.string(from: d) }
 
+    /// Wochentag-Kürzel („Fr") — vor Uhrzeiten von Terminen an anderen Tagen.
+    /// (Heißt bewusst nicht `weekdayShort`: Swift erlaubt Property und Methode gleichen Namens nicht.)
+    static func weekday(_ d: Date) -> String { weekdayShort.string(from: d) }
+
     /// Tagesüberschrift: „Heute" / „Morgen" / „Mi, 29. Jul".
     static func dayHeader(_ d: Date, now: Date = Date()) -> String {
         let cal = Calendar.current
