@@ -6,6 +6,39 @@
 
 ## ▶️ WIEDERAUFNAHME (nächste Session) — START HIER
 
+**NEU 2026-07-23 (6. Session) — TERMIN-WIDGETS, QUITTIEREN AM SPERRBILDSCHIRM, LIVE ACTIVITY. Backend live `82be7a1`, TestFlight Builds 51+52 (`VALID`), CI 3/3 grün. Details: [[session-2026-07-23_termin-widgets-live-activity]].**
+- **Widgets** (`ios-app/Widgets/`): neues **`TermineWidget`** in allen 6 Familien (small/medium/large +
+  accessoryRectangular/Inline/Circular), **`QuickActionsWidget`** (Foto/Termin/Aufgabe/Heute als Deep-Links),
+  `HeuteWidget` aufgewertet (kind unverändert!), `WidgetTheme` = einziger Ort für Widget-Optik.
+  **Ereignisgenaue Timeline** (`TermineProvider`): Entries an jeder Termin-Grenze + Mitternacht statt stündlich.
+  Offline-Fallback über `WidgetCache` (App Group) mit „Stand HH:MM".
+- **Heute-Widget medium ist zweispaltig** (Nachbesserung aus Lars' Screenshots, `82be7a1`): links Termine
+  **mit Uhrzeit** (auch kommende, Wochentag davor), rechts **ganztägig aktive** inkl. Ferien („bis 30. Jul").
+  Zähler Fotos/Erinnerungen/MHD sind raus. `WidgetTermin.isLongRunning(at:)`/`relevanceDate(at:)`: Dauerläufer
+  (Ferien/Reisen) sind Hintergrund und belegen NIE die Schlagzeile.
+- **Push jetzt Opt-out statt Opt-in**: `termine-user-reminders` läuft `0 7,18 * * *` — 18:00 „Morgen",
+  07:00 „Heute", an **beide** Personen, außer `termin_user_state.muted`. 2-Tage-Push bleibt Opt-in (`notify=1`).
+  Mitteilungs-Aktionen **`TERMIN_ACK`/`TERMIN_DONE`/`TERMIN_MUTE`** → quittieren ohne App-Start.
+- **Live Activity** (`TerminActivityWidget`): Sperrbildschirm + Dynamic Island, Countdown, Quittier-Knopf,
+  push-to-start via `sendLiveActivity()`, Job `termine-live-activity` (`*/15`). Nachtruhe-Guard: frühester
+  Start 07:00 Ortszeit, Start-Alert lautlos.
+- **Backend**: Migration **`0018`** (termin_user_state += muted/reminder_0d_sent/ack_at, `live_activity_tokens`,
+  `termin_live_activities`), Routen `POST /api/termine/{id}/ack`, `POST|DELETE /api/v1/push/live-activity`,
+  `GET /api/v1/widget/termine`. URL-Scheme **`familienplaner://`** + `onOpenURL`.
+- **✅ ERLEDIGT: `APNS_*` in Coolify ist gesetzt und Push funktioniert** (von Lars bestätigt) — der Punkt stand
+  seit der 2. Session offen. Remote-Push, Termin-Aktionen und Live Activity sind damit real in Betrieb.
+- **Non-obvious:** [[feedback-ios-notification-action-no-appstate]] (`AppDelegate.appState` ist beim
+  Hintergrund-Start `nil` → Ack-Logik AppState-frei in `Shared/`); [[feedback-server-zeitzone-utc-berlin]]
+  (Container läuft UTC, auch `date('now','localtime')`); ActivityKit decodiert `content-state` mit
+  Swift-Codable-Default → camelCase + Epoch-`Double` statt `Date`; `activityBackgroundTint` mit 16 % Deckkraft
+  war unlesbar (2,6:1 → 7,9:1) und wird in manchen Zuständen ignoriert → Fläche zusätzlich in der View zeichnen;
+  „UPLOAD SUCCEEDED" ≠ Build angekommen (Apple-500, per ASC-API prüfen — [[reference-asc-api-credentials]]).
+- **OFFEN (klein, nichts blockiert):** (1) Opt-out-Push im Alltag erproben — 07:00 klingelt mit Standardton.
+  (2) `job_runs` wächst durch den 15-min-Job ~35k Zeilen/Jahr, kein Aufräum-Job. (3) Termindatum-Wechsel über
+  die **generische** v1-Route setzt Push-Marker/`ack_at` NICHT zurück (nur der Kompat-Pfad `/api/termine/{id}`)
+  → Hook in `crud.ts` fällig. (4) Von Lars zu prüfen: wirkt das mittlere Widget an Tagen ohne getimte Termine
+  zu leer? Layout-Höhen sind gerechnet, nicht gerendert (auf 12 mini weniger Platz).
+
 **NEU 2026-07-18 (5. Session) — Dashboard Zeit/Ort, NEUER Bereich AUFGABEN (inkl. Push), Vorrat-Erfassung überarbeitet + KI-Rezept, Prod-Debug-Zugang. Backend live `82c2fa1`, iOS Builds 46–50 (alle grün). Details: [[session-2026-07-18_dashboard-vorrat-aufgaben-push]].**
 - **Dashboard-Termine:** Uhrzeit (fett+`fixedSize` vorne, war hinter langem Datum abgeschnitten) + antippbarer **Ort → Google Maps** (`Support/MapsLink.swift`, `comgooglemaps` in project.yml). Backend-Agenda liefert `location`.
 - **NEUER Lebensbereich „Aufgaben"** (Migration `0016`): generisches CRUD + `POST /aufgaben/{id}/complete` (recurring, tag-geclampt). Dashboard-Section (Offen/Erledigt-Umschalter, Wieder-Öffnen), `aufgabenFeed()` mergt Familie + Garten-Aufgaben (akt. Monat). **Push** (Migration `0017`, backend-only): Anlege-Push an konkrete Person (lars/elita, nicht self/familie) via `createRow`-Hook (`notifyOwnerOnCreate`); Job `aufgaben-reminders` 1 Tag vor `due_date`. Ole-Doku `docs/AUFGABEN.md`. **Live verifiziert** (Push kam an).
