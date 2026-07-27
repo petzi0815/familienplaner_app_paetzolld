@@ -199,5 +199,10 @@ export async function downloadStates(): Promise<Map<string, ShelfmarkDownloadInf
 /** Cover-URL absolut machen (Shelfmark liefert teils relative Pfade). */
 export function absolutePreview(preview: string | null | undefined): string | null {
   if (!preview) return null;
-  return preview.startsWith("http") ? preview : `${config.shelfmark.baseUrl}${preview}`;
+  if (preview.startsWith("http")) return preview;
+  // `baseUrl` endet bereits auf „/api", Shelfmark liefert den Pfad aber ebenfalls als „/api/covers/…"
+  // → sonst entsteht „…/api/api/covers/…" (404). Doppeltes Präfix abschneiden.
+  const base = config.shelfmark.baseUrl;
+  const path = base.endsWith("/api") && preview.startsWith("/api/") ? preview.slice(4) : preview;
+  return `${base}${path}`;
 }

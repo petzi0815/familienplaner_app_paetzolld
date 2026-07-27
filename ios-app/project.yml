@@ -26,7 +26,8 @@ targets:
       - path: App/Resources
       - path: Shared          # SharedStore (App Group) — auch im Widget-Target
     dependencies:
-      - target: FamilienplanerWidgets   # Extension einbetten
+      - target: FamilienplanerWidgets           # Extension einbetten
+      - target: FamilienplanerNotificationService
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.yagemi.familienplaner
@@ -121,6 +122,30 @@ targets:
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
+
+  # ── Notification-Service-Extension (Cover-Bild im Push) ──
+  # Ohne diese Extension zeigt iOS in einer Remote-Mitteilung KEIN Bild: nur sie darf ein
+  # UNNotificationAttachment anhängen. Der Server setzt dafür mutable-content:1 + image_url.
+  # Braucht keine App Group — sie lädt lediglich eine signierte, öffentliche Backend-URL.
+  FamilienplanerNotificationService:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: NotificationService
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.yagemi.familienplaner.notifications
+        TARGETED_DEVICE_FAMILY: "1"           # iPhone
+        PROVISIONING_PROFILE_SPECIFIER: "$(NOTIFY_PROFILE_NAME)"
+    info:
+      path: NotificationService/Info.plist
+      properties:
+        CFBundleDisplayName: Familienplaner Mitteilungen
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.usernotifications.service
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationService
 
 schemes:
   Familienplaner:

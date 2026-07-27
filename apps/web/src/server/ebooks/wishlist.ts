@@ -3,6 +3,7 @@ import { log } from "@/server/observability/logger";
 import { updateBook, type Book } from "@/server/legacy/buecher-db";
 import { searchReleases, startDownload, absolutePreview, downloadStates, activityHistory, type ShelfmarkRelease } from "@/server/ebooks/shelfmark";
 import { calibreEnabled, listBooks } from "@/server/ebooks/calibre";
+import { signedCoverUrl } from "@/server/push/cover";
 
 // E-Book-Wunschliste periodisch/manuell via Shelfmark prüfen und herunterladen.
 //
@@ -239,8 +240,41 @@ export function isDestinationError(reason: string | null | undefined): boolean {
   return r.includes("not writable") || r.includes("permission denied") || r.includes("errno 13");
 }
 
-/** Ein abgeschlossener Vorgang — Grundlage für die Push-Meldung an die richtige Person. */
-export interface VerifyOutcome { id: number; title: string; owner: string | null; reason: string }
+/** Ein abgeschlossener Vorgang — Grundlage für die (reiche) Push-Meldung. */
+export interface VerifyOutcome {
+  id: number;
+  title: string;
+  owner: string | null;
+  reason: string;
+  author: string | null;
+  /** Klappentext, auf Push-Länge gekürzt. */
+  description: string | null;
+  /** Signierte, ohne Auth abrufbare Cover-URL für den Bildanhang (null = kein Bild). */
+  coverUrl: string | null;
+}
+
+/** Klappentext auf eine im Push lesbare Länge bringen (an der Satzgrenze, sonst hart). */
+function shortDescription(raw: string | null | undefined, max = 420): string | null {
+  const t = (raw ?? "").replace(/\s+/g, " ").trim();
+  if (!t) return null;
+  if (t.length <= max) return t;
+  const cut = t.slice(0, max);
+  const stop = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("! "), cut.lastIndexOf("? "));
+  return (stop > max * 0.5 ? cut.slice(0, stop + 1) : cut.trimEnd() + " …");
+}
+
+/** Alles zusammentragen, was die Push-Mitteilung reich macht. */
+function outcomeOf(b: Book, reason: string): VerifyOutcome {
+  return {
+    id: b.id,
+    title: b.title,
+    owner: ownerOf(b.requested_by),
+    reason,
+    author: b.author?.trim() || null,
+    description: shortDescription(b.description),
+    coverUrl: signedCoverUrl(b.cover_url),
+  };
+}
 
 export interface VerifyResult {
   checked: number;
@@ -286,7 +320,7 @@ export async function verifyQueued(opts: { dryRun?: boolean } = {}): Promise<Ver
     const markDone = (why: string) => {
       out.downloaded++;
       out.messages.push(`✅ ${b.title} — ${why}`);
-      out.done.push({ id: b.id, title: b.title, owner: ownerOf(b.requested_by), reason: why });
+      out.done.push(outcomeOf(b, why));
       if (!opts.dryRun) {
         updateBook(b.id, { status: "heruntergeladen", downloaded_at: stamp, download_state: "complete", last_error: null });
       }
@@ -294,7 +328,7 @@ export async function verifyQueued(opts: { dryRun?: boolean } = {}): Promise<Ver
     const markFailed = (why: string) => {
       out.failed++;
       out.messages.push(`⚠️ ${b.title} — ${why}`);
-      out.failures.push({ id: b.id, title: b.title, owner: ownerOf(b.requested_by), reason: why });
+      out.failures.push(outcomeOf(b, why));
       if (!opts.dryRun) {
         // Gescheitert heißt gescheitert: KEIN 'heruntergeladen', das Buch bleibt im Backlog.
         updateBook(b.id, { status: "gesucht", downloaded_at: null, download_state: "failed", last_error: why });

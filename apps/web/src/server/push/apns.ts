@@ -143,6 +143,14 @@ export interface PushOptions {
   interruptionLevel?: "passive" | "active" | "time-sensitive" | "critical";
   /** aps["relevance-score"] (0…1) — Default 1.0. */
   relevanceScore?: number;
+  /** Zweite Zeile über dem Text (aps.alert.subtitle) — z.B. der Autor eines Buchs. */
+  subtitle?: string;
+  /**
+   * Bild-URL für einen Rich-Push. Setzt automatisch `mutable-content: 1` und legt die URL als
+   * `image_url` in den Payload; die Notification-Service-Extension der App lädt sie und hängt sie
+   * als Anhang an. Die URL muss OHNE Auth abrufbar sein → `signedCoverUrl()` benutzen.
+   */
+  imageUrl?: string | null;
 }
 
 /**
@@ -181,8 +189,10 @@ export async function sendPush(opts: PushOptions): Promise<{ sent: number; total
   let jwt: string;
   try { jwt = providerToken(); } catch (e) { log.error("APNs Provider-Token-Signatur fehlgeschlagen", { error: String(e) }); return { sent: 0, total: rows.length, tokenIds }; }
 
+  const alert: Record<string, unknown> = { title: opts.title, body: opts.body };
+  if (opts.subtitle) alert.subtitle = opts.subtitle;
   const aps: Record<string, unknown> = {
-    alert: { title: opts.title, body: opts.body },
+    alert,
     "interruption-level": opts.interruptionLevel ?? "active",
     "relevance-score": opts.relevanceScore ?? 1.0,
   };
@@ -190,7 +200,13 @@ export async function sendPush(opts: PushOptions): Promise<{ sent: number; total
   if (opts.badge != null) aps.badge = opts.badge;
   if (opts.category) aps.category = opts.category;
   if (opts.threadId) aps["thread-id"] = opts.threadId;
-  const payload = JSON.stringify({ aps, ...(opts.data ?? {}) });
+  // Bild-Anhang: nur die Extension kann ihn setzen, dafür MUSS mutable-content gesetzt sein.
+  if (opts.imageUrl) aps["mutable-content"] = 1;
+  const payload = JSON.stringify({
+    aps,
+    ...(opts.imageUrl ? { image_url: opts.imageUrl } : {}),
+    ...(opts.data ?? {}),
+  });
 
   const { sent, dead, ok } = await deliver(rows, jwt, {
     "apns-topic": config.apns.bundleId,

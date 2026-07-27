@@ -34,19 +34,29 @@ const todayStart = () => new Date(new Date().toISOString().slice(0, 10) + "T00:0
 /** Ab dieser Menge wird zu EINER Sammelmeldung zusammengefasst (statt 15 Einzel-Pushes). */
 const PUSH_EINZELN_BIS = 3;
 
+const personName = (owner: string) => (owner === "lars" ? "Lars" : owner === "elita" ? "Elita" : owner);
+
 async function pushDownloadResults(done: VerifyOutcome[], failures: VerifyOutcome[]): Promise<void> {
   if (done.length && done.length <= PUSH_EINZELN_BIS) {
     for (const d of done) {
+      // Titel als Überschrift, Autor als Untertitel, Klappentext als Text, Cover als Anhang.
       await sendPush({
-        title: "📚 E-Book ist da",
-        body: d.owner ? `${d.title} (Wunsch von ${d.owner === "lars" ? "Lars" : "Elita"})` : d.title,
+        title: `📚 ${d.title}`,
+        subtitle: [d.author, d.owner ? `Wunsch von ${personName(d.owner)}` : null].filter(Boolean).join(" · ") || undefined,
+        body: d.description ?? "Ist heruntergeladen und liegt in der Bibliothek.",
+        imageUrl: d.coverUrl,
+        threadId: "ebooks",
         data: { kind: "ebook", id: d.id },
       }).catch(() => {});
     }
   } else if (done.length) {
+    // Sammelmeldung: Cover des ersten Buchs als Anhang, damit auch der Stapel nicht nackt aussieht.
     await sendPush({
       title: `📚 ${done.length} E-Books heruntergeladen`,
-      body: done.slice(0, 3).map((d) => d.title).join(", ") + (done.length > 3 ? ` und ${done.length - 3} weitere` : ""),
+      subtitle: done[0].author ? `u.a. ${done[0].title} von ${done[0].author}` : undefined,
+      body: done.map((d) => `• ${d.title}${d.author ? ` — ${d.author}` : ""}`).join("\n"),
+      imageUrl: done.find((d) => d.coverUrl)?.coverUrl ?? null,
+      threadId: "ebooks",
       data: { kind: "ebook" },
     }).catch(() => {});
   }

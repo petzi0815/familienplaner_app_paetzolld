@@ -31,6 +31,7 @@ jobs:
       APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
       APP_PROFILE_NAME: ${{ vars.APP_PROFILE_NAME }}
       WIDGET_PROFILE_NAME: ${{ vars.WIDGET_PROFILE_NAME }}
+      NOTIFY_PROFILE_NAME: ${{ vars.NOTIFY_PROFILE_NAME }}
       # Secrets (Repo → Settings → Secrets)
       ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
       ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
@@ -39,6 +40,7 @@ jobs:
       DIST_CERT_PASSWORD: ${{ secrets.DIST_CERT_PASSWORD }}
       APP_PROFILE_BASE64: ${{ secrets.APP_PROFILE_BASE64 }}
       WIDGET_PROFILE_BASE64: ${{ secrets.WIDGET_PROFILE_BASE64 }}
+      NOTIFY_PROFILE_BASE64: ${{ secrets.NOTIFY_PROFILE_BASE64 }}
       BUILD_NUMBER: ${{ github.run_number }}
     steps:
       - uses: actions/checkout@v4
@@ -65,8 +67,9 @@ jobs:
       - name: Signing-Secrets prüfen (fail-fast)
         run: |
           missing=""
-          for v in APPLE_TEAM_ID APP_PROFILE_NAME WIDGET_PROFILE_NAME ASC_KEY_ID ASC_ISSUER_ID \
-                   ASC_KEY_P8_BASE64 DIST_CERT_P12_BASE64 APP_PROFILE_BASE64 WIDGET_PROFILE_BASE64; do
+          for v in APPLE_TEAM_ID APP_PROFILE_NAME WIDGET_PROFILE_NAME NOTIFY_PROFILE_NAME \
+                   ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8_BASE64 DIST_CERT_P12_BASE64 \
+                   APP_PROFILE_BASE64 WIDGET_PROFILE_BASE64 NOTIFY_PROFILE_BASE64; do
             if [ -z "${!v}" ]; then missing="$missing $v"; fi
           done
           if [ -n "$missing" ]; then
