@@ -6,6 +6,38 @@
 
 ## ▶️ WIEDERAUFNAHME (nächste Session) — START HIER
 
+**NEU 2026-07-27 (7. Session) — E-BOOK-DOWNLOADER REPARIERT: „geladen" erst nach echter Bestätigung, Push bei Erfolg/Fehler, Rich-Push mit Cover. Backend live `3d40933`, TestFlight Build 55 (`VALID`), CI 3/3 grün. Details: [[session-2026-07-27_ebook-download-verifikation]].**
+- **Ursache** (Lars: „15 Bücher als geladen gemeldet, bei Shelfmark kein Download"): Shelfmark
+  quittiert `POST /api/releases/download` nur mit `200 {"status":"queued"}` — die **Warteschlange**,
+  kein fertiger Download. Das 2xx wurde direkt als `status='heruntergeladen'` verbucht. Zweite
+  Ursache: `Destination not writable: /cwa-book-ingest` (Rechte auf der Synology, seit 31.05. jeder
+  Download tot) — **von Lars behoben**, seitdem läuft es.
+- **Zwei-Stufen-Modell** (Migration **0019**: `download_state`/`queued_at`/`queued_source_id`/`last_error`):
+  Einreihen setzt `download_state='queued'` bei `status='gesucht'` (Buch bleibt im Backlog); Job
+  **`buecher-wishlist-verify`** (*/10) setzt „heruntergeladen" erst bei Shelfmark-`complete` bzw.
+  Fund in Calibre, sonst zurück ins Backlog mit Klartext-Grund (`STALE_HOURS=6`).
+- **Reparatur** `buecher-wishlist-repair` (Boot-One-Shot + manuell): `15 geprüft → 15 zurück ins
+  Backlog`. Sicherung: ohne erreichbare Bibliothek ändert der Job **nichts**.
+  `cleanupDownloaded` löscht nur noch `download_state='complete'`.
+- **Push**: Erfolg bis 3 Bücher einzeln, darüber Sammelmeldung; Rechte-Fehler mit eigenem Text
+  (`isDestinationError`); Shelfmark-Ausfall meldet der Retry-Lauf. **Rich-Push** = Titel/Autor/
+  Klappentext/Cover über das **neue Target `FamilienplanerNotificationService`** + signierte Route
+  `GET /api/v1/push/cover/[token]`. Neuer Job **`job-runs-cleanup`** (30 Tage).
+- **Ergebnis**: `76 geprüft, 12 eingereiht` → Shelfmark 15 complete / 0 error. Stand **64 gesucht /
+  0 Warteschlange / 15 geladen**, alle stichprobenartig in Calibre bestätigt.
+- **Non-obvious:** Shelfmark-`/api/status` ist **nur im Speicher**, `/activity/history` nur die
+  weggeklickten Einträge → „unbekannt" ist ein eigener Zustand, nie Erfolg; Calibre sucht
+  `title LIKE '%begriff%'` (305-Zeichen-Titel aus Anna's Archive treffen nie → gestaffelte
+  Suchbegriffe); **`owner` in `sendPush` schließt aus statt zu priorisieren** (Broadcast-Fallback
+  nur bei 0 Geräten) — `requested_by` ist keine Push-Adresse; `absolutePreview` erzeugte
+  `/api/api/covers/` → 404 (Migration **0020** repariert den Bestand); Bild im Push geht NUR über
+  eine Notification-Service-Extension ([[feedback-ios-rich-push-extension]]); Apple liefert
+  `uploadedDate` in Cupertino-Zeit. Standing Order neu: [[feedback-erfolg-erst-nach-verifikation]].
+- **OFFEN:** (1) **`BOOTSTRAP_AGENT_API_KEY` rotieren** (Wert stand im Chat). (2) Lars muss **Build 55**
+  installieren — Cover erscheint erst mit der Extension, Text/Autor/Klappentext gehen schon jetzt.
+  (3) 64 Wunschtitel bleiben „gesucht" (bei Anna's Archive nicht auffindbar) — Normalzustand.
+
+
 **NEU 2026-07-23 (6. Session) — TERMIN-WIDGETS, QUITTIEREN AM SPERRBILDSCHIRM, LIVE ACTIVITY. Backend live `82be7a1`, TestFlight Builds 51+52 (`VALID`), CI 3/3 grün. Details: [[session-2026-07-23_termin-widgets-live-activity]].**
 - **Widgets** (`ios-app/Widgets/`): neues **`TermineWidget`** in allen 6 Familien (small/medium/large +
   accessoryRectangular/Inline/Circular), **`QuickActionsWidget`** (Foto/Termin/Aufgabe/Heute als Deep-Links),
@@ -209,7 +241,7 @@ geliefert) → **datengetriebener** Test `testGeschenkplanerEventNavigation` fä
 **Migration P0–P5 (Basis):** konsolidierte SQLite (Seed-on-Boot), generische v1-API (~48 Ressourcen), rollenbasierte Auth,
 Agent-Endpunkte, Suche/Dashboard/Reminders, Jobs, **FTS5**, Bild-Upload, Reise-Docs, Sentry-Wiring, OpenAPI, graphify. Details: [[session-2026-07-11]].
 
-**Offen (Lars, extern — kann ich nicht):** Coolify **`APNS_*`** (5 Vars, Block geliefert) + Redeploy → dann `GET /api/v1/push/status`;
+**Offen (Lars, extern — kann ich nicht):** ~~Coolify `APNS_*`~~ (erledigt, Push läuft);
 optional **`SENTRY_DSN`** (Projekt `yagemi/familienplaner`); TestFlight interne **Tester** eintragen. Sonst sauberer Stand.
 
 <!-- Historie P0 -->
