@@ -303,6 +303,27 @@ final class FamilienplanerUITests: XCTestCase {
                       "Externe Suche liefert kein Ergebnis (Fixture nicht geladen?)")
     }
 
+    /// DATENGETRIEBEN (Fixture): die Wunschliste unterscheidet „in Warteschlange" von „geladen".
+    /// Regression zum Fehler, bei dem ein bloss an Shelfmark uebergebener Download sofort als
+    /// „geladen" gemeldet wurde und aus dem Backlog verschwand.
+    func testEbookWishlistShowsQueuedAndFailedState() {
+        openBereiche()
+        let tileEl = tile("ebooks")
+        guard tileEl.waitForExistence(timeout: 8) else { XCTFail("E-Books-Kachel fehlt"); return }
+        tileEl.tap()
+
+        XCTAssertTrue(app.staticTexts["UITEST Wartendes Buch"].waitForExistence(timeout: 8),
+                      "Wunschliste zeigt das wartende Buch nicht (Fixture nicht geladen?)")
+        // Das eingereihte Buch bleibt sichtbar und ist als wartend gekennzeichnet.
+        XCTAssertTrue(app.staticTexts["⏳ In Warteschlange"].waitForExistence(timeout: 4),
+                      "Kennzeichnung 'In Warteschlange' fehlt — eingereiht wird faelschlich wie geladen dargestellt")
+        // Das gescheiterte Buch nennt den Grund und steht weiter im Backlog.
+        XCTAssertTrue(app.staticTexts["UITEST Gescheitertes Buch"].exists, "Gescheitertes Buch fehlt in der Liste")
+        XCTAssertTrue(app.staticTexts["⚠️ Fehlgeschlagen"].exists, "Kennzeichnung 'Fehlgeschlagen' fehlt")
+        // Genau ein Buch ist wirklich geladen.
+        XCTAssertTrue(app.staticTexts["✅ Geladen"].exists, "Bestaetigt geladenes Buch fehlt")
+    }
+
     /// DATENGETRIEBEN (Fixture): E-Books „Bibliothek"-Tab (Calibre) zeigt Regale + Bücher.
     func testCalibreLibraryTab() {
         openBereiche()

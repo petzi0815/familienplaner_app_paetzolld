@@ -92,9 +92,22 @@ enum UITestFixtures {
         guard UITestMode.isActive else { return nil }
         switch path {
         case "/geschenkplaner/kinder": return kinder
+        case "/buecher": return ebookWishlist
         default: return nil
         }
     }
+
+    // ── E-Book-Wunschliste: die drei Download-Zustände (Migration 0019) ──
+    // „geladen" darf NUR erscheinen, wenn der Download bestätigt ist. Ein bei Shelfmark
+    // eingereihtes Buch bleibt sichtbar im Backlog, ein gescheitertes zeigt den Grund.
+    private static let ebookWishlist: [[String: Any]] = [
+        ["id": 9001, "title": "UITEST Wartendes Buch", "author": "Test Autor", "status": "gesucht",
+         "download_state": "queued", "queued_at": "2026-07-27T08:00:00Z", "attempts": 1, "language": "de"],
+        ["id": 9002, "title": "UITEST Gescheitertes Buch", "author": "Test Autor", "status": "gesucht",
+         "download_state": "failed", "last_error": "Destination not writable: /cwa-book-ingest", "attempts": 3, "language": "de"],
+        ["id": 9003, "title": "UITEST Geladenes Buch", "author": "Test Autor", "status": "heruntergeladen",
+         "download_state": "complete", "downloaded_at": "2026-07-20", "attempts": 1, "language": "de"],
+    ]
 
     // ── Geschenkplaner ──
     // Zukünftiges Datum (immer „anstehend"), aber jahr=2026 zum Testen der Jahres-Formatierung.

@@ -34,7 +34,7 @@ struct EbookCard: View {
     private var canExpand: Bool { (item.descriptionText?.count ?? 0) > 100 }
 
     var body: some View {
-        let info = EbookStyle.statusInfo(item.status)
+        let info = EbookStyle.statusInfo(item)
         HStack(alignment: .top, spacing: 12) {
             EbookCover(path: item.coverPath)
 
@@ -48,6 +48,7 @@ struct EbookCard: View {
                     Text(a).font(.caption).foregroundStyle(EbookStyle.rose).lineLimit(1)
                 }
                 metaChips
+                downloadStateLine
                 if item.status == "gesucht" && item.attempts > 0 { attemptLine }
                 if let d = item.descriptionText, !d.isEmpty { descriptionBlock(d) }
                 provenance
@@ -78,6 +79,16 @@ struct EbookCard: View {
         var text = "🔄 \(item.attempts)× versucht"
         if let la = item.lastAttempt, !la.isEmpty { text += " · zuletzt \(DateText.pretty(la))" }
         return Text(text).font(.caption2).foregroundStyle(.secondary)
+    }
+
+    /// Warum das Buch (noch) im Backlog steht: Übergabe läuft bzw. letzter Fehler von Shelfmark.
+    @ViewBuilder private var downloadStateLine: some View {
+        if item.isQueued {
+            Text("⏳ An Shelfmark übergeben – warte auf Abschluss")
+                .font(.caption2).foregroundStyle(EbookStyle.indigo)
+        } else if item.hasFailed, let e = item.lastError, !e.isEmpty {
+            Text("⚠️ \(e)").font(.caption2).foregroundStyle(EbookStyle.rose).lineLimit(3)
+        }
     }
 
     private func descriptionBlock(_ d: String) -> some View {
@@ -200,6 +211,12 @@ struct EbookDetailSheet: View {
                 }
                 .padding(.horizontal, 4)
 
+                if item.isQueued {
+                    NoteBlock(icon: "⏳", text: "An Shelfmark übergeben, Abschluss steht noch aus. Das Buch bleibt so lange auf der Wunschliste.", tint: EbookStyle.indigo)
+                } else if item.hasFailed, let e = item.lastError, !e.isEmpty {
+                    NoteBlock(icon: "⚠️", text: e, tint: EbookStyle.rose)
+                }
+
                 if item.status == "gesucht" && item.attempts > 0 {
                     Text("🔄 \(item.attempts)× gesucht" + (item.lastAttempt.map { " · zuletzt \(DateText.pretty($0))" } ?? ""))
                         .font(.caption).foregroundStyle(.secondary)
@@ -223,7 +240,7 @@ struct EbookDetailSheet: View {
     }
 
     private func statusToggle(_ item: EbookItem) -> some View {
-        let info = EbookStyle.statusInfo(item.status)
+        let info = EbookStyle.statusInfo(item)
         return Button { Task { _ = await store.toggleStatus(item); await load() } } label: {
             HStack(spacing: 4) {
                 Text("\(info.emoji) \(info.label)").fontWeight(.semibold)
@@ -277,12 +294,20 @@ struct EbookDetailSheet: View {
 
     private func save() async {
         guard let item else { return }
-        let fields: [String: Any] = [
+        var fields: [String: Any] = [
             "title": fTitle.trimmingCharacters(in: .whitespaces),
             "author": fAuthor, "publisher": fPublisher, "year": fYear, "category": fCategory,
             "language": fLanguage.isEmpty ? "de" : fLanguage, "isbn": fISBN,
             "description": fDescription, "notes": fNotes, "status": fStatus, "cover_url": fCover,
         ]
+        // Status hier von Hand gesetzt = Bestätigung durch die Nutzerin. Ohne mitgeführten
+        // download_state würde die serverseitige Gegenprüfung ein „heruntergeladen" beim nächsten
+        // Start wieder ins Backlog zurückwerfen (gleiche Logik wie in EbooksStore.toggleStatus).
+        if fStatus != item.status {
+            fields["download_state"] = fStatus == "heruntergeladen" ? "complete" : NSNull()
+            fields["downloaded_at"] = fStatus == "heruntergeladen" ? EbooksStore.todayYMD : NSNull()
+            fields["last_error"] = NSNull()
+        }
         if await store.saveItem(item.id, fields: fields) {
             editMode = false
             await load()

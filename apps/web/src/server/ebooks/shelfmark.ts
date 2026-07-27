@@ -85,7 +85,11 @@ export async function searchReleases(query: string): Promise<{ query: string; co
   return { query, count: results.length, results };
 }
 
-/** Download starten: das VOLLE Release-Objekt an Shelfmark POSTen. */
+/**
+ * Download in die Shelfmark-Warteschlange EINREIHEN. Antwort ist `200 {"priority":0,"status":"queued"}`
+ * — das heißt NICHT „heruntergeladen": der Ablauf (queued → locating → resolving → downloading →
+ * complete|error) passiert danach asynchron. Den Ausgang liefert erst `downloadStates()`.
+ */
 export async function startDownload(release: Record<string, unknown>): Promise<ShelfmarkResponse> {
   return shelfmarkRequest("/releases/download", { method: "POST", body: release });
 }
@@ -93,6 +97,103 @@ export async function startDownload(release: Record<string, unknown>): Promise<S
 /** Aktueller Download-Status (queued/downloading/complete/error …). */
 export async function downloadStatus(): Promise<ShelfmarkResponse> {
   return shelfmarkRequest("/status");
+}
+
+// ── Download-Verfolgung ──────────────────────────────────────────────────────
+// Zwei Quellen, weil Shelfmark seinen Zustand zweigeteilt hält:
+//  • `GET /status`            — LIVE-Warteschlange, nach Buckets. Nur im Speicher (Neustart = weg).
+//  • `GET /activity/history`  — persistierte Historie, aber nur der in der Shelfmark-Oberfläche
+//                               weggeklickten („dismissed") Einträge.
+// Ein Download kann also aus beiden verschwinden, ohne je fertig geworden zu sein → „unbekannt"
+// ist ein eigener Zustand und wird NICHT als Erfolg gewertet.
+
+export type ShelfmarkPhase = "queued" | "locating" | "resolving" | "downloading" | "complete" | "error" | "cancelled";
+
+const TERMINAL_PHASES = new Set<ShelfmarkPhase>(["complete", "error", "cancelled"]);
+
+export interface ShelfmarkDownloadInfo {
+  phase: ShelfmarkPhase;
+  terminal: boolean;
+  message: string | null;
+  title: string | null;
+  source: "queue" | "history";
+}
+
+export interface ShelfmarkHistoryEntry {
+  sourceId: string | null;
+  finalStatus: string | null;
+  title: string | null;
+  author: string | null;
+  message: string | null;
+  addedAt: number | null;
+}
+
+const str = (v: unknown): string | null => (v == null || v === "" ? null : String(v));
+
+/** Live-Warteschlange: Bucket-Name → { id → Eintrag }. */
+async function queueStates(): Promise<Map<string, ShelfmarkDownloadInfo>> {
+  const { status, json } = await shelfmarkRequest("/status");
+  if (status < 200 || status >= 300) throw new Error(`Shelfmark-Status-Fehler ${status}`);
+  const out = new Map<string, ShelfmarkDownloadInfo>();
+  for (const [bucket, items] of Object.entries((json ?? {}) as Record<string, unknown>)) {
+    const phase = bucket as ShelfmarkPhase;
+    for (const [id, item] of Object.entries((items ?? {}) as Record<string, Record<string, unknown>>)) {
+      out.set(String(id), {
+        phase,
+        terminal: TERMINAL_PHASES.has(phase),
+        message: str(item?.status_message),
+        title: str(item?.title),
+        source: "queue",
+      });
+    }
+  }
+  return out;
+}
+
+/** Persistierte Historie (die in Shelfmark weggeklickten Downloads), neueste zuerst. */
+export async function activityHistory(limit = 500): Promise<ShelfmarkHistoryEntry[]> {
+  const { status, json } = await shelfmarkRequest(`/activity/history?limit=${limit}&offset=0`);
+  if (status < 200 || status >= 300) throw new Error(`Shelfmark-Historie-Fehler ${status}`);
+  const rows = Array.isArray(json) ? json : Object.values((json ?? {}) as Record<string, unknown>);
+  return (rows as Record<string, unknown>[])
+    .filter((r) => r && typeof r === "object")
+    .map((r) => {
+      const dl = ((r.snapshot as Record<string, unknown>)?.download ?? {}) as Record<string, unknown>;
+      return {
+        sourceId: str(r.source_id ?? dl.id),
+        finalStatus: str(r.final_status),
+        title: str(dl.title),
+        author: str(dl.author),
+        message: str(dl.status_message),
+        addedAt: typeof dl.added_time === "number" ? dl.added_time : null,
+      };
+    });
+}
+
+/**
+ * Zustand aller Shelfmark bekannten Downloads (Live-Queue hat Vorrang vor der Historie —
+ * ein erneut angestoßener Download soll nicht am alten Endzustand hängenbleiben).
+ * Wirft, wenn Shelfmark nicht erreichbar ist (Aufrufer entscheidet dann bewusst „unbekannt").
+ */
+export async function downloadStates(): Promise<Map<string, ShelfmarkDownloadInfo>> {
+  const [queue, history] = await Promise.all([
+    queueStates(),
+    activityHistory().catch(() => [] as ShelfmarkHistoryEntry[]),
+  ]);
+  const out = new Map<string, ShelfmarkDownloadInfo>();
+  for (const h of history) {
+    if (!h.sourceId || !h.finalStatus) continue;
+    const phase = h.finalStatus as ShelfmarkPhase;
+    out.set(h.sourceId, {
+      phase,
+      terminal: TERMINAL_PHASES.has(phase),
+      message: h.message,
+      title: h.title,
+      source: "history",
+    });
+  }
+  for (const [id, info] of queue) out.set(id, info); // Live gewinnt
+  return out;
 }
 
 /** Cover-URL absolut machen (Shelfmark liefert teils relative Pfade). */

@@ -53,7 +53,7 @@ struct EbooksWishlistView: View {
                 Label("Fertige löschen", systemImage: "trash").font(.footnote.weight(.semibold))
             }
             .buttonStyle(.bordered).tint(.red)
-            .disabled(store.statGeladen == 0)
+            .disabled(store.statBestaetigt == 0)   // nur bestätigte Downloads gelten als fertig
             .accessibilityIdentifier("wishlist-cleanup")
 
             Spacer()
@@ -66,6 +66,9 @@ struct EbooksWishlistView: View {
         HStack(spacing: 8) {
             EbookStatPill(emoji: "📚", value: store.statGesamt, label: "gesamt", color: EbookStyle.rose)
             EbookStatPill(emoji: "🔍", value: store.statGesucht, label: "gesucht", color: EbookStyle.amber)
+            if store.statWarteschlange > 0 {
+                EbookStatPill(emoji: "⏳", value: store.statWarteschlange, label: "wartet", color: EbookStyle.indigo)
+            }
             EbookStatPill(emoji: "✅", value: store.statGeladen, label: "geladen", color: EbookStyle.green)
         }
         .padding(.horizontal, 14).padding(.top, 6)

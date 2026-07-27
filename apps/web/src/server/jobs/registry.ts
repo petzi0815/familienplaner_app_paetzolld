@@ -2,7 +2,7 @@ import type BetterSqlite3 from "better-sqlite3";
 import { apnsEnabled, sendLiveActivity, sendPush } from "@/server/push/apns";
 import { abfuhrCategory, fetchAhaICS, parseAbfuhrICS } from "@/server/abfuhr/abfuhr";
 import { enrichMissingCovers, countMissingCovers } from "@/server/ebooks/covers";
-import { retryAll, pendingCount } from "@/server/ebooks/wishlist";
+import { retryAll, pendingCount, queuedCount, verifyQueued, repairUnverifiedDownloads } from "@/server/ebooks/wishlist";
 import { getCategoryInfo } from "@/server/legacy/termine-db";
 
 export interface JobCtx {
@@ -560,13 +560,60 @@ export const JOBS: JobDef[] = [
     schedule: "0 5 * * 1",
     timezone: "Europe/Berlin",
     topic: "ebooks",
-    description: "Gesuchte E-Book-Wunschbücher wöchentlich via Shelfmark prüfen + herunterladen.",
+    description: "Gesuchte E-Book-Wunschbücher wöchentlich bei Shelfmark suchen + in die Warteschlange geben.",
     async run(ctx) {
       const pending = pendingCount();
-      if (ctx.dryRun) return { messages: [`${pending} gesuchte Bücher`], affected: 0 };
-      if (pending === 0) return { messages: ["keine gesuchten Bücher"], affected: 0 };
-      const { checked, downloaded } = await retryAll();
-      return { messages: [`Wunschliste-Retry: ${checked} geprüft, ${downloaded} heruntergeladen`], affected: downloaded };
+      if (ctx.dryRun) return { messages: [`${pending} offene Bücher`], affected: 0 };
+      if (pending === 0) return { messages: ["keine offenen Bücher"], affected: 0 };
+      const { checked, queued } = await retryAll();
+      // „queued" heißt an Shelfmark übergeben — den Abschluss bestätigt erst buecher-wishlist-verify.
+      return { messages: [`Wunschliste-Retry: ${checked} geprüft, ${queued} eingereiht`], affected: queued };
+    },
+  },
+  {
+    name: "buecher-wishlist-verify",
+    // Alle 10 Minuten reicht: ein Shelfmark-Download braucht Minuten, und jeder Lauf schreibt eine
+    // Zeile in job_runs (deshalb zusätzlich der Aufräum-Job `job-runs-cleanup`).
+    schedule: "*/10 * * * *",
+    topic: "ebooks",
+    description: "Eingereihte E-Book-Downloads bei Shelfmark nachverfolgen — erst nach Bestätigung 'heruntergeladen', sonst zurück ins Backlog.",
+    async run(ctx) {
+      const queued = queuedCount();
+      if (queued === 0) return { messages: ["keine offenen Downloads"], affected: 0 };
+      const r = await verifyQueued({ dryRun: ctx.dryRun });
+      const summary = `Verify: ${r.checked} eingereiht → ${r.downloaded} bestätigt, ${r.failed} gescheitert, ${r.pending} noch unterwegs`;
+      if (r.failed && !ctx.dryRun) {
+        await ctx.notify("ebooks", `📚 ${r.failed} E-Book-Download(s) gescheitert — zurück in der Wunschliste:\n` + r.messages.filter((m) => m.startsWith("⚠️")).join("\n"));
+      }
+      return { messages: [summary, ...r.messages], affected: r.downloaded + r.failed };
+    },
+  },
+  {
+    name: "buecher-wishlist-repair",
+    schedule: "", // nur manuell + einmalig kurz nach dem Boot
+    topic: "ebooks",
+    description: "Als 'heruntergeladen' markierte Wunschbücher gegen Bibliothek/Shelfmark gegenprüfen; unbestätigte zurück ins Backlog.",
+    async run(ctx) {
+      const r = await repairUnverifiedDownloads({ dryRun: ctx.dryRun });
+      if (!r.possible) return { messages: [r.reason ?? "Gegenprüfung nicht möglich"], affected: 0 };
+      const summary = `Reparatur: ${r.checked} geprüft → ${r.kept} bestätigt, ${r.reset} zurück ins Backlog, ${r.skipped} unklar`;
+      if (r.reset && !ctx.dryRun) {
+        await ctx.notify("ebooks", `📚 ${r.reset} Buch/Bücher waren fälschlich als geladen markiert und stehen wieder in der Wunschliste.`);
+      }
+      return { messages: [summary, ...r.messages], affected: r.reset };
+    },
+  },
+  {
+    name: "job-runs-cleanup",
+    schedule: "40 3 * * *",
+    topic: "system",
+    description: "Job-Protokoll aufräumen: Läufe älter als 30 Tage löschen (die Minuten-Jobs lassen job_runs sonst unbegrenzt wachsen).",
+    async run(ctx) {
+      const { c } = ctx.db.prepare("SELECT COUNT(*) c FROM job_runs WHERE started_at < datetime('now','-30 days')").get() as { c: number };
+      if (ctx.dryRun) return { messages: [`${c} Läufe älter als 30 Tage`], affected: 0 };
+      if (c === 0) return { messages: ["nichts aufzuräumen"], affected: 0 };
+      const del = ctx.db.prepare("DELETE FROM job_runs WHERE started_at < datetime('now','-30 days')").run().changes;
+      return { messages: [`${del} alte Job-Läufe gelöscht`], affected: del };
     },
   },
   {

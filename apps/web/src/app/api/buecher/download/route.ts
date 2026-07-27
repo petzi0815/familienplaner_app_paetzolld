@@ -69,10 +69,22 @@ export async function POST(request: Request) {
         { status: 502 },
       );
     }
-    if (bookId) updateBook(bookId, { status: 'heruntergeladen', downloaded_at: today, attempts: 1 });
+    // Shelfmark quittiert nur die WARTESCHLANGE (`{"status":"queued"}`) — der Download läuft danach
+    // asynchron und kann scheitern. Deshalb bleibt das Buch 'gesucht' und wird lediglich als
+    // eingereiht vermerkt; auf 'heruntergeladen' setzt es erst der Job `buecher-wishlist-verify`.
+    if (bookId) {
+      updateBook(bookId, {
+        attempts: 1,
+        last_attempt: today,
+        download_state: 'queued',
+        queued_at: new Date().toISOString(),
+        queued_source_id: release.source_id ?? (raw?.source_id as string | undefined) ?? null,
+        last_error: null,
+      });
+    }
     return NextResponse.json({
-      success: true, action: 'downloading', bookId, duplicate: isDuplicate,
-      message: `📥 Download gestartet: "${release.title}"`, status: dl.json,
+      success: true, action: 'queued', bookId, duplicate: isDuplicate,
+      message: `📥 In der Warteschlange bei Shelfmark: "${release.title}"`, status: dl.json,
     });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Fehler' }, { status: 500 });

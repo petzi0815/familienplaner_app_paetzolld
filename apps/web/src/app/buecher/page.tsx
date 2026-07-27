@@ -631,7 +631,8 @@ export default function BuecherPage() {
       });
       const data = await res.json();
       if (data.success) {
-        setToast({ msg: data.message || `✅ "${result.title}" wird heruntergeladen!`, type: 'ok' });
+        // Shelfmark quittiert nur die Warteschlange — „geladen" meldet erst der Verify-Job.
+        setToast({ msg: data.message || `📥 "${result.title}" ist in der Warteschlange.`, type: 'ok' });
         await loadData();
       } else {
         setToast({ msg: data.error || 'Download fehlgeschlagen', type: 'err' });

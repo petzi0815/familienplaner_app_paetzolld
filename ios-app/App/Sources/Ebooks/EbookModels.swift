@@ -30,6 +30,11 @@ struct EbookItem: Identifiable, Equatable {
     var reviews: String?
     var createdAt: String?
     var updatedAt: String?
+    // Echter Download-Zustand (Migration 0019). Shelfmark quittiert nur die Warteschlange —
+    // `status` wechselt erst auf „heruntergeladen", wenn der Download bestätigt ist.
+    var downloadState: String?   // nil | queued | complete | failed
+    var queuedAt: String?
+    var lastError: String?
 
     init(fields f: [String: Any]) {
         id = Coerce.int(f["id"]) ?? 0
@@ -53,9 +58,16 @@ struct EbookItem: Identifiable, Equatable {
         reviews = Coerce.str(f["reviews"])
         createdAt = Coerce.str(f["created_at"])
         updatedAt = Coerce.str(f["updated_at"])
+        downloadState = Coerce.str(f["download_state"])
+        queuedAt = Coerce.str(f["queued_at"])
+        lastError = Coerce.str(f["last_error"])
     }
 
     var isDownloaded: Bool { status == "heruntergeladen" }
+    /// Bei Shelfmark eingereiht, Ausgang noch offen — steht weiter im Backlog.
+    var isQueued: Bool { !isDownloaded && downloadState == "queued" }
+    /// Letzter Versuch ist nachweislich gescheitert (Meldung in `lastError`).
+    var hasFailed: Bool { !isDownloaded && downloadState == "failed" }
 
     /// Cover-Pfad für `AuthImage` — externe URLs kommen unverändert zurück, sonst Media-Proxy.
     var coverPath: String? {
@@ -81,6 +93,15 @@ enum EbookStyle {
         s == "heruntergeladen"
             ? StatusInfo(emoji: "✅", label: "Geladen", color: green)
             : StatusInfo(emoji: "🔍", label: "Gesucht", color: amber)
+    }
+
+    /// Anzeige inklusive Download-Zustand — „Geladen" heißt jetzt wirklich geladen,
+    /// eine laufende Übergabe an Shelfmark ist ein eigener Zustand.
+    static func statusInfo(_ item: EbookItem) -> StatusInfo {
+        if item.isDownloaded { return StatusInfo(emoji: "✅", label: "Geladen", color: green) }
+        if item.isQueued { return StatusInfo(emoji: "⏳", label: "In Warteschlange", color: indigo) }
+        if item.hasFailed { return StatusInfo(emoji: "⚠️", label: "Fehlgeschlagen", color: rose) }
+        return StatusInfo(emoji: "🔍", label: "Gesucht", color: amber)
     }
 
     /// Alle wählbaren Status (feste Reihenfolge) — für das Bearbeiten-Formular.

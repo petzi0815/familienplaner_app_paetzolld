@@ -29,4 +29,11 @@ export function startScheduler(): void {
   setTimeout(() => {
     runJob("buecher-cover-enrich").catch((e) => log.error("Cover-Enrich-Boot-Absturz", { error: String(e) }));
   }, 90_000);
+
+  // Einmalige Gegenprüfung kurz nach dem Boot: als „heruntergeladen" markierte Wunschbücher, die
+  // weder in der Bibliothek noch in Shelfmarks Historie belegt sind, zurück ins Backlog legen.
+  // Idempotent — bestätigte Zeilen bekommen download_state='complete' und werden künftig übersprungen.
+  setTimeout(() => {
+    runJob("buecher-wishlist-repair").catch((e) => log.error("Wunschlisten-Reparatur-Boot-Absturz", { error: String(e) }));
+  }, 150_000);
 }

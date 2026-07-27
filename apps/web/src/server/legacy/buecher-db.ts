@@ -21,13 +21,18 @@ export interface Book {
   source_id?: string;
   requested_by?: string;
   requested_at?: string;
-  downloaded_at?: string;
+  downloaded_at?: string | null; // null = ausdrücklich zurücksetzen (Download nicht bestätigt)
   attempts: number;
   last_attempt?: string;
   notes?: string;
   reviews?: string;
   created_at: string;
   updated_at: string;
+  // Migration 0019 — echter Download-Zustand (Shelfmark quittiert nur die Warteschlange).
+  download_state?: 'queued' | 'complete' | 'failed' | null;
+  queued_at?: string | null;
+  queued_source_id?: string | null;
+  last_error?: string | null;
 }
 
 export function getAllBooks(filters?: {
@@ -103,7 +108,9 @@ export function updateBook(id: number, data: Partial<Book>): boolean {
   const fields: string[] = [];
   const params: unknown[] = [];
 
-  const allowedFields = ['title', 'author', 'publisher', 'year', 'category', 'description', 'cover_url', 'isbn', 'language', 'status', 'source_id', 'requested_by', 'requested_at', 'downloaded_at', 'attempts', 'last_attempt', 'notes', 'reviews'];
+  const allowedFields = ['title', 'author', 'publisher', 'year', 'category', 'description', 'cover_url', 'isbn', 'language', 'status', 'source_id', 'requested_by', 'requested_at', 'downloaded_at', 'attempts', 'last_attempt', 'notes', 'reviews',
+    // Migration 0019 (Download-Verifikation)
+    'download_state', 'queued_at', 'queued_source_id', 'last_error'];
 
   for (const key of allowedFields) {
     if (key in data) {

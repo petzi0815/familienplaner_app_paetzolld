@@ -90,6 +90,10 @@ final class EbooksStore: ObservableObject, NotifiableStore {
     var statGesamt: Int { items.count }
     var statGesucht: Int { items.filter { $0.status == "gesucht" }.count }
     var statGeladen: Int { items.filter { $0.status == "heruntergeladen" }.count }
+    /// Bei Shelfmark eingereiht, Abschluss noch offen (zählt weiterhin als „gesucht").
+    var statWarteschlange: Int { items.filter(\.isQueued).count }
+    /// Nur bestätigte Downloads lassen sich aufräumen — „Fertige löschen" entfernt genau diese.
+    var statBestaetigt: Int { items.filter { $0.isDownloaded && $0.downloadState == "complete" }.count }
 
     // MARK: - Mutationen
 
@@ -134,10 +138,19 @@ final class EbooksStore: ObservableObject, NotifiableStore {
     }
 
     /// Status umschalten (gesucht ↔ heruntergeladen). Setzt beim Markieren das Ladedatum.
+    /// Ein manuelles „Geladen" ist eine Bestätigung durch die Nutzerin → `download_state=complete`,
+    /// damit die serverseitige Gegenprüfung es nicht wieder ins Backlog zurückwirft.
     func toggleStatus(_ item: EbookItem) async -> Bool {
         let now = item.isDownloaded
         var fields: [String: Any] = ["status": now ? "gesucht" : "heruntergeladen"]
-        if !now { fields["downloaded_at"] = Self.todayYMD }
+        if now {
+            fields["downloaded_at"] = NSNull()
+            fields["download_state"] = NSNull()
+        } else {
+            fields["downloaded_at"] = Self.todayYMD
+            fields["download_state"] = "complete"
+        }
+        fields["last_error"] = NSNull()
         return await saveItem(item.id, fields: fields)
     }
 
@@ -171,7 +184,7 @@ final class EbooksStore: ObservableObject, NotifiableStore {
         defer { downloadingID = nil }
         do {
             let res = try await api.download(r.raw, addOnly: addOnly)
-            notify((res["message"] as? String) ?? (addOnly ? "Zur Wunschliste hinzugefügt" : "Download gestartet"))
+            notify((res["message"] as? String) ?? (addOnly ? "Zur Wunschliste hinzugefügt" : "In der Warteschlange bei Shelfmark"))
             await reloadItems(); await reloadOptions()
         } catch { notify(errText(error), error: true) }
     }
@@ -184,8 +197,10 @@ final class EbooksStore: ObservableObject, NotifiableStore {
         defer { checkingID = nil }
         do {
             let r = try await api.wishlistCheck(item.id)
-            if Coerce.bool(r["downloaded"]) {
-                notify("„\(item.title)“ heruntergeladen")
+            // „queued" = an Shelfmark übergeben. Fertig ist das Buch erst, wenn der Server den
+            // Download bestätigt hat — bis dahin bleibt es auf der Wunschliste.
+            if Coerce.bool(r["queued"]) {
+                notify("„\(item.title)“ an Shelfmark übergeben – bleibt bis zur Bestätigung auf der Liste")
             } else {
                 notify("„\(item.title)“: \((r["message"] as? String) ?? "kein Treffer")", error: true)
             }
@@ -199,7 +214,7 @@ final class EbooksStore: ObservableObject, NotifiableStore {
         defer { bulkChecking = false }
         do {
             let pending = try await api.wishlistCheckAll()
-            notify("Prüfe \(pending) Bücher im Hintergrund …")
+            notify("Prüfe \(pending) Bücher im Hintergrund – geladen wird erst gemeldet, wenn es wirklich da ist")
             try? await Task.sleep(nanoseconds: 8_000_000_000)
             await reloadItems(); await reloadOptions()
         } catch { notify(errText(error), error: true) }
