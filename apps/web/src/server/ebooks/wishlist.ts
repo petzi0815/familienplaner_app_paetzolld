@@ -20,6 +20,9 @@ import { calibreEnabled, listBooks } from "@/server/ebooks/calibre";
 const today = () => new Date().toISOString().split("T")[0];
 const nowIso = () => new Date().toISOString();
 
+/** Einheitlicher Text, wenn Shelfmark selbst nicht antwortet (bewusst ohne internen Hostnamen). */
+export const SHELFMARK_UNREACHABLE = "Shelfmark nicht erreichbar";
+
 // ── Titel-/Autor-Abgleich ────────────────────────────────────────────────────
 // Die Shelfmark-Suche (Anna's Archive) liefert zu einem Titel auch lose Verwandtes. Ohne
 // Abgleich könnte der „beste" Treffer ein völlig anderes Buch sein (z. B. „Der Schwarm" →
@@ -178,7 +181,7 @@ export async function checkAndDownload(book: Book): Promise<CheckResult> {
   } catch (e) {
     // Interne Host-/Netzfehler NICHT an den Client durchreichen (kein Synology-Host-Leak) — nur loggen.
     log.error("Wunschliste-Check fehlgeschlagen", { id: book.id, error: e instanceof Error ? e.message : String(e) });
-    message = "Shelfmark nicht erreichbar";
+    message = SHELFMARK_UNREACHABLE;
   }
   if (!queued) updateBook(book.id, { attempts, last_attempt: stamp, last_error: message });
   return { id: book.id, title: book.title, found, queued, downloaded: false, message };
@@ -187,18 +190,19 @@ export async function checkAndDownload(book: Book): Promise<CheckResult> {
 let retrying = false;
 
 /** Alle offenen „gesucht"-Bücher (max `limit`) suchen + einreihen. In-Flight-Guard gegen Überlappung. */
-export async function retryAll(limit = 80): Promise<{ checked: number; queued: number }> {
-  if (retrying) return { checked: 0, queued: 0 };
+export async function retryAll(limit = 80): Promise<{ checked: number; queued: number; unreachable: number }> {
+  if (retrying) return { checked: 0, queued: 0, unreachable: 0 };
   retrying = true;
   try {
     const books = openBooks().slice(0, limit);
-    let queued = 0;
+    let queued = 0, unreachable = 0;
     for (const b of books) {
       const r = await checkAndDownload(b);
       if (r.queued) queued++;
+      if (r.message === SHELFMARK_UNREACHABLE) unreachable++;
       await new Promise((res) => setTimeout(res, 300)); // sanft ggü. Shelfmark
     }
-    return { checked: books.length, queued };
+    return { checked: books.length, queued, unreachable };
   } finally {
     retrying = false;
   }
@@ -224,12 +228,44 @@ export function queuedCount(): number {
 /** Ein eingereihter Download gilt nach dieser Zeit ohne Rückmeldung als gescheitert. */
 const STALE_HOURS = 6;
 
-export interface VerifyResult { checked: number; downloaded: number; failed: number; pending: number; messages: string[] }
+/**
+ * Erkennt den Rechte-/Ablagefehler des Shelfmark-Ingest-Ordners
+ * („Destination not writable: /cwa-book-ingest ([Errno 13] Permission denied…)").
+ * Dieser Fall soll sofort auffallen — er blockiert JEDEN Download, bis auf der Synology
+ * die Ordnerrechte wieder stimmen. Deshalb eigener Push-Text statt einer Sammelmeldung.
+ */
+export function isDestinationError(reason: string | null | undefined): boolean {
+  const r = (reason ?? "").toLowerCase();
+  return r.includes("not writable") || r.includes("permission denied") || r.includes("errno 13");
+}
+
+/** Ein abgeschlossener Vorgang — Grundlage für die Push-Meldung an die richtige Person. */
+export interface VerifyOutcome { id: number; title: string; owner: string | null; reason: string }
+
+export interface VerifyResult {
+  checked: number;
+  downloaded: number;
+  failed: number;
+  pending: number;
+  messages: string[];
+  /** Bestätigte Downloads dieses Laufs (für „Buch ist da"-Push). */
+  done: VerifyOutcome[];
+  /** Gescheiterte Downloads dieses Laufs (für Fehler-Push). */
+  failures: VerifyOutcome[];
+  /** Shelfmark war nicht erreichbar — nichts wurde bewertet. */
+  unreachable: boolean;
+}
+
+/** `requested_by` → Push-Zielperson. Unbekannt/„Manuell" → null = Broadcast an die Familie. */
+function ownerOf(requestedBy: string | null | undefined): string | null {
+  const v = (requestedBy ?? "").trim().toLowerCase();
+  return v === "lars" || v === "elita" ? v : null;
+}
 
 /** Eingereihte Downloads gegen Shelfmark (und ersatzweise die Bibliothek) abgleichen. */
 export async function verifyQueued(opts: { dryRun?: boolean } = {}): Promise<VerifyResult> {
   const rows = getDb().prepare("SELECT * FROM ebook_wishlist WHERE download_state='queued'").all() as Book[];
-  const out: VerifyResult = { checked: rows.length, downloaded: 0, failed: 0, pending: 0, messages: [] };
+  const out: VerifyResult = { checked: rows.length, downloaded: 0, failed: 0, pending: 0, messages: [], done: [], failures: [], unreachable: false };
   if (!rows.length) return out;
 
   let states: Awaited<ReturnType<typeof downloadStates>>;
@@ -239,6 +275,7 @@ export async function verifyQueued(opts: { dryRun?: boolean } = {}): Promise<Ver
     log.error("Shelfmark-Status nicht abrufbar", { error: e instanceof Error ? e.message : String(e) });
     out.messages.push("Shelfmark nicht erreichbar — Zustand unverändert");
     out.pending = rows.length;
+    out.unreachable = true;
     return out;
   }
 
@@ -249,6 +286,7 @@ export async function verifyQueued(opts: { dryRun?: boolean } = {}): Promise<Ver
     const markDone = (why: string) => {
       out.downloaded++;
       out.messages.push(`✅ ${b.title} — ${why}`);
+      out.done.push({ id: b.id, title: b.title, owner: ownerOf(b.requested_by), reason: why });
       if (!opts.dryRun) {
         updateBook(b.id, { status: "heruntergeladen", downloaded_at: stamp, download_state: "complete", last_error: null });
       }
@@ -256,7 +294,9 @@ export async function verifyQueued(opts: { dryRun?: boolean } = {}): Promise<Ver
     const markFailed = (why: string) => {
       out.failed++;
       out.messages.push(`⚠️ ${b.title} — ${why}`);
+      out.failures.push({ id: b.id, title: b.title, owner: ownerOf(b.requested_by), reason: why });
       if (!opts.dryRun) {
+        // Gescheitert heißt gescheitert: KEIN 'heruntergeladen', das Buch bleibt im Backlog.
         updateBook(b.id, { status: "gesucht", downloaded_at: null, download_state: "failed", last_error: why });
       }
     };

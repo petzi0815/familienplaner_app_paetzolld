@@ -2,7 +2,7 @@ import type BetterSqlite3 from "better-sqlite3";
 import { apnsEnabled, sendLiveActivity, sendPush } from "@/server/push/apns";
 import { abfuhrCategory, fetchAhaICS, parseAbfuhrICS } from "@/server/abfuhr/abfuhr";
 import { enrichMissingCovers, countMissingCovers } from "@/server/ebooks/covers";
-import { retryAll, pendingCount, queuedCount, verifyQueued, repairUnverifiedDownloads } from "@/server/ebooks/wishlist";
+import { retryAll, pendingCount, queuedCount, verifyQueued, repairUnverifiedDownloads, isDestinationError, type VerifyOutcome } from "@/server/ebooks/wishlist";
 import { getCategoryInfo } from "@/server/legacy/termine-db";
 
 export interface JobCtx {
@@ -21,6 +21,58 @@ export interface JobDef {
 }
 
 const todayStart = () => new Date(new Date().toISOString().slice(0, 10) + "T00:00:00");
+
+// ── E-Book-Downloads: Push über Erfolg und Fehlschlag ────────────────────────
+// Wunsch von Lars: (a) jedes wirklich heruntergeladene Buch melden, (b) Fehler — besonders ein
+// nicht beschreibbarer Ingest-Ordner — müssen auffallen, statt nur im Job-Protokoll zu landen.
+
+/** Ab dieser Menge wird zu EINER Sammelmeldung zusammengefasst (statt 15 Einzel-Pushes). */
+const PUSH_EINZELN_BIS = 3;
+
+async function pushDownloadResults(done: VerifyOutcome[], failures: VerifyOutcome[]): Promise<void> {
+  if (done.length && done.length <= PUSH_EINZELN_BIS) {
+    for (const d of done) {
+      await sendPush({
+        title: "📚 E-Book ist da",
+        body: d.title,
+        data: { kind: "ebook", id: d.id },
+        owner: d.owner,
+      }).catch(() => {});
+    }
+  } else if (done.length) {
+    await sendPush({
+      title: `📚 ${done.length} E-Books heruntergeladen`,
+      body: done.slice(0, 3).map((d) => d.title).join(", ") + (done.length > 3 ? ` und ${done.length - 3} weitere` : ""),
+      data: { kind: "ebook" },
+    }).catch(() => {});
+  }
+
+  if (!failures.length) return;
+  // Der Rechte-/Ablagefehler blockiert ALLE Downloads → eigener, unmissverständlicher Text.
+  const blocked = failures.filter((f) => isDestinationError(f.reason));
+  if (blocked.length) {
+    await sendPush({
+      title: "⚠️ Buch-Downloads blockiert",
+      body: `Der Ablage-Ordner ist nicht beschreibbar (Rechte auf der Synology). ${blocked.length} Buch/Bücher stehen wieder in der Wunschliste.`,
+      data: { kind: "ebook-fehler", grund: "ingest" },
+    }).catch(() => {});
+  }
+  const other = failures.filter((f) => !isDestinationError(f.reason));
+  if (other.length === 1) {
+    await sendPush({
+      title: "⚠️ Buch-Download fehlgeschlagen",
+      body: `${other[0].title} — ${other[0].reason.slice(0, 140)}`,
+      data: { kind: "ebook-fehler", id: other[0].id },
+      owner: other[0].owner,
+    }).catch(() => {});
+  } else if (other.length > 1) {
+    await sendPush({
+      title: `⚠️ ${other.length} Buch-Downloads fehlgeschlagen`,
+      body: other.slice(0, 3).map((f) => f.title).join(", ") + (other.length > 3 ? " …" : "") + " — stehen wieder in der Wunschliste.",
+      data: { kind: "ebook-fehler" },
+    }).catch(() => {});
+  }
+}
 
 // ── Zeit-Helfer (Europe/Berlin) ──────────────────────────────────────────────
 // Die Termin-Jobs rechnen mit Wandkalender-Werten ('YYYY-MM-DD' + 'HH:MM') in deutscher
@@ -565,9 +617,17 @@ export const JOBS: JobDef[] = [
       const pending = pendingCount();
       if (ctx.dryRun) return { messages: [`${pending} offene Bücher`], affected: 0 };
       if (pending === 0) return { messages: ["keine offenen Bücher"], affected: 0 };
-      const { checked, queued } = await retryAll();
+      const { checked, queued, unreachable } = await retryAll();
+      // Shelfmark komplett tot → das fällt sonst niemandem auf (der Job läuft nachts um 5).
+      if (unreachable) {
+        await sendPush({
+          title: "⚠️ Bücher-Dienst nicht erreichbar",
+          body: `Shelfmark hat bei ${unreachable} von ${checked} Büchern nicht geantwortet — es wurde nichts geladen.`,
+          data: { kind: "ebook-fehler", grund: "shelfmark" },
+        }).catch(() => {});
+      }
       // „queued" heißt an Shelfmark übergeben — den Abschluss bestätigt erst buecher-wishlist-verify.
-      return { messages: [`Wunschliste-Retry: ${checked} geprüft, ${queued} eingereiht`], affected: queued };
+      return { messages: [`Wunschliste-Retry: ${checked} geprüft, ${queued} eingereiht, ${unreachable} ohne Antwort`], affected: queued };
     },
   },
   {
@@ -582,8 +642,12 @@ export const JOBS: JobDef[] = [
       if (queued === 0) return { messages: ["keine offenen Downloads"], affected: 0 };
       const r = await verifyQueued({ dryRun: ctx.dryRun });
       const summary = `Verify: ${r.checked} eingereiht → ${r.downloaded} bestätigt, ${r.failed} gescheitert, ${r.pending} noch unterwegs`;
-      if (r.failed && !ctx.dryRun) {
-        await ctx.notify("ebooks", `📚 ${r.failed} E-Book-Download(s) gescheitert — zurück in der Wunschliste:\n` + r.messages.filter((m) => m.startsWith("⚠️")).join("\n"));
+      if (!ctx.dryRun) {
+        // Jede Zeile wechselt genau EINMAL in einen Endzustand → kein wiederkehrender Push-Spam.
+        await pushDownloadResults(r.done, r.failures);
+        if (r.failed) {
+          await ctx.notify("ebooks", `📚 ${r.failed} E-Book-Download(s) gescheitert — zurück in der Wunschliste:\n` + r.messages.filter((m) => m.startsWith("⚠️")).join("\n"));
+        }
       }
       return { messages: [summary, ...r.messages], affected: r.downloaded + r.failed };
     },
@@ -598,7 +662,9 @@ export const JOBS: JobDef[] = [
       if (!r.possible) return { messages: [r.reason ?? "Gegenprüfung nicht möglich"], affected: 0 };
       const summary = `Reparatur: ${r.checked} geprüft → ${r.kept} bestätigt, ${r.reset} zurück ins Backlog, ${r.skipped} unklar`;
       if (r.reset && !ctx.dryRun) {
-        await ctx.notify("ebooks", `📚 ${r.reset} Buch/Bücher waren fälschlich als geladen markiert und stehen wieder in der Wunschliste.`);
+        const text = `${r.reset} Buch/Bücher waren fälschlich als geladen markiert und stehen wieder in der Wunschliste.`;
+        await sendPush({ title: "📚 Wunschliste korrigiert", body: text, data: { kind: "ebook-reparatur" } }).catch(() => {});
+        await ctx.notify("ebooks", `📚 ${text}`);
       }
       return { messages: [summary, ...r.messages], affected: r.reset };
     },
