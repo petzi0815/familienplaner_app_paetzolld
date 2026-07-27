@@ -31,7 +31,18 @@ export async function GET(req: Request): Promise<Response> {
     vorrat_bald_ablaufend: num("SELECT COUNT(*) c FROM vorrat_lebensmittel WHERE mhd IS NOT NULL AND mhd<>'' AND mhd<=date('now','+14 days') AND COALESCE(status,'')<>'verbraucht'"),
     aufgaben_offen: num("SELECT COUNT(*) c FROM aufgaben WHERE status='offen'"),
     termine: num("SELECT COUNT(*) c FROM termine"),
+    ebooks_gesucht: num("SELECT COUNT(*) c FROM ebook_wishlist WHERE status='gesucht'"),
+    ebooks_warteschlange: num("SELECT COUNT(*) c FROM ebook_wishlist WHERE download_state='queued'"),
+    ebooks_geladen: num("SELECT COUNT(*) c FROM ebook_wishlist WHERE status='heruntergeladen'"),
   };
+
+  // Geräte je Zielperson — OHNE Tokens. Ein owner-adressierter Push erreicht NUR die Geräte dieser
+  // Person (Broadcast-Fallback greift nur bei 0 Geräten); ohne diese Übersicht fällt eine falsche
+  // Adressierung erst auf, wenn jemand sagt „bei mir kam nichts an".
+  const push_geraete = Object.fromEntries(
+    (getDb().prepare("SELECT COALESCE(owner,'(ohne owner)') o, COUNT(*) c FROM device_tokens GROUP BY o").all() as { o: string; c: number }[])
+      .map((r) => [r.o, r.c]),
+  );
 
   let openaiPing: unknown = "übersprungen (mit ?openai=1 live testen)";
   if (url.searchParams.get("openai") === "1") {
@@ -48,5 +59,5 @@ export async function GET(req: Request): Promise<Response> {
     }
   }
 
-  return ok({ commit: config.gitSha, env: config.nodeEnv, integrations, stats, openai_ping: openaiPing });
+  return ok({ commit: config.gitSha, env: config.nodeEnv, integrations, stats, push_geraete, openai_ping: openaiPing });
 }

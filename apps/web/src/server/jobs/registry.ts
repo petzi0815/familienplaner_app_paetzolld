@@ -25,6 +25,11 @@ const todayStart = () => new Date(new Date().toISOString().slice(0, 10) + "T00:0
 // ── E-Book-Downloads: Push über Erfolg und Fehlschlag ────────────────────────
 // Wunsch von Lars: (a) jedes wirklich heruntergeladene Buch melden, (b) Fehler — besonders ein
 // nicht beschreibbarer Ingest-Ordner — müssen auffallen, statt nur im Job-Protokoll zu landen.
+//
+// BEWUSST OHNE `owner`: Die Wunschliste ist gemeinsam, und `requested_by` ist ein Freitextfeld
+// ('Elita' / 'Manuell' / 'iOS') und KEINE Push-Adresse. Mit owner='elita' ging die Meldung nur
+// an Elitas Gerät — Lars bekam nichts, obwohl er sie ausdrücklich wollte (der Broadcast-Fallback
+// in sendPush greift nur, wenn die Person GAR KEIN Gerät hat). Bücher gehen deshalb an alle.
 
 /** Ab dieser Menge wird zu EINER Sammelmeldung zusammengefasst (statt 15 Einzel-Pushes). */
 const PUSH_EINZELN_BIS = 3;
@@ -34,9 +39,8 @@ async function pushDownloadResults(done: VerifyOutcome[], failures: VerifyOutcom
     for (const d of done) {
       await sendPush({
         title: "📚 E-Book ist da",
-        body: d.title,
+        body: d.owner ? `${d.title} (Wunsch von ${d.owner === "lars" ? "Lars" : "Elita"})` : d.title,
         data: { kind: "ebook", id: d.id },
-        owner: d.owner,
       }).catch(() => {});
     }
   } else if (done.length) {
@@ -63,7 +67,6 @@ async function pushDownloadResults(done: VerifyOutcome[], failures: VerifyOutcom
       title: "⚠️ Buch-Download fehlgeschlagen",
       body: `${other[0].title} — ${other[0].reason.slice(0, 140)}`,
       data: { kind: "ebook-fehler", id: other[0].id },
-      owner: other[0].owner,
     }).catch(() => {});
   } else if (other.length > 1) {
     await sendPush({
