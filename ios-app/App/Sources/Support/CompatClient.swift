@@ -19,13 +19,33 @@ final class CompatClient {
         return URLSession(configuration: c)
     }()
 
-    private func req(_ path: String, method: String = "GET", query: [URLQueryItem] = [], body: Data? = nil) throws -> URLRequest {
+    /// Zeitbudget des **Langsam-Pfads** (`slow: true`). Muss ÜBER dem größten Server-Budget liegen:
+    /// `maxDuration = 300` beim Wein-Preischeck, 120 bei Wein-Scan/-Lookup.
+    private static let slowTimeout: TimeInterval = 310
+
+    /// Zweite Session ausschließlich für die langlaufenden KI-Routen (Opt-in über `slow: true`).
+    /// `timeoutIntervalForRequest` ist ein **Inaktivitäts**-Timer: diese Routen rechnen minutenlang
+    /// (Vision → Websuche → Normalisierung) und senden bis zum fertigen JSON kein einziges Byte —
+    /// mit den 25 s der Standard-Session bricht der Client also zwangsläufig ab, während der Server
+    /// die kostenpflichtige Kette zu Ende führt. Alle übrigen Aufrufe bleiben bewusst bei 25 s
+    /// (schnelles Scheitern ist dort das gewünschte Verhalten).
+    /// `timeoutIntervalForResource` bleibt beim Default (7 Tage) und bindet hier nicht.
+    private static let slowSession: URLSession = {
+        let c = URLSessionConfiguration.default
+        c.timeoutIntervalForRequest = CompatClient.slowTimeout
+        return URLSession(configuration: c)
+    }()
+
+    private func req(_ path: String, method: String = "GET", query: [URLQueryItem] = [], body: Data? = nil, timeout: TimeInterval? = nil) throws -> URLRequest {
         guard var comps = URLComponents(string: base + "/api" + path) else { throw APIError(status: 0, message: "Ungültige URL") }
         if !query.isEmpty { comps.queryItems = query }
         guard let url = comps.url else { throw APIError(status: 0, message: "Ungültige URL") }
         var r = URLRequest(url: url)
         r.httpMethod = method
         r.httpBody = body
+        // Request- und Session-Budget konkurrieren (in der Praxis gewinnt der kleinere Wert) —
+        // im Langsam-Pfad daher beide setzen, damit das große Budget sicher greift.
+        if let timeout { r.timeoutInterval = timeout }
         if body != nil { r.setValue("application/json", forHTTPHeaderField: "Content-Type") }
         guard let key = settings.apiKey, !key.isEmpty else { throw APIError(status: 401, message: "Nicht angemeldet") }
         r.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
@@ -46,9 +66,11 @@ final class CompatClient {
     // MARK: - Lesen
 
     /// Bare-Array-Antwort aus Objekten (`[{…},{…}]`).
-    func getArray(_ path: String, query: [URLQueryItem] = []) async throws -> [[String: Any]] {
+    /// `slow: true` = Langsam-Pfad für KI-Routen (siehe `slowSession`); Default lässt alles unverändert.
+    func getArray(_ path: String, query: [URLQueryItem] = [], slow: Bool = false) async throws -> [[String: Any]] {
         if let fixture = UITestFixtures.array(path) { return fixture }   // UI-Test: deterministische Daten
-        let (data, resp) = try await Self.session.data(for: req(path, query: query))
+        let r = try req(path, query: query, timeout: slow ? Self.slowTimeout : nil)
+        let (data, resp) = try await (slow ? Self.slowSession : Self.session).data(for: r)
         try check(resp, data)
         if let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] { return arr }
         return []
@@ -72,19 +94,23 @@ final class CompatClient {
     }
 
     /// Objekt-Antwort (`{…}` — z.B. ?stats=true, /gts, /dashboard, Einzel-GET).
-    func getObject(_ path: String, query: [URLQueryItem] = []) async throws -> [String: Any] {
+    /// `slow: true` = Langsam-Pfad für KI-Routen (siehe `slowSession`); Default lässt alles unverändert.
+    func getObject(_ path: String, query: [URLQueryItem] = [], slow: Bool = false) async throws -> [String: Any] {
         if let fixture = UITestFixtures.object(path) { return fixture }   // UI-Test: deterministische Daten
-        let (data, resp) = try await Self.session.data(for: req(path, query: query))
+        let r = try req(path, query: query, timeout: slow ? Self.slowTimeout : nil)
+        let (data, resp) = try await (slow ? Self.slowSession : Self.session).data(for: r)
         try check(resp, data)
         return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
     }
 
     // MARK: - Schreiben
 
+    /// `slow: true` = Langsam-Pfad für KI-Routen (siehe `slowSession`); Default lässt alles unverändert.
     @discardableResult
-    func send(_ path: String, method: String, body: [String: Any]? = nil) async throws -> [String: Any] {
+    func send(_ path: String, method: String, body: [String: Any]? = nil, slow: Bool = false) async throws -> [String: Any] {
         let data = body.flatMap { try? JSONSerialization.data(withJSONObject: $0) }
-        let (respData, resp) = try await Self.session.data(for: req(path, method: method, body: data))
+        let r = try req(path, method: method, body: data, timeout: slow ? Self.slowTimeout : nil)
+        let (respData, resp) = try await (slow ? Self.slowSession : Self.session).data(for: r)
         try check(resp, respData)
         return (try? JSONSerialization.jsonObject(with: respData)) as? [String: Any] ?? [:]
     }

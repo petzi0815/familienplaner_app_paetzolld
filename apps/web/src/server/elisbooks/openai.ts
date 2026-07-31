@@ -5,9 +5,16 @@ import { config } from "@/server/config";
 
 export function hasOpenAI(): boolean { return !!config.openaiApiKey; }
 
-interface ChatOpts { model?: string; system?: string; imageDataUrl?: string; maxTokens?: number; temperature?: number; json?: boolean }
+interface ChatOpts { model?: string; system?: string; imageDataUrl?: string; maxTokens?: number; temperature?: number; json?: boolean; timeoutMs?: number }
 
-/** Ruft OpenAI Chat Completions (optional mit Bild) und gibt den Text-Inhalt zurück. */
+/**
+ * Ruft OpenAI Chat Completions (optional mit Bild) und gibt den Text-Inhalt zurück.
+ *
+ * `timeoutMs` bricht die Verbindung wirklich ab (AbortSignal) statt nur die Wartezeit zu deckeln —
+ * ein `Promise.race` lässt die Socket im Hintergrund bis zum undici-Default (~300 s) weiterlaufen.
+ * Ohne Angabe verhält sich der Aufruf exakt wie bisher (kein Deckel), damit die 10 bestehenden
+ * Aufrufer unverändert bleiben.
+ */
 export async function openaiChat(userPrompt: string, opts: ChatOpts = {}): Promise<string> {
   const model = opts.model ?? "gpt-4o";
   const content: unknown[] = [{ type: "text", text: userPrompt }];
@@ -16,16 +23,26 @@ export async function openaiChat(userPrompt: string, opts: ChatOpts = {}): Promi
   if (opts.system) messages.push({ role: "system", content: opts.system });
   messages.push({ role: "user", content: opts.imageDataUrl ? content : userPrompt });
 
-  const r = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${config.openaiApiKey}` },
-    body: JSON.stringify({
-      model, messages,
-      max_tokens: opts.maxTokens ?? 1500,
-      temperature: opts.temperature ?? 0.3,
-      ...(opts.json ? { response_format: { type: "json_object" } } : {}),
-    }),
-  });
+  let r: Response;
+  try {
+    r = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${config.openaiApiKey}` },
+      body: JSON.stringify({
+        model, messages,
+        max_tokens: opts.maxTokens ?? 1500,
+        temperature: opts.temperature ?? 0.3,
+        ...(opts.json ? { response_format: { type: "json_object" } } : {}),
+      }),
+      ...(opts.timeoutMs ? { signal: AbortSignal.timeout(opts.timeoutMs) } : {}),
+    });
+  } catch (e) {
+    const name = (e as Error)?.name;
+    if (name === "TimeoutError" || name === "AbortError") {
+      throw new Error(`OpenAI: Zeitbudget von ${Math.round((opts.timeoutMs ?? 0) / 1000)} s überschritten`);
+    }
+    throw e;
+  }
   if (!r.ok) throw new Error(`OpenAI ${r.status}: ${(await r.text()).slice(0, 200)}`);
   const data = (await r.json()) as { choices?: { message?: { content?: string } }[] };
   return data.choices?.[0]?.message?.content ?? "";

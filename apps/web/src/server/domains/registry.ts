@@ -101,6 +101,12 @@ export const RESOURCES: Resource[] = [
   { key: "pizza-rezepte", table: "pizza_rezepte", domain: "pizza", label: "Pizza-Rezepturen", searchable: ["name", "notiz"], sort: "updated_at DESC" },
   { key: "pizza-notizen", table: "pizza_notizen", domain: "pizza", label: "Rezept-Notizen", sort: "created_at DESC" },
 
+  // ── Wein (Weinkeller + Bewertungen je Person + Preis-Historie) ──
+  { key: "weine", table: "weine", domain: "wein", label: "Weine", image: { col: "foto_key", multi: false, area: "wein" }, searchable: ["name", "weingut", "land", "region", "lage", "rebsorten", "aromen", "beschreibung", "speiseempfehlung", "notizen"], sort: "created_at DESC" },
+  { key: "wein-bewertungen", table: "wein_bewertungen", domain: "wein", label: "Wein-Bewertungen", sort: "updated_at DESC" },
+  // Preis-Historie: Writes laufen über /api/v1/wein-preischeck (Recherche), von außen nur lesen.
+  { key: "wein-preise", table: "wein_preise", domain: "wein", label: "Wein-Preise", sort: "gefunden_at DESC", readonly: true },
+
   // ── Smart Home ──
   { key: "ha-entities", table: "ha_entities", domain: "smarthome", label: "HA Entities", sort: "friendly_name ASC" },
   { key: "ha-relationships", table: "ha_relationships", domain: "smarthome", label: "HA Beziehungen" },

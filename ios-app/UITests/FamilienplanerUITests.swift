@@ -25,6 +25,7 @@ final class FamilienplanerUITests: XCTestCase {
     private let domainKeys = [
         "termine", "abfuhrkalender", "reisen", "samu", "geschenkplaner", "garten", "vorratskammer",
         "wunschliste", "gypsi", "reiniger", "elisbooks", "ebooks", "smarthome", "vertraege", "pizza",
+        "wein",
     ]
 
     // MARK: - Helfer
@@ -403,6 +404,48 @@ final class FamilienplanerUITests: XCTestCase {
 
         goBack()
         XCTAssertTrue(waitUntil(tileEl.isHittable), "Zurück aus dem Pizza-Bereich fehlgeschlagen")
+    }
+
+    /// Der neue Wein-Bereich öffnet sich und die Segmente Alle/Keller/Top/Offen schalten um.
+    /// Läuft OHNE Backend: die Zähler in den Segment-Beschriftungen bleiben leer (0 Weine), also
+    /// heißen die Segmente exakt „Alle"/„Keller"/„Top"/„Offen". Anker ist der Leerzustand des
+    /// Kellers — der ist ohne Serverdaten deterministisch.
+    func testWeinBereichSegmentsSwitch() {
+        openBereiche()
+        let tileEl = tile("wein")
+        XCTAssertTrue(tileEl.waitForExistence(timeout: 10), "Wein-Kachel fehlt")
+        tileEl.tap()
+
+        // Eindeutiger Anker des Bereichs (die Kachel trägt ebenfalls die Beschriftung Wein):
+        // die Farb-Filterzeile des Wein-Kopfes.
+        XCTAssertTrue(app.buttons["wein-filter-alle"].waitForExistence(timeout: 12),
+                      "Wein-Bereich öffnet nicht (Farb-Filterzeile fehlt)")
+        // Kopf-Menü (Erfassen / Im Laden scannen / Einstellungen) — Menüs rendern nicht immer als
+        // Button, deshalb über den Identifier im ganzen Baum suchen. Bewusst EXAKT und nicht per
+        // Präfix: die Filterzeile trägt wein-menu-rebsorte/-land/-sterne/-sortierung, ein
+        // Präfix-Match wäre auch dann grün, wenn genau dieses Kopf-Menü fehlt.
+        XCTAssertTrue(app.descendants(matching: .any)["wein-menu"].waitForExistence(timeout: 6),
+                      "Kopf-Menü fehlt")
+
+        // Segment 'Keller': ohne Backend ist der Keller leer → der Leerzustand trägt eine ID.
+        // AreaEmptyState ist ein Accessibility-Container → über .any suchen, nicht über staticTexts.
+        let keller = app.buttons["segment-Keller"]
+        XCTAssertTrue(keller.waitForExistence(timeout: 8), "Segment 'Keller' fehlt")
+        keller.tap()
+        let leer = app.descendants(matching: .any)["wein-keller-empty"]
+        XCTAssertTrue(leer.waitForExistence(timeout: 10), "Keller-Leerzustand fehlt (Segment hat nicht umgeschaltet?)")
+
+        // Übrige Segmente durchklicken — die App muss leben, der Keller-Zweig verschwinden.
+        for label in ["Top", "Offen", "Alle"] {
+            let seg = app.buttons["segment-\(label)"]
+            XCTAssertTrue(seg.waitForExistence(timeout: 6), "Segment '\(label)' fehlt")
+            seg.tap()
+            XCTAssertTrue(waitUntil(self.app.state == .runningForeground), "App tot nach Segment '\(label)'")
+        }
+        XCTAssertTrue(waitUntil(!leer.exists), "Segmentwechsel hat den Keller nicht verlassen")
+
+        goBack()
+        XCTAssertTrue(waitUntil(tileEl.isHittable), "Zurück aus dem Wein-Bereich fehlgeschlagen")
     }
 
     // MARK: - Termin-Widgets / Push-Quittierung (das in XCUITest Testbare)

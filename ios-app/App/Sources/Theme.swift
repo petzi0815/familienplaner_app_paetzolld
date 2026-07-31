@@ -55,6 +55,7 @@ enum Palette {
         "elisbooks": ["92400E", "B45309", "D97706"],
         "trauerkarten": ["64748B", "475569", "334155"],
         "pizza": ["DC2626", "EA580C", "65A30D"],
+        "wein": ["7F1D3D", "9F1239", "BE185D"],
         "foto": ["5AC8FA", "007AFF", "5856D6"],
     ]
 

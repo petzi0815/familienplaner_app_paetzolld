@@ -79,6 +79,9 @@ export const config = {
 
   // Integrationen (optional)
   openaiApiKey: env("OPENAI_API_KEY"),
+  // Perplexity — Live-Preisrecherche + Web-Fakten für den Weinbereich (wein-scan / wein-preischeck).
+  // Leer = die Recherche degradiert sauber: Erfassung läuft weiter, nur ohne Live-Preise/Quellen.
+  perplexityApiKey: env("PERPLEXITY_API_KEY"),
   telegram: {
     botToken: env("TELEGRAM_BOT_TOKEN"),
     familyChatId: env("TELEGRAM_FAMILY_CHAT_ID"),

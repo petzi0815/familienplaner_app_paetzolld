@@ -4,6 +4,10 @@ import { abfuhrCategory, fetchAhaICS, parseAbfuhrICS } from "@/server/abfuhr/abf
 import { enrichMissingCovers, countMissingCovers } from "@/server/ebooks/covers";
 import { retryAll, pendingCount, queuedCount, verifyQueued, repairUnverifiedDownloads, isDestinationError, type VerifyOutcome } from "@/server/ebooks/wishlist";
 import { getCategoryInfo } from "@/server/legacy/termine-db";
+import { getWeinSettings } from "@/server/wein/settings";
+import { faelligeWeine, runPreischeck, type PreisErgebnis, type PreisTreffer } from "@/server/wein/pricecheck";
+import { hasPerplexity } from "@/server/wein/perplexity";
+import { hasOpenAI } from "@/server/elisbooks/openai";
 
 export interface JobCtx {
   db: BetterSqlite3.Database;
@@ -34,6 +38,29 @@ const todayStart = () => new Date(new Date().toISOString().slice(0, 10) + "T00:0
 /** Ab dieser Menge wird zu EINER Sammelmeldung zusammengefasst (statt 15 Einzel-Pushes). */
 const PUSH_EINZELN_BIS = 3;
 
+/**
+ * Sammelmeldungen sind hart begrenzt — sonst gehen sie GANZ verloren: APNs verwirft einen Payload
+ * über 4096 Byte komplett (413 „PayloadTooLarge"), `sendPush` wirft dabei nicht, und der Job meldete
+ * fröhlich Erfolg, während kein Telefon etwas bekommen hat. Ein einziger langer Titel genügt dafür
+ * (Anna's-Archive-Titel mit 305 Zeichen, Grand-Cru-Weinnamen, KI-angereicherte Felder bis 400 Zeichen).
+ * Ein Sperrbildschirm zeigt ohnehin nur ein paar Zeilen, deshalb wird an der Quelle gekappt:
+ * höchstens 8 Zeilen à ~120 Zeichen — mit Titel und Untertitel bleibt das auch bei durchgehend
+ * 3-Byte-Zeichen („•", „—", „€") weit unter 4 KB.
+ */
+const PUSH_SAMMEL_ZEILEN = 8;
+const PUSH_TITEL_MAX = 60;
+const PUSH_ZUSATZ_MAX = 40;
+
+/** Text auf `n` Zeichen kürzen (mit Auslassungszeichen), sonst unverändert. */
+const kurz = (s: string, n: number): string => (s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s);
+
+/** Erste Zeilen einer Sammelmeldung + „… und N weitere <wo>" statt der ganzen Liste. */
+function sammelText(zeilen: string[], wo: string): string {
+  const kopf = zeilen.slice(0, PUSH_SAMMEL_ZEILEN);
+  const uebrig = zeilen.length - kopf.length;
+  return kopf.join("\n") + (uebrig > 0 ? `\n… und ${uebrig} weitere ${wo}` : "");
+}
+
 const personName = (owner: string) => (owner === "lars" ? "Lars" : owner === "elita" ? "Elita" : owner);
 
 async function pushDownloadResults(done: VerifyOutcome[], failures: VerifyOutcome[]): Promise<void> {
@@ -53,8 +80,11 @@ async function pushDownloadResults(done: VerifyOutcome[], failures: VerifyOutcom
     // Sammelmeldung: Cover des ersten Buchs als Anhang, damit auch der Stapel nicht nackt aussieht.
     await sendPush({
       title: `📚 ${done.length} E-Books heruntergeladen`,
-      subtitle: done[0].author ? `u.a. ${done[0].title} von ${done[0].author}` : undefined,
-      body: done.map((d) => `• ${d.title}${d.author ? ` — ${d.author}` : ""}`).join("\n"),
+      subtitle: done[0].author ? `u.a. ${kurz(done[0].title, PUSH_TITEL_MAX)} von ${kurz(done[0].author, PUSH_ZUSATZ_MAX)}` : undefined,
+      body: sammelText(
+        done.map((d) => `• ${kurz(d.title, PUSH_TITEL_MAX)}${d.author ? ` — ${kurz(d.author, PUSH_ZUSATZ_MAX)}` : ""}`),
+        "in der Bibliothek",
+      ),
       imageUrl: done.find((d) => d.coverUrl)?.coverUrl ?? null,
       threadId: "ebooks",
       data: { kind: "ebook" },
@@ -85,6 +115,121 @@ async function pushDownloadResults(done: VerifyOutcome[], failures: VerifyOutcom
       data: { kind: "ebook-fehler" },
     }).catch(() => {});
   }
+}
+
+// ── Wein-Schnäppchen: Push an die Familie ────────────────────────────────────
+// Wie bei den Büchern BEWUSST OHNE `owner`: der Weinkeller ist gemeinsam, und `owner` in `sendPush`
+// schließt aus statt zu priorisieren (der Broadcast-Fallback greift nur, wenn die Person GAR KEIN
+// Gerät hat). Ein Angebot, das nur auf einem der beiden Telefone landet, ist die halbe Meldung.
+
+/** Preise in der Meldung als "12,90 €" — Rohzahlen lesen sich im Sperrbildschirm schlecht. */
+const euro = (n: number) => n.toLocaleString("de-DE", { style: "currency", currency: "EUR" });
+
+async function pushWeinRabatte(rabatte: PreisErgebnis[]): Promise<void> {
+  // `bester` ist bei jedem Rabatt-Eintrag gesetzt (so filtert der Preischeck), TypeScript weiß das
+  // aber nicht — und ohne konkretes Angebot gäbe es ohnehin nichts zu melden.
+  const angebote = rabatte
+    .map((e) => ({ e, best: e.bester, prozent: Math.round(e.rabattProzent ?? 0) }))
+    .filter((a): a is { e: PreisErgebnis; best: PreisTreffer; prozent: number } => !!a.best);
+  if (!angebote.length) return;
+
+  if (angebote.length <= PUSH_EINZELN_BIS) {
+    for (const a of angebote) {
+      await sendPush({
+        title: "🍷 Wein im Angebot",
+        subtitle: `${a.best.haendler} · ${a.prozent} % günstiger`,
+        body: `${a.e.titel} — jetzt ${euro(a.best.preis)}${a.e.referenzpreis != null ? ` statt ${euro(a.e.referenzpreis)}` : ""}`,
+        threadId: "wein",
+        data: { kind: "wein", id: a.e.weinId },
+      }).catch(() => {});
+    }
+    return;
+  }
+  // Ab 4 Schnäppchen EINE Sammelmeldung — der stärkste Rabatt als Aufhänger.
+  const top = angebote.reduce((a, b) => (b.prozent > a.prozent ? b : a));
+  await sendPush({
+    title: `🍷 ${angebote.length} Weine im Angebot`,
+    subtitle: `am stärksten reduziert: ${kurz(top.e.titel, PUSH_TITEL_MAX)} (${top.prozent} %)`,
+    body: sammelText(
+      angebote.map(
+        (a) => `• ${kurz(a.e.titel, PUSH_TITEL_MAX)} — ${euro(a.best.preis)} bei ${kurz(a.best.haendler, 30)} (${a.prozent} % günstiger)`,
+      ),
+      "im Weinkeller",
+    ),
+    threadId: "wein",
+    data: { kind: "wein" },
+  }).catch(() => {});
+}
+
+// ── Nur NEUE Schnäppchen melden ──────────────────────────────────────────────
+// Der Rabatt ist eine Momentaufnahme (`bester_preis` gegen `referenzpreis`): ein Wein, der dauerhaft
+// unter seinem Referenzpreis liegt, erfüllt die Schwelle bei JEDEM Fälligkeitslauf — und wurde damit
+// bisher alle `intervall_tage` erneut gepusht (bei Intervall 1 jede Nacht um 6 Uhr, an beide).
+//
+// Gelöst wird das zustandsbasiert OHNE neue Spalte: als „das haben wir schon gesagt" dient der Stand,
+// den der Wein VOR diesem Lauf hatte (`bester_preis` + `preis_geprueft_at` — beide schreibt der
+// Preischeck selbst fort). Gemeldet wird nur, was daran gemessen wirklich neu ist:
+//   • noch nie recherchiert            → NICHTS melden (nur Ausgangswert setzen, siehe unten)
+//   • zuletzt KEIN Schnäppchen         → echte Flanke (Preis war zwischendurch oben) → melden
+//   • spürbar günstiger als zuletzt    → neue Nachricht, auch wenn es vorher schon günstig war
+//   • sonst (gleiches/schlechteres Angebot) → still.
+//
+// Warum die Erstmessung schweigt: Der `referenzpreis` stammt aus derselben Recherche wie die ersten
+// Angebote (enrich.ts leitet ihn aus dem regulären Preis bzw. der oberen Hälfte der Angebote ab).
+// Ein frisch erfasster Wein ist in der ersten Nacht fällig — und weil der günstigste Treffer fast
+// immer unter diesem Mittel liegt, käme prompt ein „20 % günstiger", obwohl gar kein Preis gefallen
+// ist. Das ist keine Nachricht, sondern Rauschen, und Rauschen killt die Glaubwürdigkeit der
+// echten Meldungen. Die Erstmessung setzt daher nur den Ausgangswert; ab dem zweiten Lauf misst der
+// Job gegen einen Stand, den er selbst beobachtet hat. Der Preis in der App zeigt den Rabatt sofort.
+// Damit meldet sich ein Preis, der erst wieder steigt und später erneut fällt, auch wieder — genau
+// das kann eine reine „schon mal gemeldet"-Marke nicht.
+//
+// Bekannte Grenze (bewusst in Kauf genommen, weil sie ohne zusätzliche Spalte nicht lösbar ist):
+// eine manuelle Einzelprüfung in der App und ein Lauf mit abgeschaltetem Push schreiben denselben
+// Stand fort und „verbrauchen" die Flanke. Der nächste echte Preisrutsch meldet sich wieder.
+
+/** Preisstand eines Weins, gelesen VOR dem Lauf. */
+interface PreisStand {
+  /** Zuletzt bekannter Bestpreis (nur > 0; NULL = keiner hinterlegt). */
+  besterPreis: number | null;
+  /** Gab es schon jemals eine Recherche? (Ein frisch erfasster Wein bringt `bester_preis` aus dem Scan mit.) */
+  geprueft: boolean;
+}
+
+/** Ab dieser Verbesserung gegenüber dem letzten Stand ist ein Angebot eine neue Meldung wert (5 %). */
+const WEIN_MELDE_VERBESSERUNG = 0.05;
+
+/** Stand der genannten Weine einlesen — MUSS vor dem Preischeck passieren, der ihn überschreibt. */
+function preisStandVorher(db: BetterSqlite3.Database, ids: number[]): Map<number, PreisStand> {
+  const stand = new Map<number, PreisStand>();
+  if (!ids.length) return stand;
+  const rows = db.prepare(
+    `SELECT id, bester_preis, preis_geprueft_at FROM weine WHERE id IN (${ids.map(() => "?").join(",")})`,
+  ).all(...ids) as { id: number; bester_preis: number | null; preis_geprueft_at: string | null }[];
+  for (const r of rows) {
+    stand.set(r.id, {
+      besterPreis: typeof r.bester_preis === "number" && r.bester_preis > 0 ? r.bester_preis : null,
+      geprueft: !!(r.preis_geprueft_at && String(r.preis_geprueft_at).trim()),
+    });
+  }
+  return stand;
+}
+
+/** Ist dieses Schnäppchen neu genug für einen Push? (Regeln siehe Block oben.) */
+function istNeuesSchnaeppchen(e: PreisErgebnis, vorher: PreisStand | undefined, schwelle: number): boolean {
+  const preis = e.bester?.preis;
+  if (preis == null) return false;
+  // Erstmessung: nur den Ausgangswert setzen, nicht melden (Begründung im Block oben).
+  if (!vorher || !vorher.geprueft || vorher.besterPreis == null) return false;
+  const referenz = e.referenzpreis;
+  if (referenz == null || referenz <= 0) return true;
+  // War der letzte Stand selbst noch kein Schnäppchen, ist das hier eine echte Flanke.
+  // `Math.round` ist Pflicht, nicht Kosmetik: der Preischeck misst den aktuellen Rabatt genauso
+  // (pricecheck.ts), und 1 − 24/30 ergibt in Fließkomma 19,999… — ohne dieselbe Rundung gälte ein
+  // Angebot exakt auf der Schwelle bei JEDEM Lauf als frische Flanke und der Spam wäre zurück.
+  if (Math.round((1 - vorher.besterPreis / referenz) * 100) < schwelle) return true;
+  // Sonst nur bei spürbar besserem Preis — Cent-Schwankungen sind keine Nachricht.
+  return preis <= vorher.besterPreis * (1 - WEIN_MELDE_VERBESSERUNG);
 }
 
 // ── Zeit-Helfer (Europe/Berlin) ──────────────────────────────────────────────
@@ -784,6 +929,71 @@ export const JOBS: JobDef[] = [
       for (const e of events) if (upsert.run(e.kategorie, e.datum, e.summary, e.uid).changes > 0) n++;
       ctx.db.prepare("UPDATE abfuhr_config SET letzter_sync=datetime('now') WHERE id=1").run();
       return { messages: [`aha-Sync: ${events.length} Termine, ${n} neu/aktualisiert`], affected: n };
+    },
+  },
+  {
+    name: "wein-preischeck",
+    schedule: "0 6 * * *",
+    timezone: "Europe/Berlin",
+    topic: "wein",
+    description:
+      "Beobachtete Weine täglich auf günstige Angebote prüfen (nur die nach dem eingestellten Intervall fälligen) " +
+      "und ab der eingestellten Rabattschwelle die Familie per Push informieren.",
+    async run(ctx) {
+      const settings = getWeinSettings(ctx.db);
+
+      // Ohne die beiden Schlüssel findet keine Recherche statt (der Preischeck liefert dann nur
+      // Fehlertexte). Statt jede Nacht 25 Weine leer durchzurattern und „geprüft" zu melden, was nie
+      // geprüft wurde, hier derselbe saubere No-Op wie bei den APNs-Jobs.
+      if (!hasPerplexity()) return { messages: ["PERPLEXITY_API_KEY nicht konfiguriert — Preischeck übersprungen"], affected: 0 };
+      if (!hasOpenAI()) return { messages: ["OPENAI_API_KEY nicht konfiguriert — Preischeck übersprungen"], affected: 0 };
+
+      // Fälligkeit vorab bestimmen: das ist zugleich die Trockenlauf-Antwort. `runPreischeck` würde
+      // im dryRun zwar nichts schreiben, aber trotzdem alle (kostenpflichtigen) Perplexity- und
+      // OpenAI-Anfragen abfeuern — ein Trockenlauf darf kein Geld kosten (wie bei den E-Book-Jobs).
+      const faellig = faelligeWeine(ctx.db, settings.intervallTage);
+      if (!faellig.length) {
+        return { messages: [`keine Weine fällig (Intervall ${settings.intervallTage} Tage)`], affected: 0 };
+      }
+      if (ctx.dryRun) {
+        return {
+          messages: [
+            `${faellig.length} Wein(e) fällig (Intervall ${settings.intervallTage} Tage, Schwelle ${settings.rabattProzent} %)`,
+            ...faellig.map((w) => `• ${w.titel}`),
+          ],
+          affected: 0,
+        };
+      }
+
+      // Preisstand VOR der Recherche sichern — daran entscheidet sich gleich, welche Schnäppchen
+      // wirklich neu sind (siehe „Nur NEUE Schnäppchen melden"). Danach ist er überschrieben.
+      const vorher = preisStandVorher(ctx.db, faellig.map((w) => w.id));
+
+      // Ohne `alle` nimmt der Preischeck genau die fälligen Weine (dasselbe `faelligeWeine` wie oben)
+      // — `alle: true` würde das konfigurierbare Intervall aushebeln und jede Nacht den ganzen Keller
+      // recherchieren.
+      const r = await runPreischeck(ctx.db, { dryRun: false });
+
+      // `rabatte` = alle Angebote ab der Rabattschwelle (so stehen sie auch im Protokoll), `neue` =
+      // was davon gemeldet gehört. Der Unterschied kommt in die Messages, damit der Job-Log die volle
+      // Wahrheit zeigt und „warum kam kein Push?" beantwortbar bleibt.
+      const neue = r.rabatte.filter((e) => istNeuesSchnaeppchen(e, vorher.get(e.weinId), settings.rabattProzent));
+      const unveraendert = r.rabatte.length - neue.length;
+
+      const messages = [
+        `Preischeck: ${r.geprueft} Wein(e) geprüft, ${r.rabatte.length} Angebot(e) ab ${settings.rabattProzent} % Rabatt` +
+        (unveraendert ? ` (${unveraendert} davon unverändert seit der letzten Prüfung → kein erneuter Push)` : ""),
+      ];
+      for (const e of r.ergebnisse) {
+        if (e.fehler) messages.push(`⚠️ ${e.titel}: ${e.fehler}`);
+        else if (e.bester) messages.push(`• ${e.titel}: ${euro(e.bester.preis)} bei ${e.bester.haendler} (${Math.round(e.rabattProzent ?? 0)} %)`);
+        else messages.push(`• ${e.titel}: kein Angebot gefunden`);
+      }
+
+      if (neue.length && settings.pushAktiv) await pushWeinRabatte(neue);
+      else if (neue.length) messages.push("Push ist in den Wein-Einstellungen abgeschaltet — keine Meldung gesendet");
+
+      return { messages, affected: r.geprueft };
     },
   },
 ];

@@ -2,14 +2,18 @@ import { config } from "@/server/config";
 import { getAuth, hasRole } from "@/server/auth/auth";
 import { getDb } from "@/server/db/connection";
 import { hasOpenAI, openaiChat } from "@/server/elisbooks/openai";
+import { hasPerplexity, perplexityAsk } from "@/server/wein/perplexity";
 import { unauthorized, forbidden, ok } from "@/server/http/respond";
 
 // Selbsttest/Diagnose für Claude Code (agent+): zeigt welche Integrationen KONFIGURIERT sind (nur
-// Booleans, keine Secrets), ein paar DB-Stände, und optional einen LIVE-OpenAI-Ping (?openai=1) —
-// damit sich der Coolify-OpenAI-Key verifizieren lässt, ohne ihn je auszugeben.
+// Booleans, keine Secrets), ein paar DB-Stände, und optional einen LIVE-Ping gegen OpenAI (?openai=1)
+// bzw. Perplexity (?perplexity=1) — damit sich die Coolify-Keys verifizieren lassen, ohne sie je
+// auszugeben.
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 30;
+// Der Perplexity-Ping ist eine LIVE-Websuche und darf laut Client bis zu 45 s brauchen; mit beiden
+// Pings in einem Aufruf reichten 30 s nicht.
+export const maxDuration = 60;
 
 export async function GET(req: Request): Promise<Response> {
   const auth = getAuth(req);
@@ -20,6 +24,7 @@ export async function GET(req: Request): Promise<Response> {
 
   const integrations = {
     openai: !!config.openaiApiKey,
+    perplexity: !!config.perplexityApiKey,
     home_assistant: !!config.homeAssistant.url && !!config.homeAssistant.token,
     calibre: !!config.calibre.username && !!config.calibre.password,
     telegram: !!config.telegram.botToken,
@@ -59,5 +64,24 @@ export async function GET(req: Request): Promise<Response> {
     }
   }
 
-  return ok({ commit: config.gitSha, env: config.nodeEnv, integrations, stats, push_geraete, openai_ping: openaiPing });
+  // Perplexity ist der zweite KI-Anbieter (Live-Websuche für die Wein-Preisrecherche). Ohne Ping
+  // sieht man nur, DASS ein Key gesetzt ist — nicht, ob er im Container gültig ist.
+  let perplexityPing: unknown = "übersprungen (mit ?perplexity=1 live testen)";
+  if (url.searchParams.get("perplexity") === "1") {
+    if (!hasPerplexity()) {
+      perplexityPing = { ok: false, error: "PERPLEXITY_API_KEY nicht gesetzt" };
+    } else {
+      const t0 = Date.now();
+      try {
+        // Bewusst über denselben Client/dasselbe Modell wie im Produktivpfad — ein Ping, der einen
+        // anderen Weg nimmt, beweist nichts. Kurze Frage + kleines Token-Budget halten ihn billig.
+        const a = await perplexityAsk("Antworte mit genau dem Wort: PONG", { maxTokens: 16 });
+        perplexityPing = { ok: true, reply: a.text.trim().slice(0, 40), quellen: a.citations.length, ms: Date.now() - t0 };
+      } catch (e) {
+        perplexityPing = { ok: false, error: String((e as Error).message).slice(0, 200), ms: Date.now() - t0 };
+      }
+    }
+  }
+
+  return ok({ commit: config.gitSha, env: config.nodeEnv, integrations, stats, push_geraete, openai_ping: openaiPing, perplexity_ping: perplexityPing });
 }
