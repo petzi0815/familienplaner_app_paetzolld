@@ -266,64 +266,104 @@ export async function checkPreisFuerWein(
   // frei formulierte Frage lieferte im Live-Test bei DEMSELBEN Wein mal drei Angebote, mal eines,
   // mal keines, während der Scan-Pfad mit diesem Format stabil dieselben drei fand: eine feste
   // Zeilenstruktur macht die Antwort für die anschließende Extraktion verlässlich auswertbar.
-  const frage =
+  const frage = (nachfassen: boolean) =>
     `Recherchiere aktuelle Angebote für diesen Wein: ${titel}${w.ean ? ` (EAN ${w.ean})` : ""}\n\n` +
     `Liste ALLE konkreten Angebote deutscher Online-Händler für die ${ml}-ml-Flasche auf, je Zeile im Format\n` +
     `"Händler | Preis in EUR | URL".\n` +
     `Nur genau dieser Wein${w.jahrgang ? ` und genau der Jahrgang ${w.jahrgang}` : ""} — keine anderen Jahrgänge, ` +
     "keine Kisten-, Gebinde- oder Literpreise, keine Schätzungen.\n" +
     'Hänge "(Aktion)" an, wenn ein Angebot erkennbar ein Sonder- oder Aktionspreis ist.\n' +
+    (nachfassen
+      ? "Suche gründlich und beziehe ausdrücklich auch Preisvergleiche und größere Weinhändler ein " +
+        "(z. B. wein.cc, idealo.de, Weinfreunde, Vinos, Hawesko, Weinquelle, Gourmetwelten).\n"
+      : "") +
     'Findest du kein einziges Angebot, antworte nur mit "KEINE ANGEBOTE".';
 
-  let recherche: { text: string; citations: string[] };
-  try {
-    recherche = await perplexityAsk(frage, {
-      system:
-        "Du bist ein nüchterner Preis-Rechercheur für Wein in Deutschland. Nenne nur Angebote, die du " +
-        "wirklich gefunden hast, jeweils mit Händler, Flaschenpreis in Euro und Link. Keine Schätzungen, " +
-        "keine Vermutungen, keine Preisspannen ohne Quelle.",
-    });
-  } catch (e) {
-    log.warn("Wein-Preisrecherche fehlgeschlagen", { weinId, error: e instanceof Error ? e.message : String(e) });
+  const SYSTEM_RECHERCHE =
+    "Du bist ein nüchterner Preis-Rechercheur für Wein in Deutschland. Nenne nur Angebote, die du " +
+    "wirklich gefunden hast, jeweils mit Händler, Flaschenpreis in Euro und Link. Keine Schätzungen, " +
+    "keine Vermutungen, keine Preisspannen ohne Quelle.";
+
+  /**
+   * Eine Runde Recherche. `null` = Anbieter nicht erreichbar (harter Fehler, kein zweiter Versuch).
+   *
+   * Warum zwei Runden: die Live-Messung ergab bei identischem Wein und identischer Frage in etwa
+   * jedem dritten Lauf ein leeres Ergebnis — die Suche selbst schwankt, nicht die Datenlage. Für den
+   * Nachtjob wäre das verschmerzbar (der Wein käme in der nächsten Runde dran), für den Knopf
+   * "Preis jetzt prüfen" in der App sieht es aus wie ein Defekt. Nachgefasst wird deshalb NUR bei
+   * null Treffern, mit breiterer Händlerliste; die Kosten steigen also nur im Fehlerfall.
+   */
+  async function runde(nachfassen: boolean): Promise<{ quellen: string[]; text: string } | null> {
+    try {
+      const r = await perplexityAsk(frage(nachfassen), { system: SYSTEM_RECHERCHE });
+      return {
+        text: r.text ?? "",
+        quellen: (r.citations ?? []).filter((c) => typeof c === "string" && c.trim()).slice(0, 20),
+      };
+    } catch (e) {
+      log.warn("Wein-Preisrecherche fehlgeschlagen", { weinId, nachfassen, error: e instanceof Error ? e.message : String(e) });
+      return null;
+    }
+  }
+
+  let nachgefasst = false;
+  let recherche = await runde(false);
+  if (!recherche) {
     if (!opts.dryRun) stempeln(db, weinId);
     return { ...basis, fehler: "Preissuche nicht erreichbar — beim nächsten Lauf erneut." };
   }
-
-  const quellen = (recherche.citations ?? []).filter((c) => typeof c === "string" && c.trim()).slice(0, 20);
-  const quellenListe = quellen.map((q, i) => `${i + 1}. ${q}`).join("\n") || "(keine)";
+  // „KEINE ANGEBOTE" ohne jede Quelle → gar nicht erst auswerten lassen, direkt nachfassen.
+  if (!recherche.quellen.length || /KEINE ANGEBOTE/i.test(recherche.text)) {
+    nachgefasst = true;
+    recherche = (await runde(true)) ?? recherche;
+  }
 
   const system =
     "Du extrahierst Preisangebote aus einem Rechercheergebnis. Du erfindest nichts und übernimmst nur, " +
     "was im Text wirklich steht. Antworte AUSSCHLIESSLICH als JSON, kein weiterer Text.";
-  const user =
-    `Wein: ${titel}${w.jahrgang ? "" : " (Jahrgang unbekannt)"}, Flaschengröße ${ml} ml.\n\n` +
-    `Rechercheergebnis:\n"""\n${(recherche.text ?? "").slice(0, 8000)}\n"""\n\n` +
-    `Quellen (nummeriert):\n${quellenListe}\n\n` +
-    "Gib die konkreten Angebote in genau diesem JSON-Schema zurück:\n" +
-    '{ "angebote": [ { "preis": number, "haendler": string, "url": string|null } ] }\n' +
-    "Regeln:\n" +
-    `- Nur Angebote für genau diesen Wein${w.jahrgang ? ` und den Jahrgang ${w.jahrgang}` : ""}.\n` +
-    "- preis = Preis für EINE Flasche in Euro, ohne Versand, Punkt als Dezimaltrennzeichen. " +
-    "Kisten-/Gebinde-/Literpreise nicht umrechnen, sondern weglassen.\n" +
-    "- haendler = Name des Shops (z. B. \"Weinfreunde\"), nicht die URL.\n" +
-    "- url = passender Link aus der Quellenliste (sonst null). Statt einer Nummer immer die volle URL.\n" +
-    "- Unklares, Widersprüchliches oder Undatiertes weglassen. Kein Angebot gefunden: { \"angebote\": [] }.";
 
-  let roh: RohAngebot[] = [];
-  try {
-    const antwort = await openaiChat(user, {
-      system, json: true, temperature: 0, maxTokens: 900, model: "gpt-4o",
-      timeoutMs: OPENAI_TIMEOUT_MS,
-    });
-    const parsed = parseJsonLoose<{ angebote?: RohAngebot[] } | RohAngebot[]>(antwort);
-    roh = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.angebote) ? parsed.angebote : [];
-  } catch (e) {
-    log.warn("Wein-Preisauswertung fehlgeschlagen", { weinId, error: e instanceof Error ? e.message : String(e) });
+  /** Rechercheergebnis in geprüfte Treffer überführen. `null` = Auswertung nicht möglich. */
+  async function extrahiere(rech: { quellen: string[]; text: string }): Promise<PreisTreffer[] | null> {
+    const quellenListe = rech.quellen.map((q, i) => `${i + 1}. ${q}`).join("\n") || "(keine)";
+    const user =
+      `Wein: ${titel}${w!.jahrgang ? "" : " (Jahrgang unbekannt)"}, Flaschengröße ${ml} ml.\n\n` +
+      `Rechercheergebnis:\n"""\n${rech.text.slice(0, 8000)}\n"""\n\n` +
+      `Quellen (nummeriert):\n${quellenListe}\n\n` +
+      "Gib die konkreten Angebote in genau diesem JSON-Schema zurück:\n" +
+      '{ "angebote": [ { "preis": number, "haendler": string, "url": string|null } ] }\n' +
+      "Regeln:\n" +
+      `- Nur Angebote für genau diesen Wein${w!.jahrgang ? ` und den Jahrgang ${w!.jahrgang}` : ""}.\n` +
+      "- preis = Preis für EINE Flasche in Euro, ohne Versand, Punkt als Dezimaltrennzeichen. " +
+      "Kisten-/Gebinde-/Literpreise nicht umrechnen, sondern weglassen.\n" +
+      "- haendler = Name des Shops (z. B. \"Weinfreunde\"), nicht die URL.\n" +
+      "- url = passender Link aus der Quellenliste (sonst null). Statt einer Nummer immer die volle URL.\n" +
+      "- Unklares, Widersprüchliches oder Undatiertes weglassen. Kein Angebot gefunden: { \"angebote\": [] }.";
+    try {
+      const antwort = await openaiChat(user, {
+        system, json: true, temperature: 0, maxTokens: 900, model: "gpt-4o",
+        timeoutMs: OPENAI_TIMEOUT_MS,
+      });
+      const parsed = parseJsonLoose<{ angebote?: RohAngebot[] } | RohAngebot[]>(antwort);
+      const roh = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.angebote) ? parsed.angebote : [];
+      return ohneAusreisser(zuTreffern(roh, rech.quellen), w!.referenzpreis);
+    } catch (e) {
+      log.warn("Wein-Preisauswertung fehlgeschlagen", { weinId, error: e instanceof Error ? e.message : String(e) });
+      return null;
+    }
+  }
+
+  let treffer = await extrahiere(recherche);
+  if (treffer === null) {
     if (!opts.dryRun) stempeln(db, weinId);
     return { ...basis, fehler: "Die gefundenen Angebote konnten nicht ausgewertet werden." };
   }
-
-  const treffer = ohneAusreisser(zuTreffern(roh, quellen), w.referenzpreis);
+  // Leer trotz Recherche: die Suche schwankt (siehe `runde`). Genau einmal nachfassen — aber nur,
+  // wenn nicht ohnehin schon nachgefasst wurde, sonst zahlt der Nachtlauf für jeden nicht
+  // gelisteten Wein doppelt.
+  if (!treffer.length && !nachgefasst) {
+    const zweite = await runde(true);
+    if (zweite) treffer = (await extrahiere(zweite)) ?? treffer;
+  }
   const bester = treffer[0];
   const ergebnis: PreisErgebnis = {
     ...basis,
