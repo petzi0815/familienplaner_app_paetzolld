@@ -6,6 +6,40 @@
 
 ## ▶️ WIEDERAUFNAHME (nächste Session) — START HIER
 
+**NEU 2026-07-31 (8. Session) — NEUER LEBENSBEREICH „WEIN" 🍷: zweischrittige KI-Erfassung (OpenAI + Perplexity), Bewertung je Person, Einkaufs-Scan, Weinkeller, Preisbeobachtung mit Push. Backend live `3218906`, TestFlight Build 55 (`ios.yml`-Lauf 55, Commit `5dd70ea`), CI 3/3 grün. Details: [[session-2026-07-31_wein-lebensbereich]].**
+- **Zweck** (Lars): leckeren Wein schnell listen — Etikett fotografieren, EAN scannen oder tippen,
+  KI ergänzt den Rest. **Zweischrittig**: Schritt 1 erfassen, Schritt 2 zeigt alles inkl. Preisen,
+  Quellen-Links und Vertrauensgrad, jedes Feld editierbar, erst dann speichern.
+- **Migration 0021**: `weine` (42 Spalten: Stammdaten, Geschmacksprofil suesse/saeure/tannin/koerper,
+  Aromen, Preis, Keller), `wein_bewertungen` (**UNIQUE(wein_id,owner)** = genau eine je Person),
+  `wein_preise` (Historie). CHECKs in der von `constraints.ts` parsebaren Form → 422 + `allowed`.
+- **KI-Kette** (`server/wein/`): gpt-4o Vision liest das Etikett → Perplexity `sonar-pro` recherchiert
+  Preise + Hintergrund live mit Quellen → gpt-4o normalisiert in striktes JSON und klassifiziert vor
+  (Typ, Rebsorte, Aromen, Profil). Ohne Key degradiert sie mit Klartext statt zu scheitern.
+- **Routen** (Bindestrich-Segmente, verdecken `[domain]` NICHT): `wein-scan`, `wein-lookup`,
+  `wein-bewertung` (owner aus `auth.owner`, nicht aus dem Body!), `wein-einstellungen` (Rolle **agent**,
+  bewusst nicht admin), `wein-preischeck`. Job `wein-preischeck` `0 6 * * *`; Intervall/Schwelle/
+  Push-Schalter liegen in `app_settings` und sind aus der App änderbar (Deckel 25 Weine je Lauf).
+- **iOS** `App/Sources/Wein/` (13 Dateien): Erfassen/Prüfen, Liste mit Filtern (Typ, Rebsorte, Land,
+  Mindeststerne), Detail mit beiden Bewertungen, **Einkaufs-Scan** fürs Weinregal, Keller, Einstellungen.
+- **Non-obvious:** [[reference-perplexity-recherche]] — Perplexity liefert nur mit **vorgeschriebenem
+  Zeilenformat** reproduzierbar (frei formuliert: jeder dritte Lauf leer), plus ein Retry im Leerfall;
+  der **Referenzpreis darf nicht aus denselben Angeboten** gemittelt werden, gegen die verglichen wird
+  (sonst nie ein Rabatt erkennbar); ein **einzelnes Angebot weit unter Referenz = Fehltreffer**
+  (halbe Flasche/„ab"-Preis) → Ausreißerfilter + `istBestaetigt()`-Gate hält so etwas vom Push fern;
+  die **Erstmessung pusht nicht** (sonst „20 % günstiger" am Tag der Erfassung); **`CompatClient` hatte
+  25 s Timeout** → Opt-in-Langsampfad (`slow:` als letzter Parameter mit Default, 154 Aufrufstellen
+  unverändert); `openaiChat` kennt jetzt `timeoutMs` (echter Abbruch); **`ensureKey()` legt Bootstrap-Keys
+  nur beim Boot an** (geänderte Coolify-Variable wirkt erst nach Deploy; Hex-Key mit ungerader
+  Zeichenzahl = beim Kopieren abgeschnitten).
+- **Lernpunkt Methode:** 2 Review-Runden fanden 23 bestätigte Befunde (2 Blocker) — der **Live-Test gegen
+  Prod fand danach 3 WEITERE**, die statisch unsichtbar waren. Bei KI-Integrationen ersetzt kein Review
+  einen echten Lauf gegen die Anbieter.
+- **OFFEN:** (1) **`BOOTSTRAP_AGENT_API_KEY` rotieren** (Wert stand erneut im Chat). (2) Etikett-Foto-Pfad
+  im Alltag erproben — die Kette wurde über Texteingabe verifiziert, nicht über ein reales Etikett.
+  (3) iOS-Oberfläche nur kompiliert, nicht bedient. (4) Coolify-Proxy-Timeout bei „alle prüfen"
+  (Client wartet 310 s) ungemessen; der Nachtjob ist davon nicht betroffen.
+
 **NEU 2026-07-27 (7. Session) — E-BOOK-DOWNLOADER REPARIERT: „geladen" erst nach echter Bestätigung, Push bei Erfolg/Fehler, Rich-Push mit Cover. Backend live `3d40933`, TestFlight Build 55 (`VALID`), CI 3/3 grün. Details: [[session-2026-07-27_ebook-download-verifikation]].**
 - **Ursache** (Lars: „15 Bücher als geladen gemeldet, bei Shelfmark kein Download"): Shelfmark
   quittiert `POST /api/releases/download` nur mit `200 {"status":"queued"}` — die **Warteschlange**,
@@ -295,7 +329,8 @@ Details & Phasenplan: **`docs/MIGRATION_PLAN.md`**.
 
 Termine · Reisen · Samu-Inventar (Kleidung/Spielzeug/Marken/Bedarf) · Wunschliste ·
 Geschenkplaner · Garten · Vorratskammer · Gypsi (Katzenfutter) · Reiniger · Elisbooks
-(physische Bücher) · E-Book-Downloader · Smart Home/HA-Voice · Verträge. Neue Bereiche jederzeit
+(physische Bücher) · E-Book-Downloader · Smart Home/HA-Voice · Verträge · Abfuhrkalender ·
+Aufgaben · Trauerkarten · Pizza machen (nur iOS) · **Wein** (nur iOS). Neue Bereiche jederzeit
 über die `lebensbereiche`-Registry ergänzbar.
 
 ## API-v1-Konventionen
