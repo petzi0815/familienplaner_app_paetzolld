@@ -35,6 +35,12 @@ export interface PreisErgebnis {
   referenzpreis?: number;
   /** Ersparnis von `bester` gegenüber `referenzpreis` in Prozent (negativ = teurer als üblich). */
   rabattProzent?: number;
+  /**
+   * Ist `bester` glaubwürdig genug für eine Mitteilung? Ein einzelnes Angebot weit unter dem
+   * regulären Preis ist meist ein Fehltreffer (halbe Flasche, „ab"-Preis, falscher Jahrgang).
+   * Unbestätigte Treffer werden gespeichert und angezeigt, lösen aber keinen Push aus.
+   */
+  bestaetigt?: boolean;
   /** Klartext-Grund, wenn nichts (oder nichts Verwertbares) ermittelt werden konnte. */
   fehler?: string;
 }
@@ -158,6 +164,54 @@ function zuTreffern(roh: RohAngebot[], quellen: string[]): PreisTreffer[] {
   return out.sort((a, b) => a.preis - b.preis).slice(0, MAX_TREFFER);
 }
 
+/** Median einer nicht-leeren, aufsteigend sortierten Preisliste. */
+function median(sortiert: number[]): number {
+  const m = Math.floor(sortiert.length / 2);
+  return sortiert.length % 2 ? sortiert[m] : (sortiert[m - 1] + sortiert[m]) / 2;
+}
+
+/**
+ * Ausreißer verwerfen. Im ersten Live-Test lieferte die Recherche für einen 15-€-Wein ein Angebot
+ * über 45,90 € (andere Flaschengröße bzw. anderes Produkt auf derselben Händlerseite) — die reine
+ * Bereichsprüfung 0,50–5000 € lässt so etwas durch. Gefährlich ist vor allem der umgekehrte Fall:
+ * ein zu NIEDRIGER Fehltreffer (0,375-l-Flasche, „ab"-Preis, falscher Jahrgang) sieht wie ein
+ * Schnäppchen aus und löst einen Push aus, der keiner ist.
+ *
+ * Zwei Siebe, bewusst konservativ (im Zweifel behalten — lieber ein Angebot zu viel in der Liste
+ * als ein echtes verworfen; gegen falsche PUSHES schützt zusätzlich `istBestaetigt`):
+ *  • ab 3 Angeboten gegen den Median der Angebote selbst (kleiner als 40 % oder größer als 250 %),
+ *  • wenn ein Referenzpreis vorliegt, zusätzlich gegen diesen (kleiner als 35 % oder größer als 300 %).
+ * Ein Rabatt von mehr als 65 % auf den regulären Preis ist bei Wein praktisch immer ein anderes
+ * Produkt und keine Aktion.
+ */
+function ohneAusreisser(treffer: PreisTreffer[], referenz?: number | null): PreisTreffer[] {
+  if (treffer.length < 2) return treffer;
+  const preise = treffer.map((t) => t.preis).sort((a, b) => a - b);
+  const mid = median(preise);
+  const behalten = treffer.filter((t) => {
+    if (treffer.length >= 3 && (t.preis < mid * 0.4 || t.preis > mid * 2.5)) return false;
+    if (referenz != null && referenz > 0 && (t.preis < referenz * 0.35 || t.preis > referenz * 3)) return false;
+    return true;
+  });
+  // Alles verworfen wäre schlechter als das Rohergebnis — dann lieber ungefiltert weiterreichen.
+  return behalten.length ? behalten : treffer;
+}
+
+/**
+ * Taugt der beste Treffer als Grundlage für einen Push? Ein EINZELNES Angebot weit unter dem
+ * Referenzpreis ist die typische Signatur eines Fehltreffers, nicht die eines Schnäppchens: ein
+ * echter Aktionspreis taucht meist bei mehreren Händlern oder zumindest in plausibler Nähe zum
+ * regulären Preis auf. Unbestätigte Treffer werden trotzdem gespeichert und in der App angezeigt —
+ * sie lösen nur keine Mitteilung aus.
+ */
+function istBestaetigt(treffer: PreisTreffer[], referenz?: number | null): boolean {
+  const bester = treffer[0];
+  if (!bester) return false;
+  if (referenz == null || referenz <= 0) return treffer.length >= 2;
+  if (bester.preis >= referenz * 0.5) return true;          // maximal 50 % unter regulär: glaubwürdig
+  return treffer.length >= 2 && treffer[1].preis <= bester.preis * 1.25; // sonst: zweite Quelle nötig
+}
+
 // ── Ein Wein ─────────────────────────────────────────────────────────────────
 
 /** Nur die Prüfmarke setzen (ohne `updated_at` — eine erfolglose Suche ist keine Datenänderung). */
@@ -208,13 +262,18 @@ export async function checkPreisFuerWein(
   }
 
   const ml = w.flaschengroesse_ml && w.flaschengroesse_ml > 0 ? w.flaschengroesse_ml : 750;
+  // Zeilenformat statt Freitext — bewusst identisch zu `researchWine` in enrich.ts. Die frühere,
+  // frei formulierte Frage lieferte im Live-Test bei DEMSELBEN Wein mal drei Angebote, mal eines,
+  // mal keines, während der Scan-Pfad mit diesem Format stabil dieselben drei fand: eine feste
+  // Zeilenstruktur macht die Antwort für die anschließende Extraktion verlässlich auswertbar.
   const frage =
-    `Was kostet der Wein „${titel}" aktuell bei deutschen Online-Weinhändlern? ` +
-    `Suche konkrete, derzeit lieferbare Angebote für die ${ml}-ml-Flasche` +
-    `${w.ean ? ` (EAN ${w.ean})` : ""}. ` +
-    "Nenne zu jedem Angebot den Händler, den Preis für eine einzelne Flasche in Euro und den Link zum Produkt. " +
-    `Nur genau diesen Wein${w.jahrgang ? ` und genau den Jahrgang ${w.jahrgang}` : ""} — keine anderen Jahrgänge, ` +
-    "keine Kisten-, Gebinde- oder Literpreise. Wenn du nichts Passendes findest, sage das ausdrücklich.";
+    `Recherchiere aktuelle Angebote für diesen Wein: ${titel}${w.ean ? ` (EAN ${w.ean})` : ""}\n\n` +
+    `Liste ALLE konkreten Angebote deutscher Online-Händler für die ${ml}-ml-Flasche auf, je Zeile im Format\n` +
+    `"Händler | Preis in EUR | URL".\n` +
+    `Nur genau dieser Wein${w.jahrgang ? ` und genau der Jahrgang ${w.jahrgang}` : ""} — keine anderen Jahrgänge, ` +
+    "keine Kisten-, Gebinde- oder Literpreise, keine Schätzungen.\n" +
+    'Hänge "(Aktion)" an, wenn ein Angebot erkennbar ein Sonder- oder Aktionspreis ist.\n' +
+    'Findest du kein einziges Angebot, antworte nur mit "KEINE ANGEBOTE".';
 
   let recherche: { text: string; citations: string[] };
   try {
@@ -264,12 +323,12 @@ export async function checkPreisFuerWein(
     return { ...basis, fehler: "Die gefundenen Angebote konnten nicht ausgewertet werden." };
   }
 
-  const treffer = zuTreffern(roh, quellen);
+  const treffer = ohneAusreisser(zuTreffern(roh, quellen), w.referenzpreis);
   const bester = treffer[0];
   const ergebnis: PreisErgebnis = {
     ...basis,
     treffer,
-    ...(bester ? { bester } : {}),
+    ...(bester ? { bester, bestaetigt: istBestaetigt(treffer, w.referenzpreis) } : {}),
     ...(bester && w.referenzpreis != null && w.referenzpreis > 0
       ? { rabattProzent: Math.round((1 - bester.preis / w.referenzpreis) * 100) }
       : {}),
@@ -346,7 +405,12 @@ function zusammenfassen(ergebnisse: PreisErgebnis[], schwelle: number): Preische
   return {
     geprueft: ergebnisse.length,
     ergebnisse,
-    rabatte: ergebnisse.filter((e) => e.bester && (e.rabattProzent ?? 0) >= schwelle),
+    // `bestaetigt === false` fliegt hier raus: aus `rabatte` speist sich der Push, und ein einzelner
+    // Fehltreffer weit unter dem regulären Preis darf keine Mitteilung erzeugen. In `ergebnisse`
+    // (Protokoll und App-Anzeige) bleibt er sichtbar.
+    rabatte: ergebnisse.filter(
+      (e) => e.bester && e.bestaetigt !== false && (e.rabattProzent ?? 0) >= schwelle,
+    ),
   };
 }
 
