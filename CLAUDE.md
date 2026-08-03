@@ -40,6 +40,27 @@
   (3) iOS-Oberfläche nur kompiliert, nicht bedient. (4) Coolify-Proxy-Timeout bei „alle prüfen"
   (Client wartet 310 s) ungemessen; der Nachtjob ist davon nicht betroffen.
 
+**NACHTRAG 2026-08-03 (`4ffce6a`, TestFlight Build 57, CI 3/3 grün) — Schnellaktionen + Reisebereich.**
+- **App-Icon-Long-Press:** vier Aktionen (iOS-Maximum) **Wein erfassen · Buch scannen · Lebensmittel
+  scannen · Foto aufnehmen**; „Was steht heute an" ist gewichen (App startet ohnehin dort). SF-Symbole
+  über **`UIApplicationShortcutItemIconSymbolName`** (die alten `IconType`-Konstanten kennen kein
+  Weinglas). Jede Aktion landet DIREKT im Sheet — vorher sprang „Buch scannen" nur auf den Tab.
+  Mechanik über die vorhandenen pending-Flags in `AppState` (funktioniert dadurch auch als Deep-Link):
+  **Wunsch erst verbrauchen, wenn er umgesetzt ist**, und bei bereits offenem Sheet erst schließen,
+  400 ms warten, dann öffnen (direkter Zielwechsel lässt die Animation hängen — war in `WeinRootView`
+  schon dokumentiert). Kaltstart wird geparkt und von `start()` eingelöst. `openCameraTick` → `pendingCamera`.
+- **Reisen neu** (`Views/ReiseListe.swift`, 625 Z.): Gliederung nach **`status`** — Geplant / Ideen und
+  Vorschläge / Vergangen (nach Jahr). **Bewusst nicht nach Datum**: Korfu und Pantropica stehen auf
+  `geplant`, liegen aber datumsmäßig zurück und würden sonst im Archiv verschwinden → stattdessen Pille
+  „Datum liegt zurück". **Kurz-/Wochenendtrips** als eigenes, kompakteres Kartenformat, erkannt über
+  Typ ODER ≤ 3 Nächte (Pantropica ist `urlaub` mit 2 Nächten). Karten mit Zeitraum/Nächten/Typ/Status/
+  Countdown, Cover mit Verlaufs-Fallback, Suche über Titel/Ziel/Land/Region. Läuft jetzt auf `AreaScaffold`.
+- **Review:** 7 bestätigte Befunde behoben, darunter eine **Regression** (Foto-Aktion öffnete die Kamera
+  nicht mehr) und zweimal derselbe Denkfehler beim Verbrauch des Wunsches.
+- **Von Lars am Gerät zu prüfen:** (a) Long-Press bei GESCHLOSSENER App — ob iOS die Aktion zustellt,
+  ist statisch nicht entscheidbar (Fallback: App startet auf „Heute", kein Absturz). (b) Ob die Pille
+  „Datum liegt zurück" hilft oder wie ein Fehler wirkt.
+
 **NEU 2026-07-27 (7. Session) — E-BOOK-DOWNLOADER REPARIERT: „geladen" erst nach echter Bestätigung, Push bei Erfolg/Fehler, Rich-Push mit Cover. Backend live `3d40933`, TestFlight Build 55 (`VALID`), CI 3/3 grün. Details: [[session-2026-07-27_ebook-download-verifikation]].**
 - **Ursache** (Lars: „15 Bücher als geladen gemeldet, bei Shelfmark kein Download"): Shelfmark
   quittiert `POST /api/releases/download` nur mit `200 {"status":"queued"}` — die **Warteschlange**,
