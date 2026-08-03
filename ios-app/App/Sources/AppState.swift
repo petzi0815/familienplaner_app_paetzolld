@@ -146,6 +146,7 @@ final class AppState: ObservableObject {
 
     func start() {
         consumePendingShortcut()
+        consumePendingURL()
         Task { await loadLebensbereiche() }
         Task { await loadInbox() }
         Task { await loadDashboard() }
@@ -164,6 +165,16 @@ final class AppState: ObservableObject {
         guard let type = AppDelegate.pendingShortcut else { return }
         AppDelegate.pendingShortcut = nil
         applyShortcut(type)
+    }
+
+    /// Dasselbe für Deep-Links (`familienplaner://…`). Seit die App einen eigenen Szenen-Delegate
+    /// einhängt, liefert `.onOpenURL` nicht mehr zuverlässig — der Delegate parkt die URL stattdessen
+    /// in `AppDelegate.pendingURL`. Läuft NACH `consumePendingShortcut()`: träfe beides zusammen
+    /// (kommt praktisch nicht vor), gewinnt der ausdrückliche Link.
+    private func consumePendingURL() {
+        guard let url = AppDelegate.pendingURL else { return }
+        AppDelegate.pendingURL = nil
+        handleDeepLink(url)
     }
 
     /// Alarmo-Status laden (unabhängig vom Dashboard, damit ein unerreichbares HA das Home nicht blockiert).

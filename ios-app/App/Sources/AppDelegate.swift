@@ -14,23 +14,103 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     /// serverseitig zu löschen (sonst pusht der Server weiter an das abgemeldete Gerät).
     private static let deviceTokenKey = "apnsDeviceToken"
 
-    /// Schnellaktion vom App-Icon, die beim Kaltstart noch keinen `appState` vorfand: `appState`
-    /// wird erst in `.onAppear` der ersten View gesetzt, der Longpress-Wunsch kommt davor an.
-    /// Er wird hier geparkt und von `AppState.start()` eingelöst — sonst ginge er verloren und
-    /// die App bliebe einfach auf „Heute" stehen. Wie `orientationLock` nur vom Main-Thread berührt.
+    /// Schnellaktion vom App-Icon, die noch keinen `appState` vorfand. Beim Kaltstart ist das der
+    /// Normalfall: der Wunsch kommt in `configurationForConnecting` an, also lange bevor die erste
+    /// View in `.onAppear` den `appState` setzt. Er wird deshalb hier geparkt und von
+    /// `AppState.start()` eingelöst — sonst ginge er verloren und die App bliebe auf „Heute" stehen.
+    /// Gleiches gilt, wenn beim Longpress niemand angemeldet war: dann löst der Login ihn ein.
+    /// Wie `orientationLock` nur vom Main-Thread berührt.
     static var pendingShortcut: String?
+
+    /// Deep-Link, der noch keinen empfangsbereiten `appState` vorfand — gleiche Mechanik wie
+    /// `pendingShortcut`, nur für `familienplaner://…` (Widget, Live Activity, Push).
+    /// Wird von `AppState.start()` eingelöst.
+    static var pendingURL: URL?
 
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = self
         AppDelegate.registerNotificationCategories()
-        // Kaltstart über den Icon-Longpress: hier ist der früheste Zeitpunkt, an dem der Wunsch
-        // ankommen kann (je nach iOS-Zustellweg folgt zusätzlich `performActionFor` — der Pfad
-        // unten führt deshalb nichts aus, solange hier noch etwas geparkt liegt).
+        // Nur noch Rückfalllinie: in einer SZENENBASIERTEN App (und der SwiftUI-App-Lifecycle ist
+        // immer szenenbasiert) ist `launchOptions[.shortcutItem]` nicht verlässlich gefüllt — der
+        // Kaltstart-Wunsch kommt in `configurationForConnecting` an. Bleibt als zweiter Weg stehen,
+        // weil er nichts kostet und ohne Szenen-Konfiguration auskommt.
         if let item = launchOptions?[.shortcutItem] as? UIApplicationShortcutItem {
             AppDelegate.pendingShortcut = item.type
         }
         return true
+    }
+
+    /// **Der einzige Weg, auf dem eine Schnellaktion beim KALTSTART wirklich ankommt.**
+    ///
+    /// Vorher lauschte diese App auf `launchOptions[.shortcutItem]` und
+    /// `application(_:performActionFor:)` — beides sind die Pfade der Zeit VOR den Szenen. Sobald
+    /// eine App Szenen nutzt (SwiftUI-`WindowGroup` = Szene), ruft UIKit sie nicht mehr auf:
+    /// der Kaltstart-Wunsch landet in `options.shortcutItem`, der Wunsch bei laufender App in
+    /// `UIWindowSceneDelegate.windowScene(_:performActionFor:)`. Weil beide Handler nie feuerten,
+    /// startete die App bei jedem Longpress einfach auf „Heute" (Fehlerbild von Lars).
+    ///
+    /// Die Szenen-Konfiguration wird hier NUR erzeugt, um den `SceneDelegate` einzuhängen — ohne
+    /// Namen aus einem Szenen-Manifest (die Info.plist hat keins; mit `nil` legt UIKit eine
+    /// Standardkonfiguration an). `SceneDelegate` implementiert bewusst KEIN
+    /// `scene(_:willConnectTo:)`, damit er dem Fensteraufbau von SwiftUI nicht in die Quere kommt.
+    ///
+    /// **Achtung, teuer erkaufte Nebenwirkung:** sobald hier ein eigener `delegateClass` gesetzt wird,
+    /// ist der szenenweite Delegate von SwiftUI (`SwiftUI.AppSceneDelegate`) NICHT mehr installiert.
+    /// SwiftUI baut sein Fenster zwar weiterhin auf, bekommt aber die URL-Zustellung nicht mehr —
+    /// `.onOpenURL` in `FamilienplanerApp` verstummt. Deshalb übernimmt dieser Delegate die
+    /// Deep-Links selbst: Kaltstart über `options.urlContexts` (hier), laufende App über
+    /// `SceneDelegate.scene(_:openURLContexts:)`. Ohne das wären alle `familienplaner://`-Links aus
+    /// Widgets, Live Activity und Push tot — der Preis wäre höher als der behobene Fehler.
+    func application(_ application: UIApplication,
+                     configurationForConnecting connectingSceneSession: UISceneSession,
+                     options: UIScene.ConnectionOptions) -> UISceneConfiguration {
+        if let item = options.shortcutItem {
+            AppDelegate.pendingShortcut = item.type
+        }
+        // Kaltstart per Deep-Link: dieselbe `ConnectionOptions`, die sonst `scene(_:willConnectTo:)`
+        // bekäme. `min(by:)` statt `first`, weil ein Set keine feste Reihenfolge hat — praktisch
+        // enthält es genau eine URL, aber die Auswahl soll nicht vom Zufall abhängen.
+        if let url = options.urlContexts.map(\.url).min(by: { $0.absoluteString < $1.absoluteString }) {
+            AppDelegate.pendingURL = url
+        }
+        let config = UISceneConfiguration(name: nil, sessionRole: connectingSceneSession.role)
+        config.delegateClass = SceneDelegate.self
+        return config
+    }
+
+    /// Eine Schnellaktion ausführen — gemeinsamer Weg für Szenen-Delegate, den alten App-Delegate-Pfad
+    /// und den Kaltstart. Ist die Oberfläche noch nicht empfangsbereit (App startet gerade, oder es ist
+    /// niemand angemeldet), wird der Wunsch geparkt und von `AppState.start()` eingelöst.
+    ///
+    /// Bewusst OHNE Entprellung auf gleiche Typen: die drei `consume…`-Funktionen sind idempotent,
+    /// ein doppeltes Anwenden ist also folgenlos — ein fälschlich verschluckter Wunsch dagegen genau
+    /// der Fehler, den wir hier beheben.
+    @MainActor
+    static func handleShortcut(_ type: String) {
+        if let state = AppDelegate.appState, state.settings.isConfigured {
+            AppDelegate.pendingShortcut = nil
+            state.applyShortcut(type)
+        } else {
+            AppDelegate.pendingShortcut = type
+        }
+    }
+
+    /// Deep-Link (`familienplaner://…`) aus Widget, Live Activity oder Push ausführen.
+    ///
+    /// Ersetzt `.onOpenURL` — das schweigt, seit wir einen eigenen Szenen-Delegate einhängen
+    /// (siehe `configurationForConnecting`). Gleiches Park-Verfahren wie bei den Schnellaktionen:
+    /// solange die Tab-Ansicht nicht steht oder niemand angemeldet ist, wird der Wunsch geparkt und
+    /// von `AppState.start()` eingelöst. `handleDeepLink` ist idempotent — falls SwiftUI den Link in
+    /// irgendeiner Konstellation DOCH zustellt, ist die doppelte Anwendung folgenlos.
+    @MainActor
+    static func handleURL(_ url: URL) {
+        if let state = AppDelegate.appState, state.settings.isConfigured {
+            AppDelegate.pendingURL = nil
+            state.handleDeepLink(url)
+        } else {
+            AppDelegate.pendingURL = url
+        }
     }
 
     /// Aktions-Kategorie „TERMIN" — die drei Knöpfe direkt am Sperrbildschirm (ohne App-Start).
@@ -98,30 +178,13 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         // Best-effort — ohne Push läuft die App normal weiter.
     }
 
-    /// Home-Screen-Quick-Actions (Icon-Longpress) → direkt in den jeweiligen Erfassungsschritt.
-    /// Die Zuordnung Typ → Aktion liegt bewusst in `AppState.applyShortcut(_:)`: derselbe Weg
-    /// bedient den Kaltstart-Fall und die Deep-Links (`familienplaner://wein-neu` usw.).
+    /// Rückfalllinie für den Fall, dass die App doch einmal ohne Szenen läuft. In der aktuellen
+    /// App ruft iOS stattdessen `SceneDelegate.windowScene(_:performActionFor:)` auf.
     func application(_ application: UIApplication,
                      performActionFor shortcutItem: UIApplicationShortcutItem,
                      completionHandler: @escaping (Bool) -> Void) {
         let type = shortcutItem.type
-        Task { @MainActor in
-            // Kaltstart-Doppelweg: iOS meldet DIESELBE Aktion je nach Zustellweg zusätzlich hier,
-            // obwohl `didFinishLaunching` sie schon geparkt hat — dann nichts tun, sonst zöge das
-            // Sheet zweimal auf. Eine ANDERE Aktion ersetzt den Parkplatz dagegen: sonst blockierte
-            // ein nie eingelöster Wunsch (Longpress im abgemeldeten Zustand → `start()` läuft erst
-            // nach dem Login) dauerhaft jede weitere Schnellaktion.
-            if AppDelegate.pendingShortcut == type { return }
-            // Einlösen nur, wenn die Tab-Ansicht wirklich empfangsbereit ist. `appState` ist auch
-            // im abgemeldeten Zustand gesetzt (`.onAppear` läuft ebenso für den Login-Screen) —
-            // dort wird geparkt und nach dem Login von `start()` eingelöst.
-            if let state = AppDelegate.appState, state.settings.isConfigured {
-                AppDelegate.pendingShortcut = nil
-                state.applyShortcut(type)
-            } else {
-                AppDelegate.pendingShortcut = type
-            }
-        }
+        Task { @MainActor in AppDelegate.handleShortcut(type) }
         completionHandler(true)
     }
 
@@ -225,5 +288,37 @@ final class AckBackgroundTask {
         guard id != .invalid else { return }
         UIApplication.shared.endBackgroundTask(id)
         id = .invalid
+    }
+}
+
+/// Szenen-Delegate — zwei Aufgaben: **Schnellaktionen bei bereits laufender App** und **Deep-Links**.
+///
+/// Sobald eine App Szenen nutzt (der SwiftUI-App-Lifecycle tut das immer), stellt iOS den
+/// Longpress-Wunsch hier zu und NICHT mehr über `UIApplicationDelegate.application(_:performActionFor:)`.
+/// Der Kaltstart-Fall läuft über `AppDelegate.application(_:configurationForConnecting:options:)`.
+///
+/// Die URL-Zustellung ist KEINE Kür, sondern Pflicht: mit einem eigenen Szenen-Delegate ist der von
+/// SwiftUI mitgebrachte nicht mehr installiert, `.onOpenURL` bekommt nichts mehr. Ohne
+/// `scene(_:openURLContexts:)` wären damit alle `familienplaner://`-Links (Widgets, Live Activity,
+/// Push) tot — die drei Deep-Link-XCUITests fielen sofort um.
+///
+/// Bewusst OHNE `scene(_:willConnectTo:)`: das Fenster baut weiterhin ausschließlich SwiftUI auf.
+/// Wer hier ein eigenes Fenster erzeugt, hat einen schwarzen Bildschirm. Der Kaltstart-Anteil dieser
+/// Methode (`connectionOptions`) ist ohnehin schon in `configurationForConnecting` abgedeckt — es ist
+/// dasselbe `UIScene.ConnectionOptions`-Objekt.
+final class SceneDelegate: NSObject, UIWindowSceneDelegate {
+    func windowScene(_ windowScene: UIWindowScene,
+                     performActionFor shortcutItem: UIApplicationShortcutItem,
+                     completionHandler: @escaping (Bool) -> Void) {
+        let type = shortcutItem.type
+        Task { @MainActor in AppDelegate.handleShortcut(type) }
+        completionHandler(true)
+    }
+
+    /// Deep-Link bei laufender (auch nur im Hintergrund liegender) App — der Ersatz für `.onOpenURL`.
+    /// Sortiert, weil ein Set keine feste Reihenfolge hat; praktisch enthält es genau eine URL.
+    func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
+        let urls = URLContexts.map(\.url).sorted { $0.absoluteString < $1.absoluteString }
+        Task { @MainActor in for url in urls { AppDelegate.handleURL(url) } }
     }
 }
