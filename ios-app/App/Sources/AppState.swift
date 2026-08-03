@@ -6,14 +6,21 @@ import WidgetKit
 final class AppState: ObservableObject {
     enum MainTab: Hashable { case heute, bereiche, scan, inbox, smarthome }
 
+    /// Ziel einer Schnell-Erfassung im Erfassen-Tab (`ScanHubView` zieht das passende Sheet auf).
+    enum ScanTarget: String { case buch, lebensmittel }
+
     @Published var selectedTab: MainTab = .heute
     /// Navigationspfad des Bereiche-Tabs (Deep-Link von den Home-KPI-Kacheln).
     @Published var bereichePath: [String] = []
-    /// Hochzählen → der Erfassen-Tab öffnet die Kamera (aus Quick-Action/Siri).
-    @Published var openCameraTick: Int = 0
+    /// Offener Wunsch „Kamera aufziehen" — der Erfassen-Tab löst ihn ein. Bewusst ein
+    /// konsumierbarer Zustand statt eines Zählers: beim Kaltstart über die Schnellaktion steht der
+    /// Wunsch fest, BEVOR der Erfassen-Tab überhaupt gebaut ist — ein `onChange` käme dort nie an,
+    /// `.task` schon (genauso gelöst wie `pendingScanSheet`).
+    @Published var pendingCamera = false
 
-    /// Kamera direkt öffnen (Home-Quick-Action „Foto aufnehmen" / Siri).
-    func requestCamera() { selectedTab = .scan; openCameraTick += 1 }
+    /// Kamera direkt öffnen (Home-Quick-Action „Foto aufnehmen" / Siri / familienplaner://foto).
+    /// Ein noch offener Scan-Wunsch fällt dabei weg — es gilt immer die zuletzt gewählte Aktion.
+    func requestCamera() { pendingScanSheet = nil; pendingCamera = true; selectedTab = .scan }
 
     /// Einen Lebensbereich direkt öffnen (aus einer KPI-Kachel).
     func openBereich(_ key: String) { bereichePath = [key]; selectedTab = .bereiche }
@@ -33,6 +40,10 @@ final class AppState: ObservableObject {
     @Published var pendingTerminNew = false
     /// Offener Deep-Link-Wunsch „neue Aufgabe anlegen" (Home-Sheet).
     @Published var pendingAufgabeNew = false
+    /// Offener Wunsch „neuen Wein erfassen" — der Wein-Bereich löst ihn ein.
+    @Published var pendingWeinNew = false
+    /// Offener Wunsch „direkt scannen" — der Erfassen-Tab löst ihn ein. nil = nichts offen.
+    @Published var pendingScanSheet: ScanTarget?
 
     /// Einen Termin öffnen (Push-Tap / Widget): Termine-Bereich + Detail für die ID.
     func openTermin(id: Int) {
@@ -40,8 +51,33 @@ final class AppState: ObservableObject {
         openBereich("termine")
     }
 
+    /// Wein-Bereich öffnen und dort direkt die Erfassung aufziehen (Quick-Action / Deep-Link).
+    func requestWeinNew() {
+        pendingWeinNew = true
+        openBereich("wein")
+    }
+
+    /// Erfassen-Tab öffnen und dort direkt das Scan-Sheet aufziehen (Quick-Action / Deep-Link).
+    /// Ein noch offener Kamera-Wunsch fällt dabei weg — es gilt immer die zuletzt gewählte Aktion.
+    func requestScan(_ target: ScanTarget) {
+        pendingCamera = false
+        pendingScanSheet = target
+        selectedTab = .scan
+    }
+
+    /// Schnellaktion vom App-Icon ausführen — `type` ist der `UIApplicationShortcutItemType`
+    /// aus der project.yml (Suffix-Vergleich, das Präfix ist die Bundle-ID). Unbekannte Typen
+    /// (z. B. eine noch nicht ersetzte Aktion einer älteren Installation) werden ignoriert.
+    func applyShortcut(_ type: String) {
+        if type.hasSuffix("newwine") { requestWeinNew() }
+        else if type.hasSuffix("scanbook") { requestScan(.buch) }
+        else if type.hasSuffix("scanfood") { requestScan(.lebensmittel) }
+        else if type.hasSuffix("newphoto") { requestCamera() }
+    }
+
     /// Deep-Link auflösen. Hosts: heute, termine, termin/<id>, foto, scan, aufgabe-neu,
-    /// termin-neu, inbox. Unbekannte Ziele landen auf „Heute".
+    /// termin-neu, wein-neu, buch-scannen, lebensmittel-scannen, inbox. Unbekannte Ziele
+    /// landen auf „Heute".
     func handleDeepLink(_ url: URL) {
         guard url.scheme?.lowercased() == "familienplaner" else { return }
         let host = (url.host ?? "").lowercased()
@@ -61,6 +97,9 @@ final class AppState: ObservableObject {
         case "aufgabe-neu":
             pendingAufgabeNew = true
             selectedTab = .heute
+        case "wein-neu": requestWeinNew()
+        case "buch-scannen": requestScan(.buch)
+        case "lebensmittel-scannen": requestScan(.lebensmittel)
         default: selectedTab = .heute
         }
     }
@@ -106,6 +145,7 @@ final class AppState: ObservableObject {
     }
 
     func start() {
+        consumePendingShortcut()
         Task { await loadLebensbereiche() }
         Task { await loadInbox() }
         Task { await loadDashboard() }
@@ -114,6 +154,16 @@ final class AppState: ObservableObject {
         Task { await loadAlarmo() }
         // Live Activities (Termine am Sperrbildschirm): Token melden + lokalen Start-Fallback.
         if settings.isConfigured && !UITestMode.isActive { LiveActivityManager.shared.start(api: api) }
+    }
+
+    /// Startet die App über den Icon-Longpress, läuft die Schnellaktion, BEVOR die erste View
+    /// `AppDelegate.appState` gesetzt hat — sie wird dort geparkt und hier eingelöst. `start()` ist
+    /// der erste Moment, in dem der Tab-Wechsel etwas bewirken kann (die Tab-Ansicht steht).
+    /// Wer beim Longpress noch abgemeldet war, bekommt die Aktion nach dem Login (start() folgt).
+    private func consumePendingShortcut() {
+        guard let type = AppDelegate.pendingShortcut else { return }
+        AppDelegate.pendingShortcut = nil
+        applyShortcut(type)
     }
 
     /// Alarmo-Status laden (unabhängig vom Dashboard, damit ein unerreichbares HA das Home nicht blockiert).

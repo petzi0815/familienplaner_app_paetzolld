@@ -69,16 +69,25 @@ targets:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
+        # Schnellaktionen beim Longpress aufs App-Icon. iOS zeigt maximal VIER — deshalb gehören
+        # alle vier Plätze den Erfassungswegen. „Was steht heute an" ist bewusst raus: die App
+        # startet ohnehin auf „Heute", die Aktion sparte keinen einzigen Schritt.
+        # Icons als SF-Symbole (UIApplicationShortcutItemIconSymbolName); die alten
+        # UIApplicationShortcutIconType-Konstanten kennen kein Weinglas.
+        # Die Typ-Suffixe sind ein harter Vertrag mit AppState.applyShortcut(_:).
         UIApplicationShortcutItems:
-          - UIApplicationShortcutItemType: app.yagemi.familienplaner.newphoto
-            UIApplicationShortcutItemTitle: Foto aufnehmen
-            UIApplicationShortcutItemIconType: UIApplicationShortcutIconTypeCompose
+          - UIApplicationShortcutItemType: app.yagemi.familienplaner.newwine
+            UIApplicationShortcutItemTitle: Wein erfassen
+            UIApplicationShortcutItemIconSymbolName: wineglass
           - UIApplicationShortcutItemType: app.yagemi.familienplaner.scanbook
             UIApplicationShortcutItemTitle: Buch scannen
-            UIApplicationShortcutItemIconType: UIApplicationShortcutIconTypeBookmark
-          - UIApplicationShortcutItemType: app.yagemi.familienplaner.today
-            UIApplicationShortcutItemTitle: Was steht heute an
-            UIApplicationShortcutItemIconType: UIApplicationShortcutIconTypeDate
+            UIApplicationShortcutItemIconSymbolName: barcode.viewfinder
+          - UIApplicationShortcutItemType: app.yagemi.familienplaner.scanfood
+            UIApplicationShortcutItemTitle: Lebensmittel scannen
+            UIApplicationShortcutItemIconSymbolName: carrot.fill
+          - UIApplicationShortcutItemType: app.yagemi.familienplaner.newphoto
+            UIApplicationShortcutItemTitle: Foto aufnehmen
+            UIApplicationShortcutItemIconSymbolName: camera
 
   # ── UI-Test-Target (XCUITest) — nur für die `test`-Action, nicht im Build-Check/Archive ──
   FamilienplanerUITests:

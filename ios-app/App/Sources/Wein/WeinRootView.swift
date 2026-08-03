@@ -58,8 +58,12 @@ struct WeinRootView: View {
                      content: { content })
             .task {
                 store.owner = app.me?.owner
+                consumeErfassenWunsch()
                 if store.loading && store.weine.isEmpty { await store.loadAll() }
             }
+            // Schnellaktion „Wein erfassen" / familienplaner://wein-neu. Steht die Ansicht schon,
+            // kommt der Wunsch nicht mehr ueber .task an — deshalb zusaetzlich beobachten.
+            .onChange(of: app.pendingWeinNew) { _, _ in consumeErfassenWunsch() }
             // /auth/me kommt asynchron — trifft die Person erst nach dem ersten Laden ein, muessen
             // die Bewertungen neu zugeordnet werden (meine/andere haengen am owner).
             .onChange(of: app.me?.owner) { _, neu in
@@ -84,6 +88,9 @@ struct WeinRootView: View {
                                      onGespeichert: { _ in Task { await store.reload() } },
                                      onDubletteOeffnen: { id in oeffneDetail(id: id) })
                         .environmentObject(store)
+                        // Jetzt steht die Erfassung wirklich → ein offener Wunsch ist eingeloest
+                        // (siehe consumeErfassenWunsch).
+                        .onAppear { app.pendingWeinNew = false }
                 case .laden:
                     // Unbekannte Flasche: die Erfassung uebernimmt Barcode UND den schon
                     // recherchierten Vorschlag — die KI-Kette laeuft kein zweites Mal.
@@ -97,6 +104,21 @@ struct WeinRootView: View {
                     WeinEinstellungenView().environmentObject(store)
                 }
             }
+    }
+
+    /// Offenen Wunsch „Wein erfassen" einloesen (Schnellaktion vom App-Icon bzw. Deep-Link).
+    /// Verbraucht wird er erst, wenn die Erfassung wirklich auf dem Schirm steht (`onAppear` am
+    /// Sheet-Inhalt) — bleibt die Praesentation aus, weil noch ein Sheet eines ANDEREN Tabs oben
+    /// liegt, bleibt der Wunsch offen und der naechste `.task`/`.onChange`-Durchlauf versucht es
+    /// erneut. Vorbelegung (EAN/Vorschlag) gibt es hier keine: freie Erfassung wie ueber das
+    /// Kopf-Menue.
+    private func consumeErfassenWunsch() {
+        guard app.pendingWeinNew else { return }
+        // Die Erfassung steht schon (oder ist bereits angefordert) → Wunsch erfuellt.
+        if sheet == WeinSheet.erfassen { app.pendingWeinNew = false; return }
+        // Liegt ein anderes Sheet oben (Laden-Scan/Einstellungen), gilt dieselbe Regel wie unten:
+        // erst schliessen, kurz warten, dann oeffnen — ein direkter Zielwechsel haengt.
+        if sheet == nil { sheet = .erfassen } else { wechsleZuErfassen(ean: "", vorschlag: nil) }
     }
 
     /// Vom Einkaufs-Scan in die Erfassung: erst schliessen, dann neu oeffnen. Ein direkter

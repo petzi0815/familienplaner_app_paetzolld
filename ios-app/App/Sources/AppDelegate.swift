@@ -14,10 +14,22 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     /// serverseitig zu löschen (sonst pusht der Server weiter an das abgemeldete Gerät).
     private static let deviceTokenKey = "apnsDeviceToken"
 
+    /// Schnellaktion vom App-Icon, die beim Kaltstart noch keinen `appState` vorfand: `appState`
+    /// wird erst in `.onAppear` der ersten View gesetzt, der Longpress-Wunsch kommt davor an.
+    /// Er wird hier geparkt und von `AppState.start()` eingelöst — sonst ginge er verloren und
+    /// die App bliebe einfach auf „Heute" stehen. Wie `orientationLock` nur vom Main-Thread berührt.
+    static var pendingShortcut: String?
+
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = self
         AppDelegate.registerNotificationCategories()
+        // Kaltstart über den Icon-Longpress: hier ist der früheste Zeitpunkt, an dem der Wunsch
+        // ankommen kann (je nach iOS-Zustellweg folgt zusätzlich `performActionFor` — der Pfad
+        // unten führt deshalb nichts aus, solange hier noch etwas geparkt liegt).
+        if let item = launchOptions?[.shortcutItem] as? UIApplicationShortcutItem {
+            AppDelegate.pendingShortcut = item.type
+        }
         return true
     }
 
@@ -86,15 +98,29 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         // Best-effort — ohne Push läuft die App normal weiter.
     }
 
-    /// Home-Screen-Quick-Actions (Icon-Longpress) → passender Tab.
+    /// Home-Screen-Quick-Actions (Icon-Longpress) → direkt in den jeweiligen Erfassungsschritt.
+    /// Die Zuordnung Typ → Aktion liegt bewusst in `AppState.applyShortcut(_:)`: derselbe Weg
+    /// bedient den Kaltstart-Fall und die Deep-Links (`familienplaner://wein-neu` usw.).
     func application(_ application: UIApplication,
                      performActionFor shortcutItem: UIApplicationShortcutItem,
                      completionHandler: @escaping (Bool) -> Void) {
         let type = shortcutItem.type
         Task { @MainActor in
-            if type.hasSuffix("newphoto") { AppDelegate.appState?.requestCamera() }
-            else if type.hasSuffix("scanbook") { AppDelegate.appState?.selectedTab = .scan }
-            else if type.hasSuffix("today") { AppDelegate.appState?.selectedTab = .heute }
+            // Kaltstart-Doppelweg: iOS meldet DIESELBE Aktion je nach Zustellweg zusätzlich hier,
+            // obwohl `didFinishLaunching` sie schon geparkt hat — dann nichts tun, sonst zöge das
+            // Sheet zweimal auf. Eine ANDERE Aktion ersetzt den Parkplatz dagegen: sonst blockierte
+            // ein nie eingelöster Wunsch (Longpress im abgemeldeten Zustand → `start()` läuft erst
+            // nach dem Login) dauerhaft jede weitere Schnellaktion.
+            if AppDelegate.pendingShortcut == type { return }
+            // Einlösen nur, wenn die Tab-Ansicht wirklich empfangsbereit ist. `appState` ist auch
+            // im abgemeldeten Zustand gesetzt (`.onAppear` läuft ebenso für den Login-Screen) —
+            // dort wird geparkt und nach dem Login von `start()` eingelöst.
+            if let state = AppDelegate.appState, state.settings.isConfigured {
+                AppDelegate.pendingShortcut = nil
+                state.applyShortcut(type)
+            } else {
+                AppDelegate.pendingShortcut = type
+            }
         }
         completionHandler(true)
     }

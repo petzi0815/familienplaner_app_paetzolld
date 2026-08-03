@@ -39,55 +39,7 @@ private func tripFrom(_ f: [String: Any]) -> Trip {
          coverImage: fieldString(f["cover_image"]).isEmpty ? nil : fieldString(f["cover_image"]))
 }
 
-/// Reisen-Liste als Cover-Raster → Reise-Detail.
-struct ReiseListView: View {
-    @EnvironmentObject private var app: AppState
-    @State private var trips: [GenericRecord] = []
-    @State private var loaded = false
-    private let cols = [GridItem(.adaptive(minimum: 150), spacing: 12)]
-    private var res: ResourceInfo? { app.resources.first { $0.key == "reisen" } }
-
-    var body: some View {
-        ScrollView {
-            if trips.isEmpty && loaded {
-                ContentUnavailableView("Keine Reisen", systemImage: "airplane")
-            } else {
-                LazyVGrid(columns: cols, spacing: 12) {
-                    ForEach(trips) { t in
-                        NavigationLink { ReiseDetailView(record: t) } label: { card(t) }.buttonStyle(.plain)
-                    }
-                }
-                .padding()
-            }
-        }
-        .navigationTitle("Reisen")
-        .task { if !loaded { await load() } }
-        .refreshable { await load() }
-    }
-
-    private func card(_ t: GenericRecord) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            AuthImage(path: recordImageURL(t.fields, res?.image))
-                .frame(maxWidth: .infinity).frame(height: 110).clipped()
-            VStack(alignment: .leading, spacing: 2) {
-                Text(fieldString(t.fields["title"])).font(.subheadline.weight(.semibold)).lineLimit(1)
-                Text(fieldString(t.fields["destination"])).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-            }
-            .padding(10).frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .shadow(color: .black.opacity(0.08), radius: 8, y: 4)
-    }
-
-    private func load() async {
-        await app.loadCapabilities()
-        if let r = res {
-            trips = (try? await app.api.listRecords("reisen", primaryKey: r.primaryKey, limit: 100)) ?? []
-        }
-        loaded = true
-    }
-}
+// Die Reisen-Liste (Segmente nach Status, Kurztrip-Aufhänger, Karten) liegt in `ReiseListe.swift`.
 
 /// Reise-Detail: Hero (Cover/Countdown/Status), Eckdaten, Karte + alle Unterbereiche (Flüge, Hotel,
 /// Aktivitäten, Restaurants, Packliste [abhakbar], Tagesplan, Doku, Wetter …) — datengetrieben.
@@ -104,11 +56,8 @@ struct ReiseDetailView: View {
         (app.domains.first { $0.key == "reisen" }?.resources ?? [])
             .filter { $0.key != "reisen" && $0.columns.contains("trip_id") }
     }
-    private var countdown: Int? {
-        guard fieldString(f["status"]) == "geplant", let d = DateText.parse(date: fieldString(f["start_date"])) else { return nil }
-        let days = Calendar.current.dateComponents([.day], from: Calendar.current.startOfDay(for: Date()), to: d).day ?? 0
-        return days >= 0 ? days : nil
-    }
+    /// Aufbereiteter Datensatz — hält Zeitraum, Dauer, Typ und Status identisch zur Liste.
+    private var info: ReiseInfo { ReiseInfo(record: record, imageSpec: reisenRes?.image) }
 
     var body: some View {
         List {
@@ -120,7 +69,9 @@ struct ReiseDetailView: View {
                         DisclosureGroup {
                             ForEach(items) { it in subItemRow(res, it) }
                         } label: {
-                            Text("\(reisenSubEmoji(res.key))  \(shortReisenLabel(res.label))  ·  \(items.count)")
+                            // Zahl über String(): ein Int direkt zu interpolieren macht daraus
+                            // eine gruppierte Zahl („1.024" statt „1024").
+                            Text("\(reisenSubEmoji(res.key))  \(shortReisenLabel(res.label))  ·  \(String(items.count))")
                                 .font(.subheadline.weight(.semibold))
                         }
                     }
@@ -138,28 +89,40 @@ struct ReiseDetailView: View {
     private var headerSection: some View {
         Section {
             VStack(alignment: .leading, spacing: 10) {
-                if let cover = recordImageURL(f, reisenRes?.image) {
+                let i = info
+                if let cover = i.coverPfad {
                     AuthImage(path: cover)
                         .frame(maxWidth: .infinity).frame(height: 190).clipped()
                         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
-                Text(fieldString(f["title"])).font(.title3.weight(.bold))
-                let dest = fieldString(f["destination"])
-                if !dest.isEmpty {
-                    let land = fieldString(f["country"])
-                    Text("📍 " + dest + (land.isEmpty ? "" : ", \(land)")).font(.subheadline).foregroundStyle(.secondary)
+                Text(i.titel).font(.title3.weight(.bold))
+                if !i.ortText.isEmpty {
+                    Text("📍 " + i.ortText).font(.subheadline).foregroundStyle(.secondary)
                 }
-                HStack(spacing: 10) {
-                    if !fieldString(f["status"]).isEmpty { BadgeView(text: fieldString(f["status"])) }
-                    if let c = countdown {
-                        Text("✈️ noch \(c) \(c == 1 ? "Tag" : "Tage")").font(.caption.weight(.bold))
-                            .foregroundStyle(Palette.colors(for: "reisen").first!)
-                    }
-                    Spacer()
-                    NavigationLink { ReiseKarteView(trip: tripFrom(f)) } label: {
-                        Label("Karte", systemImage: "map").font(.subheadline.weight(.semibold))
-                    }
+                // Zeitraum + Dauer exakt wie in der Liste — ohne Startdatum bleibt die Zeile weg.
+                if let z = i.zeitraum {
+                    Text(i.dauer.map { z + " · " + $0 } ?? z)
+                        .font(.subheadline.weight(.medium))
                 }
+                HStack(spacing: 8) {
+                    Pill(text: i.typPille, color: i.typFarbe)
+                    if !i.status.isEmpty {
+                        Pill(text: ReiseText.statusLabel(i.status),
+                             color: ReiseText.statusFarbe(i.status), filled: false)
+                    }
+                    if let c = ReiseText.countdown(i.tageBisStart) {
+                        Pill(text: c, systemImage: "hourglass",
+                             color: Palette.colors(for: "reisen").first ?? Theme.accent)
+                    } else if i.datumHinweis {
+                        Pill(text: "Datum liegt zurück", systemImage: "clock.badge.exclamationmark",
+                             color: Color(hex: "94A3B8"), filled: false)
+                    }
+                    Spacer(minLength: 4)
+                }
+                NavigationLink { ReiseKarteView(trip: tripFrom(f)) } label: {
+                    Label("Karte", systemImage: "map").font(.subheadline.weight(.semibold))
+                }
+                .accessibilityIdentifier("reise-detail-karte")
             }
             .padding(.vertical, 4)
         }

@@ -27,25 +27,82 @@ struct ScanHubView: View {
                         tileLabel("Buch scannen", "ISBN-Barcode → automatisch anlegen", "barcode.viewfinder")
                     }
                     .buttonStyle(TileButtonStyle(gradientKey: "elisbooks"))
+                    .accessibilityIdentifier("scan-buch")
 
                     Button { sheet = .food } label: {
                         tileLabel("Lebensmittel scannen", "EAN-Barcode → Vorratskammer", "carrot.fill")
                     }
                     .buttonStyle(TileButtonStyle(gradientKey: "vorratskammer"))
+                    .accessibilityIdentifier("scan-lebensmittel")
                 }
                 .padding()
             }
             .background(Palette.gradient(for: "elisbooks").opacity(0.06).ignoresSafeArea())
             .navigationTitle("Erfassen")
-            .navigationDestination(isPresented: $showCamera) { CameraView() }
-            .navigationDestination(isPresented: $showFotobox) { FotoboxView() }
-            .onChange(of: app.openCameraTick) { _, _ in showCamera = true }
-            .sheet(item: $sheet) { which in
-                switch which {
-                case .book: BookScanSheet().environmentObject(app)
-                case .food: VorratScanSheet().environmentObject(app)
-                }
+            .navigationDestination(isPresented: $showCamera) {
+                // Erst hier ist der Wunsch wirklich umgesetzt (siehe consumeCameraWish).
+                CameraView().onAppear { app.pendingCamera = false }
             }
+            .navigationDestination(isPresented: $showFotobox) { FotoboxView() }
+            // Schnellaktion/Deep-Link „Foto aufnehmen", „Buch scannen" bzw. „Lebensmittel scannen":
+            // der Tab wird erst beim Wechsel gebaut (dann greift .task), existiert er schon,
+            // greift .onChange. Die Kamera braucht beide Wege genauso wie die Scan-Sheets — beim
+            // Kaltstart über die Schnellaktion steht der Wunsch fest, bevor es diese View gibt.
+            .task { consumeCameraWish(); consumeScanWish() }
+            .onChange(of: app.pendingCamera) { _, _ in consumeCameraWish() }
+            .onChange(of: app.pendingScanSheet) { _, _ in consumeScanWish() }
+            .sheet(item: $sheet) { which in
+                Group {
+                    switch which {
+                    case .book: BookScanSheet()
+                    case .food: VorratScanSheet()
+                    }
+                }
+                .environmentObject(app)
+                // Erst wenn das GEWÜNSCHTE Sheet wirklich steht, ist der Wunsch eingelöst.
+                .onAppear { if sheetZiel(app.pendingScanSheet) == which { app.pendingScanSheet = nil } }
+            }
+        }
+    }
+
+    /// Wunsch-Ziel → Sheet-Ziel (nil bleibt nil).
+    private func sheetZiel(_ target: AppState.ScanTarget?) -> ScanSheet? {
+        guard let t = target else { return nil }
+        return t == .buch ? .book : .food
+    }
+
+    /// Offenen Wunsch „direkt scannen" einlösen (Schnellaktion vom App-Icon / Deep-Link).
+    /// Verbraucht wird er erst, wenn das Sheet wirklich auf dem Schirm steht (`onAppear` oben) —
+    /// bleibt die Präsentation aus, weil noch ein Sheet eines ANDEREN Tabs oben liegt, bleibt der
+    /// Wunsch offen und der nächste `.task`/`.onChange`-Durchlauf versucht es erneut. Sonst wäre er
+    /// spurlos weg (SwiftUI zeigt kein zweites Sheet) und nichts würde ihn wiederholen.
+    private func consumeScanWish() {
+        guard let ziel = sheetZiel(app.pendingScanSheet) else { return }
+        // Gewünschtes Sheet steht schon → Wunsch erfüllt.
+        if sheet == ziel { app.pendingScanSheet = nil; return }
+        guard sheet != nil else { sheet = ziel; return }
+        // Liegt ein ANDERES Sheet dieser View oben: erst schließen, Animation abwarten, dann neu
+        // aufziehen — ein direkter Wechsel des `.sheet(item:)`-Ziels lässt sie hängen (gleiches
+        // Muster und dieselbe Wartezeit wie `WeinRootView.wechsleZuErfassen`).
+        sheet = nil
+        Task {
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            sheet = ziel
+        }
+    }
+
+    /// Offenen Wunsch „Foto aufnehmen" einlösen (Schnellaktion vom App-Icon / Siri / Deep-Link).
+    /// Verbraucht wird er erst, wenn die Kamera wirklich steht (`onAppear` oben).
+    private func consumeCameraWish() {
+        guard app.pendingCamera else { return }
+        // Kamera steht schon → Wunsch erfüllt.
+        if showCamera { app.pendingCamera = false; return }
+        guard sheet != nil else { showCamera = true; return }
+        // Ein offenes Sheet würde die gepushte Kamera verdecken: erst schließen, kurz warten.
+        sheet = nil
+        Task {
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            showCamera = true
         }
     }
 
