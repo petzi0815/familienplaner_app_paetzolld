@@ -57,9 +57,29 @@
   Countdown, Cover mit Verlaufs-Fallback, Suche über Titel/Ziel/Land/Region. Läuft jetzt auf `AreaScaffold`.
 - **Review:** 7 bestätigte Befunde behoben, darunter eine **Regression** (Foto-Aktion öffnete die Kamera
   nicht mehr) und zweimal derselbe Denkfehler beim Verbrauch des Wunsches.
-- **Von Lars am Gerät zu prüfen:** (a) Long-Press bei GESCHLOSSENER App — ob iOS die Aktion zustellt,
-  ist statisch nicht entscheidbar (Fallback: App startet auf „Heute", kein Absturz). (b) Ob die Pille
-  „Datum liegt zurück" hilft oder wie ein Fehler wirkt.
+- **Von Lars am Gerät zu prüfen:** Ob die Pille „Datum liegt zurück" hilft oder wie ein Fehler wirkt.
+
+**NACHTRAG 2 (`49d81b5`, TestFlight Build 58, CI 3/3 grün) — Schnellaktionen kamen GAR NICHT an.**
+- **Fehlerbild Lars:** „Long-Press führt nicht in die Bereiche, sondern immer zum Start Screen" — bei
+  ALLEN vier Aktionen. **Ursache:** der SwiftUI-App-Lifecycle ist **szenenbasiert**, damit ruft UIKit
+  `didFinishLaunching`→`launchOptions[.shortcutItem]` und `application(_:performActionFor:)` NIE auf
+  (Apple wörtlich: „This method is not called for scene-based apps."). Es wurde also auf zwei toten
+  Pfaden gelauscht — still, ohne Compilerfehler oder Warnung.
+- **Fix:** eigener `SceneDelegate`, eingehängt über `application(_:configurationForConnecting:options:)`
+  (die Info.plist hat kein Szenen-Manifest = genau der dokumentierte Fall dafür). Kaltstart über
+  `options.shortcutItem`, laufende App über `windowScene(_:performActionFor:)`, gemeinsamer Einstieg
+  `AppDelegate.handleShortcut`.
+- **⚠️ TEUER ERKAUFTE NEBENWIRKUNG (mitbehoben):** ein eigener `delegateClass` verdrängt
+  `SwiftUI.AppSceneDelegate` → **`.onOpenURL` verstummt** und ALLE `familienplaner://`-Links aus
+  Widgets, Live Activity und Push wären tot gewesen. Der `SceneDelegate` stellt URLs deshalb selbst zu
+  (`scene(_:openURLContexts:)` + Kaltstart über `options.urlContexts`, `pendingURL` →
+  `AppState.consumePendingURL()`); `.onOpenURL` bleibt als zweiter Weg. **Kein `scene(_:willConnectTo:)`** —
+  wer dort ein eigenes `UIWindow` baut, hat einen schwarzen Bildschirm. Details: [[feedback-ios-szenen-delegate]].
+- **Laufzeitbeweis:** die 3 Deep-Link-XCUITests (`XCUIDevice.system.open`) sind grün — die URL-Zustellung
+  über den neuen Delegate funktioniert nachweislich.
+- **Von Lars zu prüfen:** greift der Long-Press nach der Installation NICHT, einmal App löschen und neu
+  installieren — iOS merkt sich die Szenen-Konfiguration je `UISceneSession` über Updates hinweg, dann
+  wird `configurationForConnecting` beim ersten Start evtl. gar nicht gerufen.
 
 **NEU 2026-07-27 (7. Session) — E-BOOK-DOWNLOADER REPARIERT: „geladen" erst nach echter Bestätigung, Push bei Erfolg/Fehler, Rich-Push mit Cover. Backend live `3d40933`, TestFlight Build 55 (`VALID`), CI 3/3 grün. Details: [[session-2026-07-27_ebook-download-verifikation]].**
 - **Ursache** (Lars: „15 Bücher als geladen gemeldet, bei Shelfmark kein Download"): Shelfmark
