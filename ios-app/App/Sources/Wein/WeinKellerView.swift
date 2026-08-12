@@ -23,12 +23,25 @@ import SwiftUI
 // einen art-gefilterten Zaehler ("Keller (3)"), und eine Ansicht, die dazu acht Flaschen inklusive
 // Whisky zeigt, widerspraeche ihrem eigenen Reiter. Alle Beschriftungen leiten sich deshalb aus
 // `store.art` ab und duerfen die Getraenkeart beim Namen nennen.
+//
+// Seit dem Standort hat der Keller eine Gruppe, die kein Regal ist: „🏢 Im Büro" sammelt die dort
+// geparkten Flaschen UNABHAENGIG von ihrem Lagerort und nimmt sie der Regal-Gruppierung weg — die
+// Regale zu Hause sollen nur zeigen, was auch wirklich zu Hause steht. Verschwinden tut dabei
+// nichts: in Bestand, Kennzahlen und den beiden Hinweisabschnitten zaehlen die geparkten Flaschen
+// voll mit, die Summenzeile nennt sie lediglich zusaetzlich getrennt.
 
-/// Eine Lagerort-Gruppe. `id` ist der Lagerort — je Gruppe eindeutig.
+/// Eine Gruppe der Keller-Liste — im Normalfall ein Lagerort, dazu die beiden Sammel-Gruppen
+/// „Ohne Lagerort" und „Im Büro", die `rang` ans Ende sortiert.
+/// `id` traegt den Rang mit: ein frei getippter Lagerort „Im Büro" haette sonst dieselbe Kennung
+/// wie die Buero-Gruppe, und `ForEach` saehe zwei Abschnitte mit gleicher ID.
 private struct WeinKellerGruppe: Identifiable {
-    var id: String { lagerort }
+    var id: String { String(rang) + "-" + lagerort }
     let lagerort: String
     let weine: [Wein]
+    /// Zeichen vor der Ueberschrift — Regale tragen die Kiste, die Buero-Gruppe ihr Haus.
+    var emoji: String = "📦"
+    /// Sortier-Rang der Gruppe (Begruendung der Reihenfolge steht in `gruppen`).
+    let rang: Int
     var flaschen: Int { weine.reduce(0) { $0 + $1.bestand } }
 }
 
@@ -46,27 +59,63 @@ struct WeinKellerView: View {
     /// Ohne Lagerort erfasste Flaschen landen gesammelt am Ende.
     private static let ohneLagerort = "Ohne Lagerort"
 
+    // Sortier-Raenge der Gruppen — ausgeschrieben statt als Zahlen im Vergleich, damit die
+    // Reihenfolge an einer Stelle nachzulesen ist (angewendet in `gruppen`).
+    private static let rangRegal = 0
+    private static let rangBuero = 1
+    private static let rangSammel = 2
+
     /// Nur die aktuell gewaehlte Getraenkeart — der Umschalter im Kopf gilt fuer den GANZEN Bereich.
     /// Ohne diese Einschraenkung widerspraechen sich Kopf und Inhalt: das Segment darueber zaehlt
     /// „Keller (3)" bereits art-gefiltert, waehrend hier acht Flaschen inklusive Whisky staenden.
     private var imKeller: [Wein] { store.weine.filter { $0.bestand > 0 && $0.art == store.art } }
 
+    /// Die Regal-Gruppen entstehen NUR aus dem, was zu Hause steht — die geparkten Flaschen nimmt
+    /// `bueroGruppe` vorher heraus. Sonst stuende unter „Bar" eine Flasche, die im Buero liegt,
+    /// und genau dieses vergebliche Suchen soll der Standort ersparen.
     private var gruppen: [WeinKellerGruppe] {
-        let gruppiert = Dictionary(grouping: imKeller) { w -> String in
+        let gruppiert = Dictionary(grouping: imKeller.filter { !$0.istImBuero }) { w -> String in
             let l = (w.lagerort ?? "").trimmingCharacters(in: .whitespaces)
             return l.isEmpty ? Self.ohneLagerort : l
         }
-        return gruppiert
-            .map { WeinKellerGruppe(lagerort: $0.key, weine: $0.value.sorted { $0.titel < $1.titel }) }
-            .sorted { a, b in
-                // Der Sammel-Eimer steht immer hinten, sonst alphabetisch.
-                if a.lagerort == Self.ohneLagerort { return false }
-                if b.lagerort == Self.ohneLagerort { return true }
-                return a.lagerort.localizedCaseInsensitiveCompare(b.lagerort) == .orderedAscending
-            }
+        var alle = gruppiert.map {
+            WeinKellerGruppe(lagerort: $0.key,
+                             weine: $0.value.sorted { $0.titel < $1.titel },
+                             rang: $0.key == Self.ohneLagerort ? Self.rangSammel : Self.rangRegal)
+        }
+        if let buero = bueroGruppe { alle.append(buero) }
+        return alle.sorted { a, b in
+            // Bestehende Regel der Datei: der Sammel-Eimer steht immer hinten, benannte Regale
+            // davor alphabetisch. Die Buero-Gruppe schiebt sich zwischen beide — sie IST eine
+            // Ortsangabe (man weiss, wo die Flasche steht), waehrend der Eimer nur sagt, dass der
+            // Ort unbekannt ist; hinter die Regale gehoert sie trotzdem, weil sie keines im Haus ist.
+            if a.rang != b.rang { return a.rang < b.rang }
+            return a.lagerort.localizedCaseInsensitiveCompare(b.lagerort) == .orderedAscending
+        }
     }
 
+    /// Die geparkten Flaschen als eigene Gruppe — unabhaengig vom Lagerort, deshalb ausserhalb der
+    /// Gruppierung gebaut. nil, wenn nichts im Buero steht: dann fehlt der Abschnitt ersatzlos.
+    /// Sie laeuft durch dieselbe `ForEach` wie die Regale und behaelt damit die kanonische
+    /// Zeilen-Kennung (`wein-keller-…`); eindeutig bleibt die, weil eine Flasche entweder geparkt
+    /// ODER in einer Regal-Gruppe steht — nie in beiden.
+    private var bueroGruppe: WeinKellerGruppe? {
+        guard !imBuero.isEmpty else { return nil }
+        return WeinKellerGruppe(lagerort: WeinStandort.buero.label,
+                                weine: imBuero.sorted { $0.titel < $1.titel },
+                                emoji: WeinStandort.buero.emoji,
+                                rang: Self.rangBuero)
+    }
+
+    /// Im Buero geparkte Flaschen der angezeigten Getraenkeart. Nicht auf Spirituosen eingeschraenkt:
+    /// die Spalte gilt fuer beide Arten, und was geparkt IST, muss auch sichtbar sein — nur die
+    /// Bedienelemente zum Umschalten bleiben den Spirituosen vorbehalten.
+    private var imBuero: [Wein] { imKeller.filter { $0.istImBuero } }
+
     private var flaschenGesamt: Int { imKeller.reduce(0) { $0 + $1.bestand } }
+
+    /// FLASCHEN (nicht Eintraege) im Buero — Grundlage des Zusatzes in der Summenzeile.
+    private var flaschenImBuero: Int { imBuero.reduce(0) { $0 + $1.bestand } }
 
     /// Die Ansicht zeigt seit dem Umschalter immer genau EINE Getraenkeart (siehe `imKeller`),
     /// deshalb duerfen die Beschriftungen sie beim Namen nennen statt neutral zu bleiben.
@@ -156,7 +205,7 @@ struct WeinKellerView: View {
                 Section {
                     ForEach(g.weine) { zeile($0, hinweis: nil) }
                 } header: {
-                    kopf("📦 " + g.lagerort, g.flaschen, einheit: "Flaschen")
+                    kopf(g.emoji + " " + g.lagerort, g.flaschen, einheit: "Flaschen")
                 }
                 .textCase(nil)
             }
@@ -179,6 +228,15 @@ struct WeinKellerView: View {
                 // Tausenderpunkt aus dem Text heraus.
                 AreaStatTile(value: WeinText.zahl(wertGesamt, stellen: 0) + " €",
                              label: "Wert (ca.)", color: Color(hex: "EA580C"))
+            }
+            // Die geparkten Flaschen stecken in den Kacheln mit drin — sie gehoeren zum Bestand.
+            // Deshalb hier der Zusatz, WIE VIELE davon nicht zu Hause stehen. Steht nichts im Buero,
+            // entfaellt die Zeile ersatzlos: ein „davon 0 im Büro" waere nur Ballast.
+            if flaschenImBuero > 0 {
+                Text(WeinStandort.buero.emoji + " Davon " + String(flaschenImBuero)
+                     + (flaschenImBuero == 1 ? " Flasche" : " Flaschen") + " im Büro geparkt.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             if ohnePreis > 0 {
                 Text("Für " + String(ohnePreis) + " " + eintragWort(ohnePreis)
@@ -236,6 +294,15 @@ struct WeinKellerView: View {
                     .accessibilityIdentifier(praefix + "-zeile-" + String(w.id))
                 HStack(spacing: 6) {
                     einordnung(w)
+                    if w.istImBuero {
+                        // Auch in der Gruppe „Im Büro", wo die Ueberschrift es schon sagt: dieselbe
+                        // Zeile steht weiter oben nochmal unter „Jetzt trinkreif" bzw. „Letzte
+                        // Flasche", und dort ist das Abzeichen die einzige Stelle, die den Standort
+                        // nennt. Neutrales Schiefergrau wie das Bestands-Abzeichen der Liste — die
+                        // Farben der Kategorie-Pille daneben sind belegt und wuerden verwirren.
+                        Pill(text: WeinStandort.buero.emoji + " " + WeinStandort.buero.kurz,
+                             color: Color(hex: "475569"), filled: false)
+                    }
                     if let h = hinweis {
                         Pill(text: h, systemImage: "clock", color: Color(hex: "EA580C"), filled: false)
                     }
@@ -341,9 +408,10 @@ struct WeinKellerView: View {
         WeinKellerStufe(prozent: 0, text: "leer"),
     ]
 
-    /// Kontextmenue der Zeile: Flasche oeffnen bzw. wieder als ungeoeffnet markieren und den
-    /// Fuellstand in Stufen setzen. Wird NUR fuer Spirituosen angehaengt (Entscheidung sitzt in
-    /// `zeile`) — dort steht die Flasche monatelang offen und der Fuellstand aendert sich staendig;
+    /// Kontextmenue der Zeile: Flasche oeffnen bzw. wieder als ungeoeffnet markieren, ins Buero
+    /// parken und den Fuellstand in Stufen setzen. Wird NUR fuer Spirituosen angehaengt
+    /// (Entscheidung sitzt in `zeile`) — dort steht die Flasche monatelang offen und der Fuellstand
+    /// aendert sich staendig, und geparkt wird ebenfalls dort, weil zu Hause der Platz fehlt;
     /// eine Weinflasche ist am selben Abend leer, ein Menue an jeder Weinzeile waere nur Ballast.
     /// Die Zaehl-Knoepfe der Zeile bleiben der Weg fuer alles, was Flaschenzahlen betrifft.
     @ViewBuilder private func flaschenMenu(_ w: Wein) -> some View {
@@ -359,6 +427,17 @@ struct WeinKellerView: View {
             } label: {
                 Label("Flasche öffnen", systemImage: "drop.fill")
             }
+        }
+
+        // Der Umschalter steht oben bei den Zustands-Knoepfen und NICHT hinter den sechs
+        // Fuellstand-Stufen: er ist dieselbe Zwei-Sekunden-Aktion wie das Zaehlen, und hinter der
+        // langen Stufenliste wuerde man ihn beim Umraeumen jedes Mal suchen. Die Beschriftung ist
+        // wortgleich mit der Detailseite, damit beide Wege gleich heissen.
+        Button {
+            Task { await store.setStandort(w, w.istImBuero ? .zuhause : .buero) }
+        } label: {
+            Label(w.istImBuero ? "Wieder zu Hause" : "Im Büro parken",
+                  systemImage: w.istImBuero ? WeinStandort.zuhause.symbol : WeinStandort.buero.symbol)
         }
 
         Divider()

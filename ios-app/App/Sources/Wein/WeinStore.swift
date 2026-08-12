@@ -44,12 +44,14 @@ final class WeinStore: ObservableObject, NotifiableStore {
         GetraenkeArt(rawValue: UserDefaults.standard.string(forKey: artKey) ?? "") ?? .wein
     }
 
-    // Art-eigene Filter: Typ/Rebsorte gelten nur fuer Wein, Kategorie/Stil nur fuer Spirituosen.
-    // Land, Mindeststerne und Sortierung gelten fuer beide.
+    // Art-eigene Filter: Typ/Rebsorte gelten nur fuer Wein, Kategorie/Stil/Standort nur fuer
+    // Spirituosen. Land, Mindeststerne und Sortierung gelten fuer beide.
     @Published var filterTyp: Set<WeinTyp> = []
     @Published var filterKategorie: Set<SpirituosenKategorie> = []
     @Published var filterRebsorte: String?
     @Published var filterStil: String?
+    /// nil = alle Standorte (der Eintrag "Alle" im Menue ist genau dieser Fall, kein eigener Wert).
+    @Published var filterStandort: WeinStandort?
     @Published var filterLand: String?
     @Published var filterMinSterne: Int?
     @Published var sort: WeinSort = .neueste
@@ -188,6 +190,9 @@ final class WeinStore: ObservableObject, NotifiableStore {
                 }
             }
             if let st = filterStil, !st.isEmpty { out = out.filter { $0.stil == st } }
+            // Standort greift wie Kategorie/Stil nur hier: das Menue dazu steht in der
+            // Spirituosen-Zeile, ein unter "Weine" wirkender Filter waere dort nicht zu loesen.
+            if let so = filterStandort { out = out.filter { $0.standort == so } }
         }
         if let l = filterLand, !l.isEmpty { out = out.filter { $0.land == l } }
         if let s = filterMinSterne { out = out.filter { (schnitt($0) ?? 0) >= Double(s) } }
@@ -252,6 +257,7 @@ final class WeinStore: ObservableObject, NotifiableStore {
         filterKategorie = []
         filterRebsorte = nil
         filterStil = nil
+        filterStandort = nil
         filterLand = nil
         filterMinSterne = nil
         suche = ""
@@ -263,7 +269,7 @@ final class WeinStore: ObservableObject, NotifiableStore {
     var filterAktiv: Bool {
         let artEigen = art == .wein
             ? (!filterTyp.isEmpty || filterRebsorte != nil)
-            : (!filterKategorie.isEmpty || filterStil != nil)
+            : (!filterKategorie.isEmpty || filterStil != nil || filterStandort != nil)
         return artEigen || filterLand != nil || filterMinSterne != nil
     }
 
@@ -388,6 +394,27 @@ final class WeinStore: ObservableObject, NotifiableStore {
         f.timeZone = .current
         return f
     }()
+
+    /// Flasche im Buero parken bzw. wieder nach Hause holen (optimistisch wie `setBestand`).
+    /// Es aendert sich AUSSCHLIESSLICH das Gebaeude: Bestand, `lagerort` und alles uebrige bleiben
+    /// stehen — eine geparkte Flasche verschwindet nirgends, sie traegt nur zusaetzlich ein Label.
+    /// Mit Erfolgsmeldung wie bei `setBeobachten`: der Knopf tauscht bloss seine Beschriftung, die
+    /// spuerbare Rueckmeldung samt Haptik kommt aus `notify`.
+    func setStandort(_ wein: Wein, _ standort: WeinStandort) async {
+        let alt = wein.standort
+        guard standort != alt else { return }
+        patchLokal(wein.id) { $0.standort = standort }
+        do {
+            // Gezielt nur diese eine Spalte — der volle `patchFields` schriebe den ganzen Datensatz
+            // zurueck und ueberschriebe dabei, was inzwischen woanders geaendert wurde.
+            let w = try await api.update(wein.id, ["standort": standort.rawValue])
+            ersetzeOderErgaenze(w)
+            notify(standort == .buero ? "Im Büro geparkt" : "Wieder zu Hause")
+        } catch {
+            patchLokal(wein.id) { $0.standort = alt }
+            notify(errText(error), error: true)
+        }
+    }
 
     /// Preis-Waechter fuer diesen Wein an-/abschalten.
     func setBeobachten(_ wein: Wein, _ an: Bool) async {

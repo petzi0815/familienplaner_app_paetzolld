@@ -1,0 +1,39 @@
+-- 0023_standort — „Wo steht die Flasche überhaupt?": Spirituosen im Büro parken.
+--
+-- ANLASS (Lars, wörtlich): „ich lagere Spirituosen teilweise nicht bei uns, sondern parke sie im
+-- Büro, weil zu Hause nicht genug Platz ist … damit ich nicht zu Hause suche." Die Flasche soll
+-- also vollständig im Bestand bleiben (Keller, Suche, Bewertung, Preisbeobachtung, Einkaufs-Scan)
+-- und lediglich ZUSÄTZLICH ein Label tragen.
+--
+-- WARUM EINE EIGENE SPALTE statt eines Eintrags im vorhandenen `lagerort`:
+-- Die beiden Felder beantworten verschiedene Fragen und schließen sich nicht aus. `lagerort` ist
+-- Freitext und sagt „welches Regal" (Bar, Keller Regal 2) — daran hängt die Gruppierung im Keller.
+-- `standort` sagt „welches Gebäude". Als Freitext in `lagerort` wäre daraus weder ein verlässliches
+-- Abzeichen noch ein Filter noch eine eigene Keller-Gruppe zu bauen, und ein Tippfehler („Buero"
+-- gegen „Büro") würde die Flasche genau dort unsichtbar machen, wo sie gesucht wird. Getrennt
+-- bleiben beide gültig und ergänzen sich: „im Büro, dort im Schrank links".
+--
+-- WARUM NOT NULL MIT DEFAULT 'zuhause':
+-- Jede Bestandszeile steht heute zu Hause — der fachlich richtige Wert kommt also ohne Nachpflege
+-- über den Default. NOT NULL, weil „Standort unbekannt" kein sinnvoller Zustand ist: die App muss
+-- immer entscheiden können, ob sie das Büro-Abzeichen zeigt, und ein NULL-Fall würde diese Frage
+-- an jeder Anzeigestelle erneut aufwerfen. Der Default hält außerdem die bereits installierte App
+-- am Leben, die `standort` nicht kennt und das Feld beim Schreiben nicht mitschickt.
+--
+-- WARUM DIE SPALTE FÜR BEIDE ARTEN GILT, der Knopf aber nur bei Spirituosen erscheint:
+-- Eine art-abhängige Spalte kostet nichts (jede Zeile trägt ohnehin einen Standort) und hält den
+-- Weg offen, falls später auch Weinkisten auswärts stehen. Art-abhängig sind nur die
+-- Bedienelemente in der App — so gewünscht.
+--
+-- Die CHECK-Klausel steht bewusst INLINE als CHECK(spalte IN ('a','b')) mit einfachen
+-- Anführungszeichen: server/db/constraints.ts parst genau diese Form aus sqlite_master und macht
+-- daraus 422-Fehler bei falschen Werten sowie die `allowed`-Liste in /schema.
+--
+-- Additiv (ALTER TABLE ADD COLUMN, kein Table-Rebuild) — Prod trägt echte Daten. SQLite kennt kein
+-- "ADD COLUMN IF NOT EXISTS", aber der Migrations-Tracker (schema_migrations) führt jede Datei
+-- genau einmal aus → ein simples ALTER genügt. NOT NULL ist bei ADD COLUMN nur mit Default erlaubt
+-- (haben wir). KEIN Index: die Tabelle ist klein und gefiltert wird ohnehin im Client.
+
+-- ── Gebäude, in dem die Flasche physisch steht (ergänzt `lagerort`, ersetzt ihn nicht) ──
+ALTER TABLE "weine" ADD COLUMN standort TEXT NOT NULL DEFAULT 'zuhause'
+                   CHECK(standort IN ('zuhause','buero'));

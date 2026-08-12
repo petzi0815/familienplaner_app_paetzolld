@@ -213,10 +213,7 @@ struct WeinEinkaufsScanView: View {
                 if !ort.isEmpty { Text(ort).font(.subheadline).foregroundStyle(.secondary) }
                 HStack(spacing: 6) {
                     artPille(w)
-                    if w.bestand > 0 {
-                        Pill(text: String(w.bestand) + " Fl. im Keller", systemImage: "archivebox",
-                             color: Color(hex: "475569"), filled: false)
-                    }
+                    if w.bestand > 0 { bestandPille(w) }
                     if let p = w.referenzpreis {
                         Text("ca. " + WeinText.eur(p)).font(.caption).foregroundStyle(.secondary)
                     }
@@ -227,6 +224,19 @@ struct WeinEinkaufsScanView: View {
             .background(Color(.secondarySystemBackground),
                         in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .accessibilityIdentifier("wein-einkauf-titel")
+
+            // Geparkte Flasche — genau dafuer gibt es das Feature: im Laden sehen, dass die drei
+            // Flaschen zwar da sind, aber eben nicht zu Hause. Bewusst als EIGENER Block unter der
+            // Titelkarte statt in ihr: die Karte traegt einen Container-Identifier, der die IDs
+            // ihrer Kinder verdecken wuerde (siehe AlarmoTile) — und ein Satz auf eigener Zeile
+            // wird beim Ueberfliegen im Regal eher gelesen als eine weitere Pille.
+            // Nur bei vorhandenem Bestand: ohne Flasche gibt es nichts, was irgendwo stuende.
+            if w.bestand > 0, w.istImBuero {
+                NoteBlock(icon: WeinStandort.buero.emoji,
+                          text: "Der Bestand steht im Büro, nicht zu Hause.",
+                          tint: Color(hex: "B45309"))
+                    .accessibilityIdentifier("wein-einkauf-buero")
+            }
 
             if t.lookup.bewertungen.isEmpty {
                 NoteBlock(icon: "⭐️", text: "Noch keine Bewertung — probiert ihn und haltet fest, wie er war.")
@@ -337,6 +347,21 @@ struct WeinEinkaufsScanView: View {
             }
         } else {
             Pill(text: w.typ.label, color: w.typ.farbe)
+        }
+    }
+
+    /// Bestandspille. Steht die Flasche im Buero, sagt sie das STATT "im Keller" — im Laden ist
+    /// genau das die entscheidende Frage, und "3 Fl. im Keller" an einer geparkten Flasche waere
+    /// schlicht falsch. Dann gefuellt und in Bernstein (5,0:1 mit der von `Color.onFill`
+    /// gewaehlten Schrift), damit sie sich von der ruhigen Keller-Pille abhebt.
+    /// Aufgerufen wird sie nur bei Bestand > 0 (siehe Aufrufstelle).
+    @ViewBuilder private func bestandPille(_ w: Wein) -> some View {
+        if w.istImBuero {
+            Pill(text: String(w.bestand) + " Fl. im Büro", systemImage: WeinStandort.buero.symbol,
+                 color: Color(hex: "B45309"))
+        } else {
+            Pill(text: String(w.bestand) + " Fl. im Keller", systemImage: "archivebox",
+                 color: Color(hex: "475569"), filled: false)
         }
     }
 

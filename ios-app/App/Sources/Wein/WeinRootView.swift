@@ -306,12 +306,18 @@ struct WeinRootView: View {
         }
     }
 
-    /// Erstes Dropdown art-abhaengig (Rebsorte bzw. Stil), die drei uebrigen gelten fuer beide
-    /// Arten und behalten ihre Identifier.
+    /// Erstes Dropdown art-abhaengig (Rebsorte bzw. Stil), die drei letzten gelten fuer beide
+    /// Arten und behalten ihre Identifier. Spirituosen bekommen zusaetzlich den Standort — geparkt
+    /// wird nur dort, und die art-eigenen Menues stehen bewusst zusammen am Anfang der Zeile.
     private var dropdowns: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 10) {
-                if store.art == .wein { rebsorteMenu } else { stilMenu }
+                if store.art == .wein {
+                    rebsorteMenu
+                } else {
+                    stilMenu
+                    standortMenu
+                }
                 landMenu
                 sterneMenu
                 sortierungMenu
@@ -347,6 +353,24 @@ struct WeinRootView: View {
                           aktiv: store.filterStil != nil)
         }
         .accessibilityIdentifier("wein-menu-stil")
+    }
+
+    /// Nur Spirituosen: WO die Flasche steht — zu Hause oder im Buero geparkt. Der Eintrag "Alle"
+    /// ist der nil-Fall des Filters und deshalb kein Fall des enums (wie bei Rebsorte/Stil/Land).
+    /// Das Symbol wechselt mit der Wahl (Haus/Gebaeude), weil es hier die Aussage traegt; ohne
+    /// Filter steht ein neutrales Ortssymbol da — ein Haus waere bei "Alle" bereits eine Antwort.
+    private var standortMenu: some View {
+        Menu {
+            Button("Alle Standorte") { store.filterStandort = nil }
+            ForEach(WeinStandort.allCases) { s in
+                Button { store.filterStandort = s } label: { Label(s.label, systemImage: s.symbol) }
+            }
+        } label: {
+            dropdownLabel(icon: store.filterStandort?.symbol ?? "mappin.and.ellipse",
+                          text: store.filterStandort?.kurz ?? "Standort",
+                          aktiv: store.filterStandort != nil)
+        }
+        .accessibilityIdentifier("wein-menu-standort")
     }
 
     private var landMenu: some View {

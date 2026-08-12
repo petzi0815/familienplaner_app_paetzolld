@@ -48,6 +48,24 @@
   werden weiterhin als Weißwein vorgeschlagen — **vorbestehend**, nicht Teil dieser Änderung.
   (4) `BOOTSTRAP_AGENT_API_KEY` rotieren (steht seit früheren Sessions offen).
 
+**NACHTRAG (Migration 0023) — Spirituosen im Büro „parken".** Lars lagert einen Teil der Flaschen
+im Büro, weil zu Hause der Platz fehlt. Neue Spalte **`standort`** ('zuhause'|'buero', NOT NULL
+DEFAULT 'zuhause') — **bewusst nicht der freie `lagerort`**: der beantwortet „welches Regal" und
+gruppiert den Keller, `standort` beantwortet „welches Gebäude"; als Freitext wäre daraus weder ein
+Label noch ein Filter noch eine eigene Gruppe zu machen, und „Buero" vs. „Büro" hätte die Flasche
+unsichtbar gemacht. Beide gelten nebeneinander („im Büro, dort im Schrank links").
+- **Umschalt-Knopf nur bei Spirituosen** (Detail + Kontextmenü im Keller), Abzeichen überall.
+  Im Keller bilden geparkte Flaschen eine **eigene Gruppe „🏢 Im Büro"** unabhängig vom Lagerort —
+  die Regale zu Hause zeigen nur, was wirklich zu Hause steht. Summenzeile nennt „davon N im Büro"
+  (entfällt bei 0). Filter „Standort" in der Spirituosen-Dropdown-Zeile. Der **Einkaufs-Scan** sagt
+  im Laden „3 Fl. im Büro" statt „im Keller" — dafür ist das Feature da.
+- **Non-obvious (Review-Fund):** `standort` MUSS im Speicher-Body an die Art gebunden werden (wie
+  `typ`). Sonst erzeugt „Spirituose parken → Art auf Wein korrigieren" einen Wein mit
+  `standort='buero'`, der überall das Büro-Abzeichen trägt, während der Umschalter dafür nur bei
+  Spirituosen existiert — ein Zustand ohne Bedienelement.
+- Verifiziert: Migration **13/13** gegen Prod-Nachbildung (Bestand unverändert, nichts wandert still
+  ins Büro, CHECK weist „Büro" mit Umlaut ab, alte App schreibt weiter), `tsc` + Swift-Scan grün.
+
 **NEU 2026-07-31 (8. Session) — NEUER LEBENSBEREICH „WEIN" 🍷: zweischrittige KI-Erfassung (OpenAI + Perplexity), Bewertung je Person, Einkaufs-Scan, Weinkeller, Preisbeobachtung mit Push. Backend live `3218906`, TestFlight Build 55 (`ios.yml`-Lauf 55, Commit `5dd70ea`), CI 3/3 grün. Details: [[session-2026-07-31_wein-lebensbereich]].**
 - **Zweck** (Lars): leckeren Wein schnell listen — Etikett fotografieren, EAN scannen oder tippen,
   KI ergänzt den Rest. **Zweischrittig**: Schritt 1 erfassen, Schritt 2 zeigt alles inkl. Preisen,

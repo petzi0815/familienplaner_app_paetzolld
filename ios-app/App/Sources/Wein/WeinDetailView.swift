@@ -9,7 +9,8 @@ import SwiftUI
 ///
 /// ART-ABHAENGIG (seit Migration 0022): Geschmacksprofil, Rebsorten, Geschmacksrichtung und
 /// Trinkfenster gibt es NUR beim Wein; Kategorie/Stil/Alter/Fass/Abfuelljahr, Trinkempfehlung,
-/// Cocktails und der Fuellstand NUR bei der Spirituose. Bewertungen, Keller, Preise, Historie
+/// Cocktails, Fuellstand und der Standort-Umschalter NUR bei der Spirituose (das Abzeichen im
+/// Kopf zeigt einen geparkten Bestand dagegen bei beiden Arten — siehe dort). Bewertungen, Keller, Preise, Historie
 /// und Foto sind fuer beide Arten identisch — sie sind der Grund, warum beide in EINER Tabelle
 /// liegen. Kein Abschnitt darf leer erscheinen: fehlt ein Wert, faellt die Zeile weg.
 struct WeinDetailView: View {
@@ -134,6 +135,17 @@ struct WeinDetailView: View {
                 if current.bestand > 0 {
                     Pill(text: String(current.bestand) + " Flaschen", systemImage: "archivebox",
                          color: Color(hex: "475569"), filled: false)
+                }
+                // Geparkt gehoert NEBEN die Flaschenzahl in den Kopf und nicht nur in die Zeile
+                // weiter unten: „3 Flaschen" ohne den Zusatz laedt genau zu der Suche zu Hause ein,
+                // die das Feature verhindern soll. Gefuellt, damit es die einzige Pille ist, die
+                // hier eine Einschraenkung ausspricht.
+                // Bewusst NICHT auf Spirituosen eingeschraenkt (anders als der Umschalter): die
+                // Spalte gilt fuer beide Arten, und ein anderweitig geparkter Wein darf auf seiner
+                // eigenen Detailseite nicht so aussehen, als staende er zu Hause.
+                if current.istImBuero {
+                    Pill(text: current.standort.emoji + " " + current.standort.label,
+                         color: Color(hex: "0369A1"))
                 }
             }
             // Die Lage ist eine reine Weinangabe (Einzellage) — bei Spirituosen bliebe sie ohnehin
@@ -396,6 +408,9 @@ struct WeinDetailView: View {
     /// Deshalb hier ein Balken statt eines Zaehlers — und sechs feste Stufen statt eines
     /// Schiebereglers: niemand misst den Rest einer Flasche prozentgenau, und ein Tipp ist
     /// schneller als eine Ziehbewegung.
+    /// Die Karte traegt inzwischen den ganzen Zustand DIESER Flasche — Fuellstand, angebrochen und
+    /// Standort. Der Umschalter sitzt deshalb hier und nicht im Keller-Block: dort geht es um den
+    /// Bestand (beide Arten), hier um die eine Flasche, und geparkt wird nur bei Spirituosen.
     @ViewBuilder private var fuellstandBlock: some View {
         if current.art == .spirituose {
             block("Füllstand") {
@@ -412,6 +427,7 @@ struct WeinDetailView: View {
                         }
                     }
                     angebrochenZeile
+                    standortZeile
                 }
             }
         }
@@ -462,6 +478,30 @@ struct WeinDetailView: View {
             .buttonStyle(.bordered)
             .tint(tint)
             .accessibilityIdentifier("wein-angebrochen")
+        }
+    }
+
+    /// Wo die Flasche steht — Gebaeude, nicht Regal: der `lagerort` im Keller-Block bleibt daneben
+    /// gueltig („im Buero, dort im Schrank links"). Geparkt heisst NICHT weg: der Bestand bleibt
+    /// unangetastet, es kommt nur das Label dazu, damit zu Hause niemand danach sucht.
+    /// Aufbau wie `angebrochenZeile` — beide Beschriftungen vorab als String, weil ein Ternaer aus
+    /// zwei Literalen direkt im `Button(...)` dem Compiler die Wahl zwischen LocalizedStringKey und
+    /// String liesse.
+    private var standortZeile: some View {
+        let hier = current.standort
+        let ziel: WeinStandort = hier == .buero ? .zuhause : .buero
+        let knopf: String = ziel == .buero ? "Im Büro parken" : "Wieder zu Hause"
+        return HStack(spacing: 10) {
+            Label(hier.label, systemImage: hier.symbol)
+                .font(.caption).foregroundStyle(.secondary)
+            Spacer(minLength: 0)
+            Button(knopf) {
+                Task { await store.setStandort(current, ziel) }
+            }
+            .font(.caption)
+            .buttonStyle(.bordered)
+            .tint(tint)
+            .accessibilityIdentifier("wein-standort-toggle")
         }
     }
 

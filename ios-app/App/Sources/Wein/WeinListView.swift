@@ -119,7 +119,9 @@ struct WeinListView: View {
 ///
 /// Art-abhaengig sind Pille (Weintyp bzw. Spirituosen-Kategorie), die Zeile unter dem Titel
 /// (Rebsorten bzw. Stil) und der Titel selbst — den bildet `Wein.titel` und setzt bei Spirituosen
-/// die Altersangabe an die Stelle des Jahrgangs. Dazu die Markierung fuer angebrochene Flaschen.
+/// die Altersangabe an die Stelle des Jahrgangs. Dazu die Markierung fuer angebrochene Flaschen und
+/// das Buero-Abzeichen der geparkten Spirituosen: im Laden ist genau das die Frage — die Flaschen
+/// sind zwar da, stehen aber nicht zu Hause.
 struct WeinKarte: View {
     let wein: Wein
     var meine: WeinBewertung?
@@ -140,6 +142,15 @@ struct WeinKarte: View {
                 artPille
                 if wein.bestand > 0 {
                     Pill(text: String(wein.bestand) + " Fl.", systemImage: "archivebox",
+                         color: Color(hex: "475569"), filled: false)
+                }
+                if wein.art == .spirituose && wein.istImBuero {
+                    // Direkt unter der Flaschenzahl, weil es genau sie einschraenkt: die drei
+                    // Flaschen gibt es, nur eben nicht zu Hause. Kein Bestands-Vorbehalt (wie beim
+                    // Abzeichen „angebrochen"): geparkt ist eine Eigenschaft des Eintrags.
+                    // NUR bei Spirituosen — geparkt wird ausschliesslich dort, und an jeder
+                    // Weinkarte waere das Abzeichen eine Angabe ohne Bedienelement dahinter.
+                    Pill(text: WeinStandort.buero.emoji + " " + WeinStandort.buero.kurz,
                          color: Color(hex: "475569"), filled: false)
                 }
                 if wein.istAngebrochen {

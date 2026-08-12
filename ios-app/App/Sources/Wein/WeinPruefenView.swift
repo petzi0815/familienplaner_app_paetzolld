@@ -83,6 +83,9 @@ struct WeinPruefenView: View {
     // ── Keller ──
     @State private var bestand = 1
     @State private var lagerort = ""
+    /// Gebäude, in dem die Flasche steht. Bedient wird die Auswahl nur bei Spirituosen; bei Wein
+    /// bleibt sie auf dem Vorgabewert stehen und geht als solcher mit (die Spalte ist NOT NULL).
+    @State private var standort: WeinStandort = .zuhause
 
     // ── Ablauf ──
     @State private var quelle = "ki"
@@ -522,8 +525,23 @@ struct WeinPruefenView: View {
             .accessibilityIdentifier("wein-pruefen-bestand")
             TextField("Lagerort (z. B. Regal unten links)", text: $lagerort)
                 .accessibilityIdentifier("wein-pruefen-lagerort")
+            // Nur Spirituosen: geparkt wird in der Praxis dort, weil zu Hause der Platz fehlt.
+            // Steht direkt unter dem Lagerort, weil beides zusammen die Antwort ergibt — welches
+            // Gebäude, und darin welches Regal („im Büro, dort im Schrank links").
+            if art == .spirituose {
+                Picker("Standort", selection: $standort) {
+                    ForEach(WeinStandort.allCases) { s in
+                        Text(s.emoji + " " + s.label).tag(s)
+                    }
+                }
+                .accessibilityIdentifier("wein-pruefen-standort")
+            }
         } header: {
             Text("Keller")
+        } footer: {
+            if art == .spirituose {
+                Text("Im Büro geparkte Flaschen bleiben vollständig im Bestand — sie werden nur zusätzlich gekennzeichnet.")
+            }
         }
     }
 
@@ -673,6 +691,10 @@ struct WeinPruefenView: View {
 
         if let b = Coerce.int(f["bestand"]) { bestand = max(0, b) }
         lagerort = Coerce.str(f["lagerort"]) ?? ""
+        // Fehlender/unbekannter Wert = zu Hause (Default der Migration). Die KI liefert den
+        // Standort nie — über den Einkaufs-Scan kann aber ein vorhandener Datensatz hier landen,
+        // und dessen Parkplatz darf beim Speichern nicht still auf „zu Hause" zurückfallen.
+        standort = WeinStandort(rawValue: Coerce.str(f["standort"]) ?? "") ?? .zuhause
         quelle = Coerce.str(f["quelle"]) ?? "ki"
     }
 
@@ -755,6 +777,14 @@ struct WeinPruefenView: View {
             "bestand": bestand,
             "quelle": quelleSicher,
         ]
+        // Der Standort haengt an der Art — dieselbe Regel wie bei `typ` oben, und aus demselben
+        // Grund: parkt man eine Flasche im Büro und korrigiert danach die Getränkeart auf Wein
+        // (den Weg bietet die Maske ausdrücklich an, sie löscht beim Umschalten nichts), bliebe
+        // sonst ein Wein mit `standort='buero'` zurück — der trüge überall das Büro-Abzeichen,
+        // während der Umschalter dafür nur bei Spirituosen existiert. Ein Zustand ohne
+        // Bedienelement ist schlimmer als ein zurückgesetzter Standort.
+        let standortWert: WeinStandort = art == .spirituose ? standort : .zuhause
+        f["standort"] = standortWert.rawValue
         // Gemeinsame Textspalten; die art-eigenen kommen unten dazu.
         var texte: [(String, String)] = [
             ("land", land), ("region", region),

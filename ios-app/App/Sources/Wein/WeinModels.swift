@@ -178,6 +178,54 @@ enum SpirituosenKategorie: String, CaseIterable, Identifiable {
     }
 }
 
+// MARK: - Standort (CHECK standort IN ('zuhause','buero'))
+
+/// WO die Flasche steht — Gebaeude, nicht Regal. `lagerort` beantwortet weiterhin „welches Regal"
+/// (Bar, Keller Regal 2), `standort` beantwortet „welches Haus"; beides gilt nebeneinander
+/// („im Buero, dort im Schrank links"). Als Freitext in `lagerort` waere daraus weder ein
+/// verlaessliches Abzeichen noch ein Filter noch eine eigene Keller-Gruppe zu machen, und ein
+/// Tippfehler (Buero/Büro) wuerde die Flasche unauffindbar machen — genau das soll das Feature
+/// verhindern.
+/// Die SPALTE gilt fuer beide Getraenkearten (kostet nichts, haelt den Weg offen), die
+/// BEDIENELEMENTE zeigen nur die Spirituosen: geparkt wird in der Praxis dort, weil zu Hause der
+/// Platz fehlt. Bestandszeilen ohne Wert stehen zu Hause (Default der Migration 0023).
+enum WeinStandort: String, CaseIterable, Identifiable {
+    case zuhause, buero
+
+    var id: String { rawValue }
+
+    /// Ausgeschrieben — Detailzeile, Menue-Eintraege, Auswahl im Erfassen-Formular.
+    var label: String {
+        switch self {
+        case .zuhause: return "Zu Hause"
+        case .buero:   return "Im Büro"
+        }
+    }
+
+    /// Kurzform fuer enge Stellen (Abzeichen auf Karte und Kellerzeile, Filter-Pille).
+    var kurz: String {
+        switch self {
+        case .zuhause: return "Zuhause"
+        case .buero:   return "Büro"
+        }
+    }
+
+    var emoji: String {
+        switch self {
+        case .zuhause: return "🏠"
+        case .buero:   return "🏢"
+        }
+    }
+
+    /// SF Symbol fuer Knoepfe und Menues.
+    var symbol: String {
+        switch self {
+        case .zuhause: return "house"
+        case .buero:   return "building.2"
+        }
+    }
+}
+
 // MARK: - Tabs, Sortierung
 
 /// .alle = alles · .keller = bestand > 0 · .top = Schnitt >= 4 · .offen = von mir noch nicht bewertet.
@@ -255,7 +303,8 @@ struct Wein: Identifiable, Hashable {
     var gekauftBei: String?
     var preisBeobachten: Bool
     var bestand: Int                    // Flaschen im Keller
-    var lagerort: String?
+    var lagerort: String?               // Regal/Fach — WO GENAU, unabhaengig vom Gebaeude
+    var standort: WeinStandort          // Gebaeude: zu Hause oder im Buero geparkt
     var fotoKey: String?                // Etikettenfoto (media area "wein")
     var quelle: String                  // manuell | foto | ean | ki
     var notizen: String?
@@ -311,6 +360,10 @@ struct Wein: Identifiable, Hashable {
         preisBeobachten = Coerce.bool(f["preis_beobachten"])
         bestand = Coerce.int(f["bestand"]) ?? 0
         lagerort = Coerce.str(f["lagerort"])
+        // Fehlender/unbekannter Wert = zu Hause. Genau das steht als Default in der Migration, und
+        // die installierte App (Build 58) schickt das Feld gar nicht mit — sie darf ihre Flaschen
+        // dadurch nicht als geparkt angezeigt bekommen.
+        standort = WeinStandort(rawValue: Coerce.str(f["standort"]) ?? "") ?? .zuhause
         fotoKey = Coerce.str(f["foto_key"])
         quelle = Coerce.str(f["quelle"]) ?? "manuell"
         notizen = Coerce.str(f["notizen"])
@@ -352,6 +405,11 @@ struct Wein: Identifiable, Hashable {
         d["preis_beobachten"] = preisBeobachten ? 1 : 0
         d["bestand"] = bestand
         d["lagerort"] = lagerort ?? NSNull()
+        // Standort geht bei BEIDEN Arten mit: die Spalte ist NOT NULL und gilt fuer beide; nur die
+        // Bedienelemente sind auf Spirituosen beschraenkt. Bei Weinen ist der Wert schlicht immer
+        // `zuhause` — ein Weglassen wuerde bei einem spaeter freigeschalteten Umschalter still
+        // Aenderungen verschlucken.
+        d["standort"] = standort.rawValue
         d["foto_key"] = fotoKey ?? NSNull()
         d["quelle"] = quelle
         d["notizen"] = notizen ?? NSNull()
@@ -418,6 +476,11 @@ struct Wein: Identifiable, Hashable {
         guard let a = angebrochenAt else { return false }
         return !a.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
+
+    /// Steht die Flasche im Buero? Sie bleibt dabei voll im Bestand (Keller, Suche, Bewertung,
+    /// Preisbeobachtung) — sie traegt nur zusaetzlich ein Abzeichen, damit zu Hause niemand danach
+    /// sucht.
+    var istImBuero: Bool { standort == .buero }
 
     /// Fuellstand als Beschriftung der naechstliegenden Stufe (100/75/50/25/10/0).
     /// OHNE erfassten Wert nil — "leer" waere geraten und wuerde jede ungeoeffnete Flasche als
