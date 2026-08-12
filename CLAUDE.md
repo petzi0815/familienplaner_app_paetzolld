@@ -6,7 +6,7 @@
 
 ## ▶️ WIEDERAUFNAHME (nächste Session) — START HIER
 
-**NEU 2026-08-12 (9. Session) — AUS „WEIN" WIRD „WEIN & SPIRITUOSEN" 🍷🥃: gleiches Muster (EAN/Etikett/KI, Bewertung je Person, Preis-Wächter, Keller), nur ohne Wein-Charakteristik — plus Umschalter. Migration 0022. Details: [[session-2026-08-12_spirituosen]].**
+**NEU 2026-08-12 (9. Session) — AUS „WEIN" WIRD „WEIN & SPIRITUOSEN" 🍷🥃: gleiches Muster (EAN/Etikett/KI, Bewertung je Person, Preis-Wächter, Keller), nur ohne Wein-Charakteristik — plus Umschalter. Migrationen 0022 + 0023. Backend live `565e81c` (Vorgänger `c619111`), CI beide Male 3/3 grün (Build Check · UI Tests · TestFlight). Details: [[session-2026-08-12_spirituosen]].**
 - **Wunsch (Lars):** Spirituosen mit inventarisieren, „alles gleiches Muster über EAN erfassbar, nur
   halt ohne Wein-Charakteristik, ggf. Switch zwischen Wein und Spirituosen".
 - **EINE Tabelle `weine`, neue Spalte `art`** ('wein'|'spirituose') — bewusst KEINE zweite Tabelle:
