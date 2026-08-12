@@ -117,13 +117,35 @@ async function pushDownloadResults(done: VerifyOutcome[], failures: VerifyOutcom
   }
 }
 
-// ── Wein-Schnäppchen: Push an die Familie ────────────────────────────────────
-// Wie bei den Büchern BEWUSST OHNE `owner`: der Weinkeller ist gemeinsam, und `owner` in `sendPush`
+// ── Wein- und Spirituosen-Schnäppchen: Push an die Familie ───────────────────
+// Wie bei den Büchern BEWUSST OHNE `owner`: Keller und Bar sind gemeinsam, und `owner` in `sendPush`
 // schließt aus statt zu priorisieren (der Broadcast-Fallback greift nur, wenn die Person GAR KEIN
 // Gerät hat). Ein Angebot, das nur auf einem der beiden Telefone landet, ist die halbe Meldung.
 
 /** Preise in der Meldung als "12,90 €" — Rohzahlen lesen sich im Sperrbildschirm schlecht. */
 const euro = (n: number) => n.toLocaleString("de-DE", { style: "currency", currency: "EUR" });
+
+/** Getränkeart, wie der Preischeck sie meldet — hier ausschließlich für die Formulierung. */
+type WeinArt = PreisErgebnis["art"];
+
+/**
+ * Benennung der Ware in den Meldungen. Ein Lauf umfasst beide Getränkearten (`faelligeWeine` prüft
+ * bewusst Keller UND Bar in einem Durchgang) — sind in einer Sammelmeldung beide vertreten, wird
+ * neutral von „Flaschen" gesprochen, statt eine der beiden Arten zu unterschlagen.
+ */
+function weinArtTexte(arten: readonly WeinArt[]): { emoji: string; einzahl: string; mehrzahl: string; ort: string } {
+  const wein = arten.some((a) => a === "wein");
+  const spirituose = arten.some((a) => a === "spirituose");
+  if (wein && spirituose) return { emoji: "🍷🥃", einzahl: "Flasche", mehrzahl: "Flaschen", ort: "in Keller und Bar" };
+  if (spirituose) return { emoji: "🥃", einzahl: "Spirituose", mehrzahl: "Spirituosen", ort: "in der Bar" };
+  return { emoji: "🍷", einzahl: "Wein", mehrzahl: "Weine", ort: "im Weinkeller" };
+}
+
+/** „1 Spirituose" / „3 Weine" / „5 Flaschen" — Anzahl mit der passenden Benennung. */
+function weinMenge(n: number, arten: readonly WeinArt[]): string {
+  const t = weinArtTexte(arten);
+  return `${n} ${n === 1 ? t.einzahl : t.mehrzahl}`;
+}
 
 async function pushWeinRabatte(rabatte: PreisErgebnis[]): Promise<void> {
   // `bester` ist bei jedem Rabatt-Eintrag gesetzt (so filtert der Preischeck), TypeScript weiß das
@@ -135,8 +157,9 @@ async function pushWeinRabatte(rabatte: PreisErgebnis[]): Promise<void> {
 
   if (angebote.length <= PUSH_EINZELN_BIS) {
     for (const a of angebote) {
+      const t = weinArtTexte([a.e.art]);
       await sendPush({
-        title: "🍷 Wein im Angebot",
+        title: `${t.emoji} ${t.einzahl} im Angebot`,
         subtitle: `${a.best.haendler} · ${a.prozent} % günstiger`,
         body: `${a.e.titel} — jetzt ${euro(a.best.preis)}${a.e.referenzpreis != null ? ` statt ${euro(a.e.referenzpreis)}` : ""}`,
         threadId: "wein",
@@ -147,14 +170,15 @@ async function pushWeinRabatte(rabatte: PreisErgebnis[]): Promise<void> {
   }
   // Ab 4 Schnäppchen EINE Sammelmeldung — der stärkste Rabatt als Aufhänger.
   const top = angebote.reduce((a, b) => (b.prozent > a.prozent ? b : a));
+  const t = weinArtTexte(angebote.map((a) => a.e.art));
   await sendPush({
-    title: `🍷 ${angebote.length} Weine im Angebot`,
+    title: `${t.emoji} ${angebote.length} ${t.mehrzahl} im Angebot`,
     subtitle: `am stärksten reduziert: ${kurz(top.e.titel, PUSH_TITEL_MAX)} (${top.prozent} %)`,
     body: sammelText(
       angebote.map(
         (a) => `• ${kurz(a.e.titel, PUSH_TITEL_MAX)} — ${euro(a.best.preis)} bei ${kurz(a.best.haendler, 30)} (${a.prozent} % günstiger)`,
       ),
-      "im Weinkeller",
+      t.ort,
     ),
     threadId: "wein",
     data: { kind: "wein" },
@@ -937,8 +961,8 @@ export const JOBS: JobDef[] = [
     timezone: "Europe/Berlin",
     topic: "wein",
     description:
-      "Beobachtete Weine täglich auf günstige Angebote prüfen (nur die nach dem eingestellten Intervall fälligen) " +
-      "und ab der eingestellten Rabattschwelle die Familie per Push informieren.",
+      "Beobachtete Weine und Spirituosen täglich auf günstige Angebote prüfen (nur die nach dem eingestellten " +
+      "Intervall fälligen) und ab der eingestellten Rabattschwelle die Familie per Push informieren.",
     async run(ctx) {
       const settings = getWeinSettings(ctx.db);
 
@@ -953,12 +977,12 @@ export const JOBS: JobDef[] = [
       // OpenAI-Anfragen abfeuern — ein Trockenlauf darf kein Geld kosten (wie bei den E-Book-Jobs).
       const faellig = faelligeWeine(ctx.db, settings.intervallTage);
       if (!faellig.length) {
-        return { messages: [`keine Weine fällig (Intervall ${settings.intervallTage} Tage)`], affected: 0 };
+        return { messages: [`nichts fällig (Intervall ${settings.intervallTage} Tage)`], affected: 0 };
       }
       if (ctx.dryRun) {
         return {
           messages: [
-            `${faellig.length} Wein(e) fällig (Intervall ${settings.intervallTage} Tage, Schwelle ${settings.rabattProzent} %)`,
+            `${weinMenge(faellig.length, faellig.map((w) => w.art))} fällig (Intervall ${settings.intervallTage} Tage, Schwelle ${settings.rabattProzent} %)`,
             ...faellig.map((w) => `• ${w.titel}`),
           ],
           affected: 0,
@@ -981,7 +1005,8 @@ export const JOBS: JobDef[] = [
       const unveraendert = r.rabatte.length - neue.length;
 
       const messages = [
-        `Preischeck: ${r.geprueft} Wein(e) geprüft, ${r.rabatte.length} Angebot(e) ab ${settings.rabattProzent} % Rabatt` +
+        `Preischeck: ${weinMenge(r.geprueft, r.ergebnisse.map((e) => e.art))} geprüft, ` +
+        `${r.rabatte.length} Angebot(e) ab ${settings.rabattProzent} % Rabatt` +
         (unveraendert ? ` (${unveraendert} davon unverändert seit der letzten Prüfung → kein erneuter Push)` : ""),
       ];
       for (const e of r.ergebnisse) {
@@ -991,7 +1016,7 @@ export const JOBS: JobDef[] = [
       }
 
       if (neue.length && settings.pushAktiv) await pushWeinRabatte(neue);
-      else if (neue.length) messages.push("Push ist in den Wein-Einstellungen abgeschaltet — keine Meldung gesendet");
+      else if (neue.length) messages.push("Push ist in den Einstellungen abgeschaltet — keine Meldung gesendet");
 
       return { messages, affected: r.geprueft };
     },

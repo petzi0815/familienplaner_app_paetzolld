@@ -3,6 +3,8 @@ import Foundation
 /// Anbindung des Wein-Bereichs an die generischen v1-Ressourcen (`weine`, `wein-bewertungen`,
 /// `wein-preise`) und die Sonderrouten (`wein-scan`, `wein-lookup`, `wein-bewertung`,
 /// `wein-preischeck`, `wein-einstellungen`).
+/// Alle Routen tragen BEIDE Getraenkearten (Wein und Spirituose) — Tabelle, Pfade und Namen bleiben
+/// deshalb unveraendert, unterschieden wird ueber die Spalte `art` (siehe Kopf von WeinModels.swift).
 /// WICHTIG: v1-Listen liefern einen ENVELOPE `{data:[…],total}` (kein bares Array);
 /// Einzel-GET/POST/PATCH liefern die Zeile als bares Objekt.
 /// CompatClient stellt `/api` voran → alle Pfade beginnen hier mit `/v1/…`.
@@ -99,30 +101,43 @@ final class WeinAPI {
 
     /// Schritt 1 der Erfassung: Etikettenfoto / EAN / Freitext → Vorschlag samt Preisen.
     /// Speichert NICHTS. Wirft APIError 501, wenn `OPENAI_API_KEY` fehlt.
-    func scan(image: Data? = nil, ean: String? = nil, text: String? = nil) async throws -> WeinVorschlag {
+    ///
+    /// `art` ist nur ein HINWEIS an die Erkennungskette (welche Maske der Nutzer gerade offen hat).
+    /// Widerspricht das Etikett dem Hinweis, gewinnt die Erkennung und das Backend legt einen
+    /// Klartext-Hinweis in `hinweise` — im Laden schaltet niemand erst den Umschalter um.
+    /// Der Parameter steht bewusst HINTEN mit Default (wie `slow:` im CompatClient), damit
+    /// bestehende Aufrufstellen unveraendert uebersetzen; `.wein` entspricht dem Default, den das
+    /// Backend ohne Hinweis ohnehin annimmt.
+    func scan(image: Data? = nil, ean: String? = nil, text: String? = nil,
+              art: GetraenkeArt = .wein) async throws -> WeinVorschlag {
         var body: [String: Any] = [:]
         if let image { body["image"] = "data:image/jpeg;base64," + image.base64EncodedString() }
         if let ean, !ean.isEmpty { body["ean"] = ean }
         if let text, !text.isEmpty { body["text"] = text }
+        body["art"] = art.rawValue
         let o = try await langlaufend("Die Erkennung des Etiketts") {
             try await c.send("/v1/wein-scan", method: "POST", body: body, slow: true)
         }
         return WeinVorschlag(object: o)
     }
 
-    /// Einkaufs-Scan im Laden: kennen wir den Wein schon und wie fanden wir ihn?
+    /// Einkaufs-Scan im Laden: kennen wir die Flasche schon und wie fanden wir sie?
     /// Bei unbekannter EAN startet der Server dieselbe Anreicherungs-Kette wie `scan` → langlaufend.
-    func lookup(ean: String? = nil, name: String? = nil) async throws -> WeinLookup {
+    /// `art` ist derselbe unverbindliche Hinweis wie bei `scan` (hier als Query-Parameter); die
+    /// EAN-Suche selbst schraenkt der Server bewusst NICHT auf eine Art ein — ein Barcode ist eindeutig.
+    func lookup(ean: String? = nil, name: String? = nil,
+                art: GetraenkeArt = .wein) async throws -> WeinLookup {
         var q: [URLQueryItem] = []
         if let ean, !ean.isEmpty { q.append(URLQueryItem(name: "ean", value: ean)) }
         if let name, !name.isEmpty { q.append(URLQueryItem(name: "name", value: name)) }
-        let o = try await langlaufend("Das Nachschlagen des Weins") {
+        q.append(URLQueryItem(name: "art", value: art.rawValue))
+        let o = try await langlaufend("Das Nachschlagen der Flasche") {
             try await c.getObject("/v1/wein-lookup", query: q, slow: true)
         }
         return WeinLookup(object: o)
     }
 
-    /// Preise eines Weins jetzt pruefen (Perplexity-Recherche im Backend).
+    /// Preise einer Flasche jetzt pruefen (Perplexity-Recherche im Backend, Wein wie Spirituose).
     @discardableResult
     func preischeck(weinId: Int) async throws -> WeinPreischeckErgebnis {
         let o = try await langlaufend("Die Preisrecherche") {
@@ -131,10 +146,10 @@ final class WeinAPI {
         return WeinPreischeckErgebnis(object: o)
     }
 
-    /// Alle beobachteten Weine pruefen (der Nacht-Job macht dasselbe automatisch).
+    /// Alle beobachteten Flaschen pruefen (der Nacht-Job macht dasselbe automatisch).
     @discardableResult
     func preischeckAlle() async throws -> WeinPreischeckErgebnis {
-        let o = try await langlaufend("Die Preisrecherche für alle Weine") {
+        let o = try await langlaufend("Die Preisrecherche für alle Flaschen") {
             try await c.send("/v1/wein-preischeck", method: "POST", body: ["alle": true], slow: true)
         }
         return WeinPreischeckErgebnis(object: o)

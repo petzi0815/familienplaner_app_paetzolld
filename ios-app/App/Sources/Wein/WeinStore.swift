@@ -4,6 +4,9 @@ import UIKit
 /// Zentraler Zustand des Wein-Bereichs (Weine, Bewertungen, Preis-Historie, Tab/Suche/Filter).
 /// Die Liste wird EINMAL geladen und danach clientseitig gefiltert und sortiert — der Keller ist
 /// klein genug, und so bleiben Tab-Wechsel und Tippen in der Suche ohne Netz-Rundreise.
+/// Weine UND Spirituosen liegen in derselben Liste (eine Tabelle, Begruendung im Kopf von
+/// `WeinModels.swift`). Der Umschalter `art` blendet die jeweils andere Getraenkeart aus und wirkt
+/// VOR allen uebrigen Filtern — er praegt dadurch auch Kennzahlen, Filterlisten und Sortierung.
 @MainActor
 final class WeinStore: ObservableObject, NotifiableStore {
     let api: WeinAPI
@@ -21,8 +24,32 @@ final class WeinStore: ObservableObject, NotifiableStore {
     @Published var suche = ""
     @Published var loading = true
 
+    /// Angezeigte Getraenkeart (Umschalter im Kopf). Die Wahl ueberlebt den App-Start: wer gerade
+    /// die Bar pflegt, will nicht bei jedem Aufruf erst wieder umschalten.
+    /// KEIN `@AppStorage` — der Property-Wrapper braucht einen View-Kontext und schreibt in einer
+    /// ObservableObject-Klasse nicht zuverlaessig zurueck; deshalb direkt `UserDefaults`, dasselbe
+    /// Backing ohne den Wrapper (gleiches Vorgehen wie in `PizzaStore`).
+    @Published var art: GetraenkeArt = WeinStore.gespeicherteArt() {
+        didSet {
+            guard art != oldValue else { return }
+            UserDefaults.standard.set(art.rawValue, forKey: WeinStore.artKey)
+        }
+    }
+
+    private static let artKey = "wein.art"
+
+    /// Zuletzt gewaehlte Art; fehlender oder unbekannter Wert = Wein (der Bestand besteht aus
+    /// Weinen, und genau das steht auch als Default in der Migration).
+    private static func gespeicherteArt() -> GetraenkeArt {
+        GetraenkeArt(rawValue: UserDefaults.standard.string(forKey: artKey) ?? "") ?? .wein
+    }
+
+    // Art-eigene Filter: Typ/Rebsorte gelten nur fuer Wein, Kategorie/Stil nur fuer Spirituosen.
+    // Land, Mindeststerne und Sortierung gelten fuer beide.
     @Published var filterTyp: Set<WeinTyp> = []
+    @Published var filterKategorie: Set<SpirituosenKategorie> = []
     @Published var filterRebsorte: String?
+    @Published var filterStil: String?
     @Published var filterLand: String?
     @Published var filterMinSterne: Int?
     @Published var sort: WeinSort = .neueste
@@ -83,20 +110,45 @@ final class WeinStore: ObservableObject, NotifiableStore {
     }
 
     // MARK: - Abgeleitete Listen
+    //
+    // ALLE bauen auf `weineDerArt` auf, nicht auf `weine`: die Menues duerfen nur Werte anbieten,
+    // die in der angezeigten Liste auch vorkommen. Sonst bliebe unter "Spirituosen" die Rebsorte
+    // "Riesling" waehlbar — und die Liste danach kommentarlos leer.
+
+    /// Basis fuer Kennzahlen, Filterlisten und `gefiltert`: nur die gewaehlte Getraenkeart.
+    var weineDerArt: [Wein] { weine.filter { $0.art == art } }
+
+    /// Anzahl je Art — die Zaehler am Umschalter (bewusst ueber den GANZEN Bestand, damit die
+    /// nicht gewaehlte Seite ihre Zahl auch zeigt).
+    func anzahl(_ a: GetraenkeArt) -> Int { weine.filter { $0.art == a }.count }
 
     var alleRebsorten: [String] {
-        Array(Set(weine.flatMap { $0.rebsorten })).filter { !$0.isEmpty }
+        Array(Set(weineDerArt.flatMap { $0.rebsorten })).filter { !$0.isEmpty }
             .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
 
     var alleLaender: [String] {
-        Array(Set(weine.compactMap { $0.land })).filter { !$0.isEmpty }
+        Array(Set(weineDerArt.compactMap { $0.land })).filter { !$0.isEmpty }
             .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
 
-    /// Reihenfolge: Tab → Suchtext → Typ/Rebsorte/Land/Mindeststerne → Sortierung.
+    /// Vorhandene Stile — das Spirituosen-Gegenstueck zur Rebsorte ("Single Malt Islay",
+    /// "London Dry"), alphabetisch wie dort.
+    var alleStile: [String] {
+        Array(Set(weineDerArt.compactMap { $0.stil })).filter { !$0.isEmpty }
+            .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+    }
+
+    /// Vorhandene Kategorien in der Reihenfolge des CHECK (NICHT alphabetisch) — die Filter-Pills
+    /// sollen zwischen zwei Aufrufen an derselben Stelle stehen.
+    var alleKategorien: [SpirituosenKategorie] {
+        let vorhanden = Set(weineDerArt.compactMap { $0.kategorie })
+        return SpirituosenKategorie.allCases.filter { vorhanden.contains($0) }
+    }
+
+    /// Reihenfolge: Art → Tab → Suchtext → art-eigene Filter/Land/Mindeststerne → Sortierung.
     var gefiltert: [Wein] {
-        var out = weine
+        var out = weineDerArt
 
         switch tab {
         case .alle:   break
@@ -105,19 +157,38 @@ final class WeinStore: ObservableObject, NotifiableStore {
         case .offen:  out = out.filter { meine($0) == nil }
         }
 
+        // Stil und Cocktails sind fuer Spirituosen das, was Rebsorte und Aroma fuer den Wein sind —
+        // der Platzhalter des Suchfelds nennt sie, also muessen sie auch getroffen werden.
         let q = suche.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if !q.isEmpty {
             out = out.filter { w in
                 w.name.lowercased().contains(q)
                     || w.weingut.lowercased().contains(q)
                     || (w.region ?? "").lowercased().contains(q)
+                    || (w.stil ?? "").lowercased().contains(q)
                     || w.rebsorten.contains { $0.lowercased().contains(q) }
                     || w.aromen.contains { $0.lowercased().contains(q) }
+                    || w.cocktails.contains { $0.lowercased().contains(q) }
             }
         }
 
-        if !filterTyp.isEmpty { out = out.filter { filterTyp.contains($0.typ) } }
-        if let r = filterRebsorte, !r.isEmpty { out = out.filter { $0.rebsorten.contains(r) } }
+        // Die art-eigenen Filter greifen NUR bei ihrer Art. Die Filterzeile zeigt je nach Umschalter
+        // entweder Weintypen oder Kategorien — ein noch gesetzter Weintyp wuerde die Spirituosen
+        // sonst unsichtbar wegfiltern, ohne dass es ein Bedienelement gaebe, ihn wieder zu loesen.
+        if art == .wein {
+            if !filterTyp.isEmpty { out = out.filter { filterTyp.contains($0.typ) } }
+            if let r = filterRebsorte, !r.isEmpty { out = out.filter { $0.rebsorten.contains(r) } }
+        } else {
+            if !filterKategorie.isEmpty {
+                out = out.filter {
+                    // Ohne erkannte Kategorie faellt die Flasche aus einem Kategorie-Filter heraus
+                    // (nil ist keine Kategorie, auch nicht "sonstiges").
+                    guard let k = $0.kategorie else { return false }
+                    return filterKategorie.contains(k)
+                }
+            }
+            if let st = filterStil, !st.isEmpty { out = out.filter { $0.stil == st } }
+        }
         if let l = filterLand, !l.isEmpty { out = out.filter { $0.land == l } }
         if let s = filterMinSterne { out = out.filter { (schnitt($0) ?? 0) >= Double(s) } }
 
@@ -144,7 +215,7 @@ final class WeinStore: ObservableObject, NotifiableStore {
             }
         case .jahrgang:
             return list.sorted { a, b in
-                switch (a.jahrgang, b.jahrgang) {
+                switch (jahrgangSortwert(a), jahrgangSortwert(b)) {
                 case let (ja?, jb?): return ja == jb ? a.id > b.id : ja > jb
                 case (_?, nil): return true
                 case (nil, _?): return false
@@ -165,17 +236,35 @@ final class WeinStore: ObservableObject, NotifiableStore {
         }
     }
 
-    /// Filter/Suche zuruecksetzen (Knopf im Filter-Sheet).
+    /// Sortierwert des Falls `.jahrgang`: Spirituosen tragen keinen Jahrgang, sondern eine
+    /// Altersangabe — dort sortiert derselbe Fall nach `alterJahre`. Der Jahrgang bleibt als
+    /// Rueckfall stehen, falls doch einer erfasst wurde (z. B. bei einer Single-Cask-Abfuellung).
+    /// Entschieden wird je Flasche, nicht ueber `art` des Stores: so stimmt die Sortierung auch,
+    /// wenn die Liste einmal gemischt vorliegt.
+    private func jahrgangSortwert(_ w: Wein) -> Int? {
+        w.art == .spirituose ? (w.alterJahre ?? w.jahrgang) : w.jahrgang
+    }
+
+    /// Filter/Suche zuruecksetzen (Knopf im Filter-Sheet). Raeumt BEIDE Arten — der Knopf soll
+    /// wirklich alles loesen, nicht nur das gerade Sichtbare.
     func filterZuruecksetzen() {
         filterTyp = []
+        filterKategorie = []
         filterRebsorte = nil
+        filterStil = nil
         filterLand = nil
         filterMinSterne = nil
         suche = ""
     }
 
+    /// Es zaehlen nur die Filter, die `gefiltert` bei der aktuellen Art auch anwendet. Sonst
+    /// meldete die Leerzustands-Karte unter "Spirituosen" einen aktiven Filter, den man dort weder
+    /// sieht noch loesen kann.
     var filterAktiv: Bool {
-        !filterTyp.isEmpty || filterRebsorte != nil || filterLand != nil || filterMinSterne != nil
+        let artEigen = art == .wein
+            ? (!filterTyp.isEmpty || filterRebsorte != nil)
+            : (!filterKategorie.isEmpty || filterStil != nil)
+        return artEigen || filterLand != nil || filterMinSterne != nil
     }
 
     // MARK: - Mutationen
@@ -187,7 +276,10 @@ final class WeinStore: ObservableObject, NotifiableStore {
             let w: Wein
             if let id { w = try await api.update(id, fields) } else { w = try await api.create(fields) }
             ersetzeOderErgaenze(w)
-            notify(id == nil ? "Wein gespeichert" : "Änderungen gespeichert")
+            // Die Art kommt aus der ANTWORT, nicht aus dem Umschalter: gespeichert ist, was der
+            // Server zurueckgibt ("Spirituose gespeichert"). Fehlt sie, ist es laut Modell ein Wein
+            // — dann steht hier derselbe Satz wie vor Migration 0022.
+            notify(id == nil ? w.art.einzahl + " gespeichert" : "Änderungen gespeichert")
             return w.id > 0 ? w.id : id
         } catch {
             notify(errText(error), error: true)
@@ -228,6 +320,74 @@ final class WeinStore: ObservableObject, NotifiableStore {
             notify(errText(error), error: true)
         }
     }
+
+    /// Groben Fuellstand setzen (0..100; nil = nicht erfasst), optimistisch wie `setBestand`.
+    /// BEWUSST OHNE Erfolgsmeldung: der Wert wird ueber einen Stufen-Picker gesetzt und wuerde
+    /// sonst bei jedem Schritt einen Toast werfen — der Balken selbst ist die Rueckmeldung.
+    func setFuellstand(_ wein: Wein, _ prozent: Int?) async {
+        // Geklemmt auf den Wertebereich des CHECK (BETWEEN 0 AND 100) — ein Ausreisser waere sonst
+        // erst am 422 des Servers zu merken.
+        let neu = prozent.map { max(0, min(100, $0)) }
+        let alt = wein.fuellstandProzent
+        guard neu != alt else { return }
+        patchLokal(wein.id) { $0.fuellstandProzent = neu }
+        do {
+            let body: [String: Any] = ["fuellstand_prozent": neu ?? NSNull()]
+            let w = try await api.update(wein.id, body)
+            ersetzeOderErgaenze(w)
+        } catch {
+            patchLokal(wein.id) { $0.fuellstandProzent = alt }
+            notify(errText(error), error: true)
+        }
+    }
+
+    /// Flasche oeffnen bzw. wieder als ungeoeffnet markieren (optimistisch wie `setBestand`).
+    /// Beim Oeffnen wird zusaetzlich der Fuellstand auf 100 gesetzt — aber NUR, wenn noch keiner
+    /// erfasst ist: eine gerade geoeffnete Flasche ist voll. Ein bereits gepflegter Wert bleibt
+    /// stehen, sonst machte ein versehentliches Zurueck-und-wieder-Oeffnen aus der halb leeren
+    /// Flasche wieder eine volle.
+    /// Anders als beim Fuellstand gibt es hier eine Erfolgsmeldung (wie bei `setBeobachten`): der
+    /// Schalter aendert nur eine Beschriftung, die Rueckmeldung samt Haptik kommt aus `notify`.
+    func setAngebrochen(_ wein: Wein, _ offen: Bool) async {
+        guard offen != wein.istAngebrochen else { return }
+        let altDatum = wein.angebrochenAt
+        let altFuellstand = wein.fuellstandProzent
+        let neuDatum: String? = offen ? WeinStore.heuteISO() : nil
+        let neuFuellstand: Int? = (offen && altFuellstand == nil) ? 100 : altFuellstand
+
+        patchLokal(wein.id) {
+            $0.angebrochenAt = neuDatum
+            $0.fuellstandProzent = neuFuellstand
+        }
+        do {
+            var body: [String: Any] = ["angebrochen_at": neuDatum ?? NSNull()]
+            // Den Fuellstand nur mitschicken, wenn er sich wirklich aendert — sonst ueberschriebe
+            // das Schliessen den gepflegten Wert mit sich selbst.
+            if neuFuellstand != altFuellstand { body["fuellstand_prozent"] = neuFuellstand ?? NSNull() }
+            let w = try await api.update(wein.id, body)
+            ersetzeOderErgaenze(w)
+            notify(offen ? "Flasche geöffnet" : "Als ungeöffnet markiert")
+        } catch {
+            patchLokal(wein.id) {
+                $0.angebrochenAt = altDatum
+                $0.fuellstandProzent = altFuellstand
+            }
+            notify(errText(error), error: true)
+        }
+    }
+
+    /// Heutiges Datum als "yyyy-MM-dd" — genau die Form, die in `angebrochen_at` steht und die
+    /// `WeinFormat.datum` wieder lesen kann. Bewusst Ortszeit: "heute" ist der Tag des Nutzers,
+    /// nicht der von UTC (sonst waere eine Flasche, die um 23 Uhr geoeffnet wird, von morgen).
+    private static func heuteISO() -> String { isoTag.string(from: Date()) }
+
+    private static let isoTag: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = .current
+        return f
+    }()
 
     /// Preis-Waechter fuer diesen Wein an-/abschalten.
     func setBeobachten(_ wein: Wein, _ an: Bool) async {

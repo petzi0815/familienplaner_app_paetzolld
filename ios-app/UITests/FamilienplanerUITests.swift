@@ -406,15 +406,24 @@ final class FamilienplanerUITests: XCTestCase {
         XCTAssertTrue(waitUntil(tileEl.isHittable), "Zurück aus dem Pizza-Bereich fehlgeschlagen")
     }
 
-    /// Der neue Wein-Bereich öffnet sich und die Segmente Alle/Keller/Top/Offen schalten um.
+    /// Der Wein-Bereich öffnet sich und die Segmente Alle/Keller/Top/Offen schalten um.
     /// Läuft OHNE Backend: die Zähler in den Segment-Beschriftungen bleiben leer (0 Weine), also
     /// heißen die Segmente exakt „Alle"/„Keller"/„Top"/„Offen". Anker ist der Leerzustand des
     /// Kellers — der ist ohne Serverdaten deterministisch.
+    /// Am Schluss zusätzlich der Art-Umschalter Wein ⇄ Spirituosen (seit Migration 0022): er
+    /// tauscht die komplette Filterzeile aus (Farben ⇄ Sorten).
     func testWeinBereichSegmentsSwitch() {
         openBereiche()
         let tileEl = tile("wein")
         XCTAssertTrue(tileEl.waitForExistence(timeout: 10), "Wein-Kachel fehlt")
         tileEl.tap()
+
+        // Der Umschalter merkt sich die zuletzt gewählte Art in den UserDefaults und überlebt damit
+        // den App-Start zwischen zwei Testmethoden. Deshalb hier zuerst gezielt auf „Wein" stellen:
+        // sonst hinge alles Folgende daran, wie ein vorheriger (evtl. abgebrochener) Lauf geendet
+        // ist. Ist der Bereich schon auf Wein, ist der Tipp folgenlos.
+        let artWein = app.buttons["wein-art-wein"]
+        if artWein.waitForExistence(timeout: 12) { artWein.tap() }
 
         // Eindeutiger Anker des Bereichs (die Kachel trägt ebenfalls die Beschriftung Wein):
         // die Farb-Filterzeile des Wein-Kopfes.
@@ -443,6 +452,24 @@ final class FamilienplanerUITests: XCTestCase {
             XCTAssertTrue(waitUntil(self.app.state == .runningForeground), "App tot nach Segment '\(label)'")
         }
         XCTAssertTrue(waitUntil(!leer.exists), "Segmentwechsel hat den Keller nicht verlassen")
+
+        // ── Art-Umschalter: Spirituosen zeigen die Sorten-Filterzeile statt der Farben ──
+        // Die beiden Segmente tragen eigene Identifier (`wein-art-<art>`); der Umschalter selbst
+        // ist nur ein Accessibility-CONTAINER, seine ID verdeckt die der Knöpfe also nicht.
+        let artSpirituose = app.buttons["wein-art-spirituose"]
+        XCTAssertTrue(artSpirituose.waitForExistence(timeout: 8), "Art-Umschalter (Spirituosen) fehlt")
+        artSpirituose.tap()
+        XCTAssertTrue(app.buttons["wein-filter-kat-alle"].waitForExistence(timeout: 8),
+                      "Umschalten auf Spirituosen zeigt die Sorten-Filterzeile nicht")
+        XCTAssertTrue(waitUntil(!self.app.buttons["wein-filter-alle"].exists),
+                      "Farb-Filterzeile des Weins steht noch, obwohl Spirituosen gewählt sind")
+
+        // Zurück auf Wein. Das ist keine Kür: die Wahl wird gespeichert, ein im Spirituosen-Modus
+        // endender Lauf würde die nächste Testmethode im falschen Zustand starten lassen.
+        XCTAssertTrue(artWein.waitForExistence(timeout: 8), "Art-Umschalter (Wein) fehlt")
+        artWein.tap()
+        XCTAssertTrue(app.buttons["wein-filter-alle"].waitForExistence(timeout: 8),
+                      "Zurückschalten auf Wein stellt die Farb-Filterzeile nicht wieder her")
 
         goBack()
         XCTAssertTrue(waitUntil(tileEl.isHittable), "Zurück aus dem Wein-Bereich fehlgeschlagen")

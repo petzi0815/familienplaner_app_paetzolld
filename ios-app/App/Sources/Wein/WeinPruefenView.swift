@@ -1,14 +1,22 @@
 import SwiftUI
 import UIKit
 
-/// Schritt 2 der Wein-Erfassung: alles, was die KI ermittelt hat, wird sichtbar und ist editierbar —
-/// gegliedert in Wein / Herkunft / Geschmack / Hintergrund / Preis / Keller. Vertrauensgrad, Hinweise
-/// und die Quellen-Links stehen oben. Erst der Speichern-Knopf legt den Datensatz an (Etikettenfoto zuerst
-/// hochladen, damit der Wein gleich mit `foto_key` entsteht), danach kann direkt die eigene
-/// Sterne-Bewertung gesetzt werden.
+/// Schritt 2 der Erfassung: alles, was die KI ermittelt hat, wird sichtbar und ist editierbar —
+/// gegliedert in Getränkeart / Wein bzw. Spirituose / Herkunft / Geschmack / Hintergrund / Preis /
+/// Keller. Vertrauensgrad, Hinweise und die Quellen-Links stehen oben. Erst der Speichern-Knopf legt
+/// den Datensatz an (Etikettenfoto zuerst hochladen, damit die Flasche gleich mit `foto_key`
+/// entsteht), danach kann direkt die eigene Sterne-Bewertung gesetzt werden.
+///
+/// ART-ABHÄNGIG: der Umschalter ganz oben entscheidet, welche Feldgruppe erscheint — Wein
+/// (Jahrgang, Weinart, Rebsorten, Lage, Geschmacksrichtung, Profil, Trinkfenster) oder Spirituose
+/// (Kategorie, Stil, Alter, Fass, Abfülljahr, Trinkempfehlung, Cocktails). Umschalten LÖSCHT nichts:
+/// die Eingaben der Gegenart bleiben im Formular stehen, gehen aber nicht mit — `patchFelder()`
+/// schickt nur die Spalten der gewählten Art (dieselbe Trennung nimmt das Backend beim Erfassen
+/// vor). Wer eine falsch erkannte Art korrigiert, verliert dadurch nichts.
 ///
 /// Meldet das Backend eine Dublette, steht ganz oben eine Karte mit den vorhandenen Bewertungen und
-/// zwei Wegen: vorhandenen Wein öffnen oder trotzdem als eigenen Eintrag anlegen (anderer Jahrgang).
+/// zwei Wegen: vorhandene Flasche öffnen oder trotzdem als eigenen Eintrag anlegen (anderer
+/// Jahrgang bzw. andere Abfüllung).
 ///
 /// Wird von `WeinErfassenView` gepusht und lebt in dessen NavigationStack — hier KEIN eigener Stack.
 struct WeinPruefenView: View {
@@ -24,14 +32,24 @@ struct WeinPruefenView: View {
 
     @EnvironmentObject private var store: WeinStore
 
-    // ── Wein ──
+    // ── Getränkeart ──
+    @State private var art: GetraenkeArt = .wein
+    // ── Wein bzw. Spirituose ──
     @State private var name = ""
-    @State private var weingut = ""
+    @State private var weingut = ""          // bei Spirituosen die Destillerie bzw. Marke
     @State private var jahrgang = ""
     @State private var typ: WeinTyp = .rot
     @State private var rebsorten: [String] = []
     @State private var flaschengroesse = "750"
     @State private var ean = ""
+    // Nur Spirituosen — bleiben beim Umschalten stehen, gehen aber nur bei art == .spirituose mit.
+    @State private var kategorie: SpirituosenKategorie?
+    @State private var stil = ""
+    @State private var alterJahre = ""
+    @State private var fass = ""
+    @State private var abgefuelltJahr = ""
+    @State private var trinkempfehlung = ""
+    @State private var cocktails: [String] = []
     // ── Herkunft ──
     @State private var land = ""
     @State private var region = ""
@@ -99,6 +117,7 @@ struct WeinPruefenView: View {
 
     var body: some View {
         Form {
+            artSection
             kopf
             weinSection
             herkunftSection
@@ -111,6 +130,26 @@ struct WeinPruefenView: View {
         .navigationTitle("Prüfen und speichern")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear(perform: vorbefuellen)
+    }
+
+    // MARK: - Getränkeart
+
+    /// Steht ganz oben, weil sie über die gesamte Maske entscheidet. Vorbelegt aus dem Vorschlag
+    /// (das Backend erkennt die Art und schlägt sie mit) — hat die Erkennung danebengelegen, wird
+    /// hier korrigiert, ohne dass etwas verloren geht.
+    private var artSection: some View {
+        Section {
+            Picker("Getränkeart", selection: $art) {
+                ForEach(GetraenkeArt.allCases) { a in
+                    Text(a.emoji + " " + a.label).tag(a)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .accessibilityIdentifier("wein-pruefen-art")
+        } footer: {
+            Text("Umschalten löscht nichts: Angaben der anderen Art bleiben stehen, gespeichert wird nur, was zur gewählten Art gehört.")
+        }
     }
 
     // MARK: - Kopf: Dublette + Vertrauensgrad
@@ -144,7 +183,9 @@ struct WeinPruefenView: View {
                 }
                 HStack(spacing: 10) {
                     Button { onDubletteOeffnen(d.id) } label: {
-                        Label("Wein öffnen", systemImage: "arrow.up.forward.app")
+                        // Die Dublettensuche laeuft art-getrennt — die vorhandene Flasche ist
+                        // also immer von derselben Art wie die gerade erfasste.
+                        Label(art.einzahl + " öffnen", systemImage: "arrow.up.forward.app")
                     }
                     .buttonStyle(.borderedProminent)
                     .accessibilityIdentifier("wein-pruefen-dublette-oeffnen")
@@ -160,7 +201,11 @@ struct WeinPruefenView: View {
         } header: {
             Label("Kennt ihr schon", systemImage: "sparkle.magnifyingglass")
         } footer: {
-            Text("Anderer Jahrgang oder eine zweite Flasche? Dann trotzdem als eigenen Eintrag anlegen.")
+            // Spirituosen haben keinen Jahrgang — dort unterscheidet die Abfüllung (Alter, Fass,
+            // Batch) die zweite Flasche von der ersten.
+            Text(art == .wein
+                 ? "Anderer Jahrgang oder eine zweite Flasche? Dann trotzdem als eigenen Eintrag anlegen."
+                 : "Andere Abfüllung oder eine zweite Flasche? Dann trotzdem als eigenen Eintrag anlegen.")
         }
     }
 
@@ -194,46 +239,81 @@ struct WeinPruefenView: View {
         }
     }
 
-    // MARK: - Wein
+    // MARK: - Wein bzw. Spirituose
 
+    /// Gemeinsamer Rahmen (Hersteller, Name, Flaschengröße, EAN, Foto) mit der art-spezifischen
+    /// Feldgruppe in der Mitte. Bewusst in kleine Bausteine zerlegt: ein einziger großer
+    /// ViewBuilder mit `if`-Zweigen treibt die Übersetzungszeit des Typecheckers hoch.
     private var weinSection: some View {
         Section {
-            TextField("Weingut", text: $weingut)
+            TextField(herstellerLabel, text: $weingut)
                 .accessibilityIdentifier("wein-pruefen-weingut")
-            TextField("Name des Weins", text: $name)
+            TextField(nameLabel, text: $name)
                 .accessibilityIdentifier("wein-pruefen-name")
-            TextField("Jahrgang (leer = jahrgangslos)", text: $jahrgang)
-                .keyboardType(.numberPad)
-                .accessibilityIdentifier("wein-pruefen-jahrgang")
-            Picker("Art", selection: $typ) {
-                ForEach(WeinTyp.allCases) { t in
-                    Text(t.emoji + " " + t.label).tag(t)
-                }
-            }
-            .accessibilityIdentifier("wein-pruefen-typ")
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Rebsorten").font(.caption).foregroundStyle(.secondary)
-                WeinTagFeld(platzhalter: "Rebsorte hinzufügen", tags: $rebsorten,
-                            kennung: "wein-pruefen-rebsorten", farbe: akzent)
-            }
+            if art == .wein { weinFelder } else { spirituosenFelder }
             TextField("Flaschengröße in ml", text: $flaschengroesse)
                 .keyboardType(.numberPad)
                 .accessibilityIdentifier("wein-pruefen-flaschengroesse")
             TextField("EAN", text: $ean)
                 .keyboardType(.numberPad)
                 .accessibilityIdentifier("wein-pruefen-ean")
-            if let img = foto {
-                HStack(spacing: 12) {
-                    Image(uiImage: img).resizable().scaledToFill()
-                        .frame(width: 56, height: 56)
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    Text("Etikettenfoto wird mitgespeichert.")
-                        .font(.caption).foregroundStyle(.secondary)
-                    Spacer(minLength: 0)
-                }
-            }
+            if let img = foto { fotoZeile(img) }
         } header: {
-            Text("Wein")
+            Text(art.einzahl)
+        }
+    }
+
+    /// Nur Wein: Jahrgang, Weinart und Rebsorten.
+    /// Der Picker heißt „Weinart" und nicht mehr „Art" — „Art" ist jetzt der Getränkeart-Umschalter
+    /// ganz oben, zwei gleich benannte Auswahlfelder auf einem Bildschirm wären eine Falle.
+    @ViewBuilder private var weinFelder: some View {
+        TextField("Jahrgang (leer = jahrgangslos)", text: $jahrgang)
+            .keyboardType(.numberPad)
+            .accessibilityIdentifier("wein-pruefen-jahrgang")
+        Picker("Weinart", selection: $typ) {
+            ForEach(WeinTyp.allCases) { t in
+                Text(t.emoji + " " + t.label).tag(t)
+            }
+        }
+        .accessibilityIdentifier("wein-pruefen-typ")
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Rebsorten").font(.caption).foregroundStyle(.secondary)
+            WeinTagFeld(platzhalter: "Rebsorte hinzufügen", tags: $rebsorten,
+                        kennung: "wein-pruefen-rebsorten", farbe: akzent)
+        }
+    }
+
+    /// Nur Spirituosen: Kategorie, Stil, Alter, Fass und Abfülljahr.
+    /// „Keine Angabe" ist ein eigener, gültiger Zustand — `kategorie` bleibt dann NULL, statt
+    /// „sonstiges" zu behaupten, was der Datensatz nicht hergibt.
+    @ViewBuilder private var spirituosenFelder: some View {
+        Picker("Kategorie", selection: $kategorie) {
+            Text("Keine Angabe").tag(SpirituosenKategorie?.none)
+            ForEach(SpirituosenKategorie.allCases) { k in
+                Text(k.emoji + " " + k.label).tag(SpirituosenKategorie?.some(k))
+            }
+        }
+        .accessibilityIdentifier("wein-pruefen-kategorie")
+        TextField("Stil (z. B. Single Malt Islay)", text: $stil)
+            .accessibilityIdentifier("wein-pruefen-stil")
+        TextField("Alter in Jahren (leer = ohne Altersangabe)", text: $alterJahre)
+            .keyboardType(.numberPad)
+            .accessibilityIdentifier("wein-pruefen-alter")
+        TextField("Fass / Reifung (z. B. Ex-Bourbon, Oloroso-Finish)", text: $fass)
+            .accessibilityIdentifier("wein-pruefen-fass")
+        TextField("Abfülljahr (Single Cask / Batch)", text: $abgefuelltJahr)
+            .keyboardType(.numberPad)
+            .accessibilityIdentifier("wein-pruefen-abgefuellt-jahr")
+    }
+
+    private func fotoZeile(_ img: UIImage) -> some View {
+        HStack(spacing: 12) {
+            Image(uiImage: img).resizable().scaledToFill()
+                .frame(width: 56, height: 56)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            Text("Etikettenfoto wird mitgespeichert.")
+                .font(.caption).foregroundStyle(.secondary)
+            Spacer(minLength: 0)
         }
     }
 
@@ -245,8 +325,12 @@ struct WeinPruefenView: View {
                 .accessibilityIdentifier("wein-pruefen-land")
             TextField("Region", text: $region)
                 .accessibilityIdentifier("wein-pruefen-region")
-            TextField("Lage / Weinberg", text: $lage)
-                .accessibilityIdentifier("wein-pruefen-lage")
+            // Die Einzellage gibt es nur beim Wein; bei Spirituosen steht die Herkunft in Land
+            // und Region (die Destillerie selbst im Hersteller-Feld).
+            if art == .wein {
+                TextField("Lage / Weinberg", text: $lage)
+                    .accessibilityIdentifier("wein-pruefen-lage")
+            }
         } header: {
             Text("Herkunft")
         }
@@ -254,52 +338,11 @@ struct WeinPruefenView: View {
 
     // MARK: - Geschmack
 
+    /// Bio/Vegan gelten für beide Arten (Bio-Gin gibt es reichlich) und stehen deshalb außerhalb
+    /// der art-spezifischen Blöcke — die Reihenfolge der Weinfelder bleibt dadurch unverändert.
     private var geschmackSection: some View {
         Section {
-            Picker("Geschmacksrichtung", selection: $geschmacksrichtung) {
-                ForEach(Self.geschmacksrichtungen) { g in
-                    Text(g.label).tag(g.id)
-                }
-            }
-            .accessibilityIdentifier("wein-pruefen-geschmacksrichtung")
-
-            TextField("Alkohol in Volumenprozent", text: $alkohol)
-                .keyboardType(.decimalPad)
-                .accessibilityIdentifier("wein-pruefen-alkohol")
-
-            VStack(alignment: .leading, spacing: 14) {
-                WeinProfilRegler(titel: "Süße", links: "trocken", rechts: "süß",
-                                 wert: $suesse, kennung: "wein-pruefen-suesse")
-                WeinProfilRegler(titel: "Säure", links: "mild", rechts: "frisch",
-                                 wert: $saeure, kennung: "wein-pruefen-saeure")
-                WeinProfilRegler(titel: "Tannin", links: "weich", rechts: "kräftig",
-                                 wert: $tannin, kennung: "wein-pruefen-tannin")
-                WeinProfilRegler(titel: "Körper", links: "leicht", rechts: "voll",
-                                 wert: $koerper, kennung: "wein-pruefen-koerper")
-            }
-            .padding(.vertical, 4)
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Aromen").font(.caption).foregroundStyle(.secondary)
-                WeinTagFeld(platzhalter: "Aroma hinzufügen", tags: $aromen,
-                            kennung: "wein-pruefen-aromen", farbe: akzent)
-            }
-
-            TextField("Serviertemperatur (z. B. 16-18 °C)", text: $serviertemperatur)
-                .accessibilityIdentifier("wein-pruefen-serviertemperatur")
-
-            HStack(spacing: 12) {
-                Text("Trinkfenster").foregroundStyle(.secondary)
-                Spacer(minLength: 8)
-                TextField("von", text: $trinkfensterVon)
-                    .keyboardType(.numberPad).multilineTextAlignment(.trailing).frame(width: 62)
-                    .accessibilityIdentifier("wein-pruefen-trinkfenster-von")
-                Text("bis").foregroundStyle(.secondary)
-                TextField("bis", text: $trinkfensterBis)
-                    .keyboardType(.numberPad).multilineTextAlignment(.trailing).frame(width: 62)
-                    .accessibilityIdentifier("wein-pruefen-trinkfenster-bis")
-            }
-
+            if art == .wein { geschmackWeinFelder } else { geschmackSpirituosenFelder }
             Toggle("Bio", isOn: $bio)
                 .accessibilityIdentifier("wein-pruefen-bio")
             Toggle("Vegan", isOn: $vegan)
@@ -307,7 +350,83 @@ struct WeinPruefenView: View {
         } header: {
             Text("Geschmack")
         } footer: {
-            Text("Die Regler sind 1 bis 5. Ganz links heißt: keine Angabe.")
+            Text(art == .wein
+                 ? "Die Regler sind 1 bis 5. Ganz links heißt: keine Angabe."
+                 : "Süße, Säure, Tannin und Körper beschreiben Wein — bei Spirituosen zählen Aromen, Fass und die Trinkempfehlung.")
+        }
+    }
+
+    @ViewBuilder private var geschmackWeinFelder: some View {
+        Picker("Geschmacksrichtung", selection: $geschmacksrichtung) {
+            ForEach(Self.geschmacksrichtungen) { g in
+                Text(g.label).tag(g.id)
+            }
+        }
+        .accessibilityIdentifier("wein-pruefen-geschmacksrichtung")
+
+        TextField("Alkohol in Volumenprozent", text: $alkohol)
+            .keyboardType(.decimalPad)
+            .accessibilityIdentifier("wein-pruefen-alkohol")
+
+        VStack(alignment: .leading, spacing: 14) {
+            WeinProfilRegler(titel: "Süße", links: "trocken", rechts: "süß",
+                             wert: $suesse, kennung: "wein-pruefen-suesse")
+            WeinProfilRegler(titel: "Säure", links: "mild", rechts: "frisch",
+                             wert: $saeure, kennung: "wein-pruefen-saeure")
+            WeinProfilRegler(titel: "Tannin", links: "weich", rechts: "kräftig",
+                             wert: $tannin, kennung: "wein-pruefen-tannin")
+            WeinProfilRegler(titel: "Körper", links: "leicht", rechts: "voll",
+                             wert: $koerper, kennung: "wein-pruefen-koerper")
+        }
+        .padding(.vertical, 4)
+
+        aromenFeld
+
+        TextField("Serviertemperatur (z. B. 16-18 °C)", text: $serviertemperatur)
+            .accessibilityIdentifier("wein-pruefen-serviertemperatur")
+
+        HStack(spacing: 12) {
+            Text("Trinkfenster").foregroundStyle(.secondary)
+            Spacer(minLength: 8)
+            TextField("von", text: $trinkfensterVon)
+                .keyboardType(.numberPad).multilineTextAlignment(.trailing).frame(width: 62)
+                .accessibilityIdentifier("wein-pruefen-trinkfenster-von")
+            Text("bis").foregroundStyle(.secondary)
+            TextField("bis", text: $trinkfensterBis)
+                .keyboardType(.numberPad).multilineTextAlignment(.trailing).frame(width: 62)
+                .accessibilityIdentifier("wein-pruefen-trinkfenster-bis")
+        }
+    }
+
+    /// Nur Spirituosen: kein Geschmacksprofil und kein Trinkfenster (eine geschlossene Flasche
+    /// reift nicht weiter) — dafür Trinkempfehlung und passende Cocktails.
+    @ViewBuilder private var geschmackSpirituosenFelder: some View {
+        TextField("Alkohol in Volumenprozent", text: $alkohol)
+            .keyboardType(.decimalPad)
+            .accessibilityIdentifier("wein-pruefen-alkohol")
+
+        aromenFeld
+
+        TextField("Trinkempfehlung (z. B. pur, on the rocks)", text: $trinkempfehlung, axis: .vertical)
+            .lineLimit(1...3)
+            .accessibilityIdentifier("wein-pruefen-trinkempfehlung")
+
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Cocktails").font(.caption).foregroundStyle(.secondary)
+            WeinTagFeld(platzhalter: "Cocktail hinzufügen", tags: $cocktails,
+                        kennung: "wein-pruefen-cocktails", farbe: akzent)
+        }
+
+        TextField("Serviertemperatur (z. B. 18-20 °C)", text: $serviertemperatur)
+            .accessibilityIdentifier("wein-pruefen-serviertemperatur")
+    }
+
+    /// Aromen — für beide Arten gleich, deshalb an einer Stelle.
+    private var aromenFeld: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Aromen").font(.caption).foregroundStyle(.secondary)
+            WeinTagFeld(platzhalter: "Aroma hinzufügen", tags: $aromen,
+                        kennung: "wein-pruefen-aromen", farbe: akzent)
         }
     }
 
@@ -315,7 +434,7 @@ struct WeinPruefenView: View {
 
     private var hintergrundSection: some View {
         Section {
-            TextField("Beschreibung (Weingut, Lage, Ausbau)", text: $beschreibung, axis: .vertical)
+            TextField(beschreibungLabel, text: $beschreibung, axis: .vertical)
                 .lineLimit(3...10)
                 .accessibilityIdentifier("wein-pruefen-beschreibung")
             VStack(alignment: .leading, spacing: 6) {
@@ -479,7 +598,7 @@ struct WeinPruefenView: View {
         } header: {
             Text("Deine Bewertung")
         } footer: {
-            Text("Optional. Du kannst den Wein auch später bewerten.")
+            Text("Optional. Du kannst " + artAkkusativ + " auch später bewerten.")
         }
     }
 
@@ -490,12 +609,26 @@ struct WeinPruefenView: View {
         vorbefuellt = true
         let f = vorschlag.felder
 
+        // Zuerst die Art — an ihr haengen Maske, Vorgabewerte und was gespeichert wird. Fehlt sie
+        // (manueller Weg, aelteres Backend), gilt die im Bereich zuletzt gewaehlte.
+        art = GetraenkeArt(rawValue: Coerce.str(f["art"]) ?? "") ?? store.art
+
         name = Coerce.str(f["name"]) ?? ""
         weingut = Coerce.str(f["weingut"]) ?? ""
         if let j = Coerce.int(f["jahrgang"]) { jahrgang = String(j) }
-        typ = WeinTyp(rawValue: Coerce.str(f["typ"]) ?? "") ?? .rot
+        // Spirituosen haben keine Weinfarbe: ohne Angabe „sonstiges" statt „rot" — die Spalte ist
+        // NOT NULL, ein stiller Default 'rot' an einem Whisky waere schlicht falsch.
+        typ = WeinTyp(rawValue: Coerce.str(f["typ"]) ?? "") ?? (art == .wein ? .rot : .sonstiges)
         rebsorten = Coerce.stringArray(f["rebsorten"])
-        if let g = Coerce.int(f["flaschengroesse_ml"]) { flaschengroesse = String(g) }
+        kategorie = SpirituosenKategorie(rawValue: Coerce.str(f["kategorie"]) ?? "")
+        stil = Coerce.str(f["stil"]) ?? ""
+        if let a = Coerce.int(f["alter_jahre"]), a > 0 { alterJahre = String(a) }
+        fass = Coerce.str(f["fass"]) ?? ""
+        if let j = Coerce.int(f["abgefuellt_jahr"]), j > 0 { abgefuelltJahr = String(j) }
+        trinkempfehlung = Coerce.str(f["trinkempfehlung"]) ?? ""
+        cocktails = Coerce.stringArray(f["cocktails"])
+        if let g = Coerce.int(f["flaschengroesse_ml"]), g > 0 { flaschengroesse = String(g) }
+        else { flaschengroesse = String(standardFlaschengroesse) }
         ean = Coerce.str(f["ean"]) ?? ""
 
         land = Coerce.str(f["land"]) ?? ""
@@ -578,7 +711,7 @@ struct WeinPruefenView: View {
             if neu { onGespeichert(id) }
         } else {
             fehler = neu
-                ? "Der Wein konnte nicht gespeichert werden. Bitte noch einmal versuchen."
+                ? artArtikel + " konnte nicht gespeichert werden. Bitte noch einmal versuchen."
                 : "Die Änderungen konnten nicht gespeichert werden. Bitte noch einmal versuchen."
         }
         speichert = false
@@ -599,40 +732,62 @@ struct WeinPruefenView: View {
 
     /// Felder in DB-Schreibweise. Leere Eingaben werden weggelassen (NULL statt Leerstring),
     /// Listen gehen als JSON-Text raus.
+    /// ART-ABHAENGIG: die Spalten der jeweils ANDEREN Getraenkeart bleiben komplett draussen. Sie
+    /// stehen zwar noch im Formular (Umschalten wirft nichts weg), gehoeren aber nicht in die Zeile —
+    /// sonst traegt ein korrigierter Whisky weiter Rebsorten und Trinkfenster mit sich herum.
     private func patchFelder() -> [String: Any] {
+        // `typ` ist NOT NULL und kennt nur Weinfarben — fuer Spirituosen der neutrale Auffangwert
+        // statt des DB-Defaults 'rot'. Vorab berechnet (und nicht als Ternaeroperator im
+        // Dictionary-Literal), damit der Typechecker nicht ueber `Any` raten muss.
+        let typWert: WeinTyp = art == .wein ? typ : .sonstiges
+        let ml = Int(flaschengroesse.trimmingCharacters(in: .whitespaces)) ?? standardFlaschengroesse
         var f: [String: Any] = [
+            "art": art.rawValue,
             "name": name.trimmingCharacters(in: .whitespaces),
             "weingut": weingut.trimmingCharacters(in: .whitespaces),
-            "typ": typ.rawValue,
-            "rebsorten": jsonText(rebsorten),
+            "typ": typWert.rawValue,
             "aromen": jsonText(aromen),
             "auszeichnungen": jsonText(auszeichnungen),
-            "geschmacksrichtung": geschmacksrichtung,
             "bio": bio ? 1 : 0,
             "vegan": vegan ? 1 : 0,
-            "flaschengroesse_ml": Int(flaschengroesse.trimmingCharacters(in: .whitespaces)) ?? 750,
+            "flaschengroesse_ml": ml,
             "preis_beobachten": beobachten ? 1 : 0,
             "bestand": bestand,
             "quelle": quelleSicher,
         ]
-        if let j = Int(jahrgang.trimmingCharacters(in: .whitespaces)) { f["jahrgang"] = j }
-        if let a = Coerce.double(alkohol) { f["alkohol"] = a }
-        if let s = suesse { f["suesse"] = s }
-        if let s = saeure { f["saeure"] = s }
-        if let t = tannin { f["tannin"] = t }
-        if let k = koerper { f["koerper"] = k }
-        if let v = Int(trinkfensterVon.trimmingCharacters(in: .whitespaces)) { f["trinkfenster_von"] = v }
-        if let b = Int(trinkfensterBis.trimmingCharacters(in: .whitespaces)) { f["trinkfenster_bis"] = b }
-        if let r = Coerce.double(referenzpreis) { f["referenzpreis"] = r }
-        if let b = Coerce.double(besterPreis) { f["bester_preis"] = b }
-        if let p = Coerce.double(gekauftPreis) { f["gekauft_preis"] = p }
-        for (spalte, wert) in [
-            ("land", land), ("region", region), ("lage", lage),
+        // Gemeinsame Textspalten; die art-eigenen kommen unten dazu.
+        var texte: [(String, String)] = [
+            ("land", land), ("region", region),
             ("serviertemperatur", serviertemperatur), ("ean", ean),
             ("beschreibung", beschreibung), ("speiseempfehlung", speiseempfehlung),
             ("bester_preis_haendler", besterHaendler), ("bester_preis_url", besterURL),
             ("gekauft_bei", gekauftBei), ("lagerort", lagerort), ("notizen", notizen),
-        ] {
+        ]
+        switch art {
+        case .wein:
+            f["rebsorten"] = jsonText(rebsorten)
+            f["geschmacksrichtung"] = geschmacksrichtung
+            texte.append(("lage", lage))
+            if let j = Int(jahrgang.trimmingCharacters(in: .whitespaces)) { f["jahrgang"] = j }
+            if let s = suesse { f["suesse"] = s }
+            if let s = saeure { f["saeure"] = s }
+            if let t = tannin { f["tannin"] = t }
+            if let k = koerper { f["koerper"] = k }
+            if let v = Int(trinkfensterVon.trimmingCharacters(in: .whitespaces)) { f["trinkfenster_von"] = v }
+            if let b = Int(trinkfensterBis.trimmingCharacters(in: .whitespaces)) { f["trinkfenster_bis"] = b }
+        case .spirituose:
+            f["cocktails"] = jsonText(cocktails)
+            texte.append(contentsOf: [("stil", stil), ("fass", fass),
+                                      ("trinkempfehlung", trinkempfehlung)])
+            if let k = kategorie { f["kategorie"] = k.rawValue }
+            if let a = Int(alterJahre.trimmingCharacters(in: .whitespaces)), a > 0 { f["alter_jahre"] = a }
+            if let j = Int(abgefuelltJahr.trimmingCharacters(in: .whitespaces)), j > 0 { f["abgefuellt_jahr"] = j }
+        }
+        if let a = Coerce.double(alkohol) { f["alkohol"] = a }
+        if let r = Coerce.double(referenzpreis) { f["referenzpreis"] = r }
+        if let b = Coerce.double(besterPreis) { f["bester_preis"] = b }
+        if let p = Coerce.double(gekauftPreis) { f["gekauft_preis"] = p }
+        for (spalte, wert) in texte {
             let t = wert.trimmingCharacters(in: .whitespacesAndNewlines)
             if !t.isEmpty { f[spalte] = t }
         }
@@ -668,6 +823,22 @@ struct WeinPruefenView: View {
     // MARK: - Kleinkram
 
     private var akzent: Color { Palette.colors(for: "wein").first ?? Theme.accent }
+
+    /// Beschriftung des Hersteller-Feldes. Bei Spirituosen steht in derselben Spalte `weingut` die
+    /// Destillerie bzw. die Marke (Gin und Likör tragen oft gar keine Destillerie im Namen).
+    private var herstellerLabel: String { art == .wein ? "Weingut" : "Destillerie / Marke" }
+    private var nameLabel: String { art == .wein ? "Name des Weins" : "Name der Spirituose" }
+    private var beschreibungLabel: String {
+        art == .wein
+            ? "Beschreibung (Weingut, Lage, Ausbau)"
+            : "Beschreibung (Destillerie, Herstellung, Reifung)"
+    }
+    /// Mit Artikel, damit die Fehlermeldung grammatisch stimmt („Der Wein" / „Die Spirituose").
+    private var artArtikel: String { art == .wein ? "Der Wein" : "Die Spirituose" }
+    /// Dasselbe im Akkusativ („… den Wein bewerten" / „… die Spirituose bewerten").
+    private var artAkkusativ: String { art == .wein ? "den Wein" : "die Spirituose" }
+    /// Uebliche Flaschengroesse der Art — Wein 0,75 l, Spirituosen 0,7 l.
+    private var standardFlaschengroesse: Int { art == .wein ? 750 : 700 }
 
     private var vertrauenLabel: String {
         switch vorschlag.confidence {

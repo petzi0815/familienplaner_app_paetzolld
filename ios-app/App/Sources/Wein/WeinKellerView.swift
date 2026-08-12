@@ -11,6 +11,18 @@ import SwiftUI
 //
 // Die Zeile ist absichtlich KEIN NavigationLink: ein Link mit zwei Knoepfen darin ist in einer
 // `List` unzuverlaessig, und hier zaehlt das Zaehlen. Der Weg ins Detail bleibt der Alle-Tab.
+//
+// Seit den Spirituosen zeigt die Zeile zusaetzlich Fuellstand und "angebrochen": eine offene
+// Whiskyflasche steht Monate an der Bar, und ob noch ein Drittel drin ist, entscheidet ueber den
+// naechsten Einkauf genauso wie die Flaschenzahl. Gesetzt wird der Fuellstand ueber das
+// Kontextmenue der Zeile — derselbe Gedanke wie beim Zaehler: zwei Sekunden statt Umweg ueber die
+// Detailseite.
+//
+// Der Keller folgt dem Art-Umschalter im Kopf wie der ganze Bereich: er zeigt entweder den
+// Weinkeller oder die Bar, nie beides. Anders ginge es nicht — das Segment darueber traegt bereits
+// einen art-gefilterten Zaehler ("Keller (3)"), und eine Ansicht, die dazu acht Flaschen inklusive
+// Whisky zeigt, widerspraeche ihrem eigenen Reiter. Alle Beschriftungen leiten sich deshalb aus
+// `store.art` ab und duerfen die Getraenkeart beim Namen nennen.
 
 /// Eine Lagerort-Gruppe. `id` ist der Lagerort — je Gruppe eindeutig.
 private struct WeinKellerGruppe: Identifiable {
@@ -20,13 +32,24 @@ private struct WeinKellerGruppe: Identifiable {
     var flaschen: Int { weine.reduce(0) { $0 + $1.bestand } }
 }
 
+/// Eine waehlbare Fuellstand-Stufe des Kontextmenues. Eigener Typ statt Tupel, weil `ForEach`
+/// einen Identifier braucht und Swift keine Key-Paths auf Tupel-Elemente kennt.
+private struct WeinKellerStufe: Identifiable {
+    var id: Int { prozent }
+    let prozent: Int
+    let text: String
+}
+
 struct WeinKellerView: View {
     @EnvironmentObject private var store: WeinStore
 
     /// Ohne Lagerort erfasste Flaschen landen gesammelt am Ende.
     private static let ohneLagerort = "Ohne Lagerort"
 
-    private var imKeller: [Wein] { store.weine.filter { $0.bestand > 0 } }
+    /// Nur die aktuell gewaehlte Getraenkeart — der Umschalter im Kopf gilt fuer den GANZEN Bereich.
+    /// Ohne diese Einschraenkung widerspraechen sich Kopf und Inhalt: das Segment darueber zaehlt
+    /// „Keller (3)" bereits art-gefiltert, waehrend hier acht Flaschen inklusive Whisky staenden.
+    private var imKeller: [Wein] { store.weine.filter { $0.bestand > 0 && $0.art == store.art } }
 
     private var gruppen: [WeinKellerGruppe] {
         let gruppiert = Dictionary(grouping: imKeller) { w -> String in
@@ -44,6 +67,19 @@ struct WeinKellerView: View {
     }
 
     private var flaschenGesamt: Int { imKeller.reduce(0) { $0 + $1.bestand } }
+
+    /// Die Ansicht zeigt seit dem Umschalter immer genau EINE Getraenkeart (siehe `imKeller`),
+    /// deshalb duerfen die Beschriftungen sie beim Namen nennen statt neutral zu bleiben.
+    private var eineArt: GetraenkeArt { store.art }
+
+    /// Beschriftung der zweiten Kachel: sie zaehlt EINTRAEGE, nicht Flaschen.
+    private var sortenLabel: String { eineArt == .spirituose ? "Spirituosen" : "Weine" }
+
+    /// Wort fuer einen Zaehler in einem Satz ("für 3 Weine").
+    private func eintragWort(_ anzahl: Int) -> String {
+        if eineArt == .spirituose { return anzahl == 1 ? "Spirituose" : "Spirituosen" }
+        return anzahl == 1 ? "Wein" : "Weine"
+    }
 
     /// Geschaetzter Kellerwert ueber den Referenzpreis. Weine ohne Referenzpreis fehlen darin —
     /// deshalb steht die Einschraenkung als Fusszeile unter der Summe.
@@ -74,7 +110,8 @@ struct WeinKellerView: View {
                 ScrollView {
                     AreaEmptyState(emoji: "🍷",
                                    title: "Keller ist leer",
-                                   hint: "Trage bei einem Wein den Bestand ein, dann taucht er hier auf.")
+                                   hint: "Trage bei einem Wein oder einer Spirituose den Bestand ein, "
+                                       + "dann taucht die Flasche hier auf.")
                         .frame(maxWidth: .infinity).frame(minHeight: 300)
                         .accessibilityIdentifier("wein-keller-empty")
                 }
@@ -137,14 +174,14 @@ struct WeinKellerView: View {
         VStack(spacing: 8) {
             HStack(spacing: 10) {
                 AreaStatTile(value: String(flaschenGesamt), label: "Flaschen", color: Color(hex: "7C3AED"))
-                AreaStatTile(value: String(imKeller.count), label: "Weine", color: Color(hex: "DB2777"))
+                AreaStatTile(value: String(imKeller.count), label: sortenLabel, color: Color(hex: "DB2777"))
                 // Ohne Nachkommastellen — die Kachel ist schmal. `WeinText.zahl` haelt den
                 // Tausenderpunkt aus dem Text heraus.
                 AreaStatTile(value: WeinText.zahl(wertGesamt, stellen: 0) + " €",
                              label: "Wert (ca.)", color: Color(hex: "EA580C"))
             }
             if ohnePreis > 0 {
-                Text("Für " + String(ohnePreis) + (ohnePreis == 1 ? " Wein" : " Weine")
+                Text("Für " + String(ohnePreis) + " " + eintragWort(ohnePreis)
                      + " ist kein Referenzpreis hinterlegt — der fehlt im Wert.")
                     .font(.caption).foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -167,8 +204,29 @@ struct WeinKellerView: View {
     /// mehrfach — `app.buttons["wein-keller-minus-5"]` waere im XCUITest mehrdeutig. Die
     /// Lagerort-Gruppe behaelt per Vorgabewert die kanonische Kennung.
     private func zeile(_ w: Wein, hinweis: String?, praefix: String = "wein-keller") -> some View {
+        karte(w, hinweis: hinweis, praefix: praefix)
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets(top: 5, leading: 14, bottom: 5, trailing: 14))
+    }
+
+    /// Die Karte selbst — mit Kontextmenue NUR an Spirituosen-Zeilen: ein `.contextMenu` mit leerem
+    /// Inhalt oeffnet beim Langdruck trotzdem eine leere Blase, das saehe nach einem Fehler aus.
+    /// Die `listRow*`-Angaben setzt bewusst erst `zeile` darueber, damit sie an BEIDEN Zweigen
+    /// haengen und die `List` sie sicher sieht.
+    @ViewBuilder
+    private func karte(_ w: Wein, hinweis: String?, praefix: String) -> some View {
+        let inhalt = zeilenInhalt(w, hinweis: hinweis, praefix: praefix)
+        if w.art == .spirituose {
+            inhalt.contextMenu { flaschenMenu(w) }
+        } else {
+            inhalt
+        }
+    }
+
+    private func zeilenInhalt(_ w: Wein, hinweis: String?, praefix: String) -> some View {
         HStack(spacing: 12) {
-            Text(w.typ.emoji).font(.title3).frame(width: 28)
+            Text(zeilenEmoji(w)).font(.title3).frame(width: 28)
 
             VStack(alignment: .leading, spacing: 4) {
                 // Die Zeilen-Kennung sitzt am Titel, NICHT am HStack: ein Container-Identifier
@@ -177,7 +235,7 @@ struct WeinKellerView: View {
                 Text(w.titel).font(.subheadline.weight(.semibold)).lineLimit(2)
                     .accessibilityIdentifier(praefix + "-zeile-" + String(w.id))
                 HStack(spacing: 6) {
-                    Pill(text: w.typ.label, color: w.typ.farbe)
+                    einordnung(w)
                     if let h = hinweis {
                         Pill(text: h, systemImage: "clock", color: Color(hex: "EA580C"), filled: false)
                     }
@@ -185,6 +243,7 @@ struct WeinKellerView: View {
                         Text(WeinText.eur(p)).font(.caption2).foregroundStyle(.secondary)
                     }
                 }
+                fuellstandZeile(w, praefix: praefix)
             }
 
             Spacer(minLength: 8)
@@ -194,9 +253,134 @@ struct WeinKellerView: View {
         .padding(12)
         .background(Color(.secondarySystemBackground),
                     in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .listRowSeparator(.hidden)
-        .listRowBackground(Color.clear)
-        .listRowInsets(EdgeInsets(top: 5, leading: 14, bottom: 5, trailing: 14))
+    }
+
+    /// Symbol vor der Zeile: Wein zeigt seinen Typ, Spirituosen ihre Kategorie. Ist bei einer
+    /// Spirituose keine der 15 Kategorien erkannt, steht das neutrale Glas der Getraenkeart da.
+    private func zeilenEmoji(_ w: Wein) -> String {
+        w.art == .spirituose ? (w.kategorie?.emoji ?? w.art.emoji) : w.typ.emoji
+    }
+
+    /// Einordnungs-Pille: Weintyp bzw. Spirituosen-Kategorie. Ohne erkannte Kategorie steht dort
+    /// neutral "Spirituose" — "Sonstiges" waere eine Einordnung, die der Datensatz nicht hergibt.
+    @ViewBuilder private func einordnung(_ w: Wein) -> some View {
+        if w.art == .spirituose {
+            if let k = w.kategorie {
+                Pill(text: k.label, color: k.farbe)
+            } else {
+                Pill(text: w.art.einzahl, color: Color(hex: "6B7280"))
+            }
+        } else {
+            Pill(text: w.typ.label, color: w.typ.farbe)
+        }
+    }
+
+    // MARK: - Fuellstand / angebrochene Flaschen
+
+    /// Punkt + Balken + Klartext, aber nur wenn es etwas zu zeigen gibt: ein Balken auf 100 % waere
+    /// an einer ungeoeffneten Flasche eine Behauptung, die der Datensatz nicht hergibt (aus dem
+    /// gleichen Grund liefert `Wein.fuellstandLabel` ohne erfassten Wert nil). Die Zeile gilt fuer
+    /// BEIDE Getraenkearten — auch eine angebrochene Weinflasche soll man im Keller sehen —,
+    /// gepflegt wird sie in der Praxis an der Bar.
+    @ViewBuilder private func fuellstandZeile(_ w: Wein, praefix: String) -> some View {
+        if w.istAngebrochen || w.fuellstandProzent != nil {
+            HStack(spacing: 6) {
+                if w.istAngebrochen {
+                    Circle().fill(Color(hex: "EA580C")).frame(width: 7, height: 7)
+                }
+                if let p = w.fuellstandProzent { balken(p) }
+                if let t = fuellstandText(w) {
+                    Text(t).font(.caption2).foregroundStyle(.secondary)
+                }
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier(praefix + "-fuellstand-" + String(w.id))
+        }
+    }
+
+    /// Schmaler Balken mit FESTER Breite: mit `GeometryReader` wuerde die Zeilenhoehe je nach
+    /// Titellaenge springen, und breiter braucht es hier nicht — der Balken ist ein Blickfang,
+    /// die genaue Stufe steht als Text daneben.
+    private func balken(_ prozent: Int) -> some View {
+        let breite: CGFloat = 56
+        let anteil = max(0, min(100, prozent))
+        return Capsule()
+            .fill(Color.primary.opacity(0.12))
+            .frame(width: breite, height: 5)
+            .overlay(alignment: .leading) {
+                Capsule()
+                    .fill(balkenFarbe(anteil))
+                    // Mindestbreite, damit auch "leer" als Strich sichtbar bleibt und der Balken
+                    // nicht einfach verschwindet (das saehe aus wie "nicht erfasst").
+                    .frame(width: max(3, breite * CGFloat(anteil) / 100), height: 5)
+            }
+    }
+
+    /// Ampel: fast leere Flaschen sollen im Keller auffallen (nachkaufen), volle nicht.
+    private func balkenFarbe(_ prozent: Int) -> Color {
+        if prozent <= 15 { return Color(hex: "DC2626") }
+        if prozent <= 50 { return Color(hex: "EA580C") }
+        return Color(hex: "16A34A")
+    }
+
+    /// Klartext neben dem Balken — nie "nil" und nie eine geratene Stufe.
+    private func fuellstandText(_ w: Wein) -> String? {
+        let stufe = w.fuellstandLabel
+        guard w.istAngebrochen else { return stufe }
+        return stufe.map { "angebrochen · " + $0 } ?? "angebrochen"
+    }
+
+    /// Waehlbare Stufen — dieselben Marken, die `Wein.fuellstandLabel` benennt, damit Menue und
+    /// Anzeige nie auseinanderlaufen.
+    private static let stufen: [WeinKellerStufe] = [
+        WeinKellerStufe(prozent: 100, text: "voll"),
+        WeinKellerStufe(prozent: 75, text: "¾ voll"),
+        WeinKellerStufe(prozent: 50, text: "halb"),
+        WeinKellerStufe(prozent: 25, text: "¼"),
+        WeinKellerStufe(prozent: 10, text: "Neige"),
+        WeinKellerStufe(prozent: 0, text: "leer"),
+    ]
+
+    /// Kontextmenue der Zeile: Flasche oeffnen bzw. wieder als ungeoeffnet markieren und den
+    /// Fuellstand in Stufen setzen. Wird NUR fuer Spirituosen angehaengt (Entscheidung sitzt in
+    /// `zeile`) — dort steht die Flasche monatelang offen und der Fuellstand aendert sich staendig;
+    /// eine Weinflasche ist am selben Abend leer, ein Menue an jeder Weinzeile waere nur Ballast.
+    /// Die Zaehl-Knoepfe der Zeile bleiben der Weg fuer alles, was Flaschenzahlen betrifft.
+    @ViewBuilder private func flaschenMenu(_ w: Wein) -> some View {
+        if w.istAngebrochen {
+            Button {
+                Task { await store.setAngebrochen(w, false) }
+            } label: {
+                Label("Als ungeöffnet markieren", systemImage: "arrow.uturn.backward")
+            }
+        } else {
+            Button {
+                Task { await store.setAngebrochen(w, true) }
+            } label: {
+                Label("Flasche öffnen", systemImage: "drop.fill")
+            }
+        }
+
+        Divider()
+
+        // Haken an der aktuellen Stufe, damit man beim zweiten Oeffnen sieht, was gesetzt ist.
+        ForEach(Self.stufen) { s in
+            Button {
+                Task { await store.setFuellstand(w, s.prozent) }
+            } label: {
+                Label(s.text, systemImage: w.fuellstandProzent == s.prozent ? "checkmark" : "circle")
+            }
+        }
+
+        // Zuruecknehmen statt raten: "nicht erfasst" ist ein eigener Zustand, kein 0 %.
+        if w.fuellstandProzent != nil {
+            Divider()
+            Button(role: .destructive) {
+                Task { await store.setFuellstand(w, nil) }
+            } label: {
+                Label("Füllstand unbekannt", systemImage: "questionmark.circle")
+            }
+        }
     }
 
     /// Flaschen +/- direkt in der Zeile. `.borderless` ist Pflicht: sonst wuerde die `List` die

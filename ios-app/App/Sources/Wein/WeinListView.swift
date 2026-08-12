@@ -1,8 +1,12 @@
 import SwiftUI
 
-/// Weinliste des aktiven Segments. `List` statt `ScrollView`, damit es native Wisch-Aktionen gibt
+/// Liste des aktiven Segments. `List` statt `ScrollView`, damit es native Wisch-Aktionen gibt
 /// (Loeschen + Flasche getrunken); der Karten-Look bleibt ueber transparente Zeilen erhalten
 /// (Muster der acht umgebauten Listen dieses Repos).
+///
+/// Welche Getraenkeart hier steht, entscheidet der Umschalter im Kopf ueber `store.gefiltert` —
+/// die Liste selbst filtert nicht danach. Karte und Leerzustand sind trotzdem art-fest gebaut und
+/// vertragen einen gemischten Datenbestand.
 struct WeinListView: View {
     /// Aktion des Leerzustands — oeffnet das Erfassen-Sheet der Bereichswurzel.
     var onErfassen: () -> Void = {}
@@ -36,23 +40,42 @@ struct WeinListView: View {
             }
             Button("Abbrechen", role: .cancel) { deleteTarget = nil }
         } message: {
-            Text("Der Wein wird mit allen Bewertungen und Preisen gelöscht.")
+            Text(loeschHinweis)
         }
     }
+
+    /// Loeschhinweis mit passendem Artikel. Faellt auf die gerade gewaehlte Art zurueck, weil der
+    /// Dialog-Rumpf auch ausgewertet wird, wenn `deleteTarget` schon wieder nil ist.
+    private var loeschHinweis: String {
+        let art = deleteTarget?.art ?? store.art
+        let subjekt = art == .spirituose ? "Die Spirituose" : "Der Wein"
+        return subjekt + " wird mit allen Bewertungen und Preisen gelöscht."
+    }
+
+    /// Mehrzahl fuer den Fliesstext: `GetraenkeArt.label` liefert fuer Wein bewusst "Wein"
+    /// (so steht es am Umschalter), in einem Satz braucht es "Weine".
+    private var artMehrzahl: String { store.art == .spirituose ? "Spirituosen" : "Weine" }
 
     // ── Leerzustand (unterscheidet leerer Bereich / kein Treffer) ──
 
     private var leerZustand: some View {
-        // `filterAktiv` deckt Typ/Rebsorte/Land/Sterne ab; Suchtext und Segment kommen dazu.
+        // `filterAktiv` deckt Typ/Kategorie/Rebsorte/Stil/Land/Sterne ab; Suchtext und Segment
+        // kommen dazu. Der Umschalter zaehlt bewusst NICHT als Filter: dass es noch keine
+        // Spirituose gibt, ist kein Filter-, sondern ein Erfassungs-Zustand — hier gehoert der
+        // Knopf zum Erfassen hin, nicht der Rat, die Filter zu lockern.
         let gefiltertLeer = store.filterAktiv || !store.suche.isEmpty || store.tab != .alle
         let aktion: (() -> Void)? = gefiltertLeer ? nil : onErfassen
-        let aktionLabel: String? = gefiltertLeer ? nil : "Wein erfassen"
+        let aktionLabel: String? = gefiltertLeer ? nil : store.art.einzahl + " erfassen"
+        // Bei Spirituosen steht das Wesentliche auf der Flasche, nicht auf einem Etikett im
+        // Wortsinn — deshalb der andere Aufruf.
+        let erfassenHinweis = (store.art == .spirituose ? "Flasche fotografieren" : "Etikett fotografieren")
+            + " oder Barcode scannen — den Rest ergänzt die KI."
         let hinweis: String = gefiltertLeer
             ? "Andere Filter oder Suchbegriffe probieren."
-            : "Etikett fotografieren oder Barcode scannen — den Rest ergänzt die KI."
+            : erfassenHinweis
         return AreaEmptyState(
-            emoji: gefiltertLeer ? "🔍" : "🍷",
-            title: gefiltertLeer ? "Keine Treffer" : "Noch keine Weine erfasst",
+            emoji: gefiltertLeer ? "🔍" : store.art.emoji,
+            title: gefiltertLeer ? "Keine Treffer" : "Noch keine " + artMehrzahl + " erfasst",
             hint: hinweis,
             actionLabel: aktionLabel,
             action: aktion
@@ -93,6 +116,10 @@ struct WeinListView: View {
 
 /// Listenkarte: Etikettenfoto, Titel, Herkunft/Rebsorte, BEIDE Bewertungen nebeneinander,
 /// Typ-Pille, Bestandsbadge und der beste Preis mit Rabatt-Hinweis.
+///
+/// Art-abhaengig sind Pille (Weintyp bzw. Spirituosen-Kategorie), die Zeile unter dem Titel
+/// (Rebsorten bzw. Stil) und der Titel selbst — den bildet `Wein.titel` und setzt bei Spirituosen
+/// die Altersangabe an die Stelle des Jahrgangs. Dazu die Markierung fuer angebrochene Flaschen.
 struct WeinKarte: View {
     let wein: Wein
     var meine: WeinBewertung?
@@ -110,10 +137,16 @@ struct WeinKarte: View {
             }
             Spacer(minLength: 4)
             VStack(alignment: .trailing, spacing: 5) {
-                Pill(text: wein.typ.emoji + " " + wein.typ.label, color: wein.typ.farbe)
+                artPille
                 if wein.bestand > 0 {
                     Pill(text: String(wein.bestand) + " Fl.", systemImage: "archivebox",
                          color: Color(hex: "475569"), filled: false)
+                }
+                if wein.istAngebrochen {
+                    // Nur der Zustand, ohne Stufe: die Spalte ist schmal. Wie voll die Flasche noch
+                    // ist, steht im Keller (Balken) und auf der Detailseite.
+                    Pill(text: "angebrochen", systemImage: "drop.fill",
+                         color: Color(hex: "EA580C"), filled: false)
                 }
                 preis
             }
@@ -123,13 +156,40 @@ struct WeinKarte: View {
         .contentShape(Rectangle())
     }
 
-    /// Herkunft + Rebsorten in einer Zeile — was da ist, in dieser Reihenfolge.
+    /// Einordnungs-Pille: Weintyp bzw. Spirituosen-Kategorie. Ist bei einer Spirituose keine der
+    /// 15 Kategorien erkannt, steht dort neutral "Spirituose" — "Sonstiges" waere eine Einordnung,
+    /// die der Datensatz nicht hergibt (deshalb laesst `Wein.kategorie` sie auch nil).
+    @ViewBuilder private var artPille: some View {
+        if wein.art == .spirituose {
+            if let k = wein.kategorie {
+                Pill(text: k.emoji + " " + k.label, color: k.farbe)
+            } else {
+                Pill(text: wein.art.emoji + " " + wein.art.einzahl, color: Color(hex: "6B7280"))
+            }
+        } else {
+            Pill(text: wein.typ.emoji + " " + wein.typ.label, color: wein.typ.farbe)
+        }
+    }
+
+    /// Herkunft + das, was die Flasche einordnet, in einer Zeile — was da ist, in dieser
+    /// Reihenfolge. Rebsorten haben Spirituosen keine; an ihrer Stelle steht der Stil
+    /// ("Single Malt Islay"), ersatzweise die Fassreifung.
     private var herkunft: String {
         var teile: [String] = []
         let ort = WeinText.herkunft(land: wein.land, region: wein.region, lage: nil)
         if !ort.isEmpty { teile.append(ort) }
-        if !wein.rebsorten.isEmpty { teile.append(wein.rebsorten.prefix(2).joined(separator: ", ")) }
+        if wein.art == .spirituose {
+            if let stil = wein.stil, !stil.isEmpty { teile.append(stil) }
+            else if let fass = wein.fass, !fass.isEmpty { teile.append(fass) }
+        } else if !wein.rebsorten.isEmpty {
+            teile.append(wein.rebsorten.prefix(2).joined(separator: ", "))
+        }
         return teile.joined(separator: " · ")
+    }
+
+    /// Platzhalter-Symbol ohne Foto: Weintyp bzw. Spirituosen-Kategorie, sonst das Glas der Art.
+    private var platzhalterEmoji: String {
+        wein.art == .spirituose ? (wein.kategorie?.emoji ?? wein.art.emoji) : wein.typ.emoji
     }
 
     private var etikett: some View {
@@ -138,7 +198,7 @@ struct WeinKarte: View {
                 AuthImage(path: path, contentMode: .fill)
             } else {
                 Palette.gradient(for: "wein").opacity(0.20)
-                    .overlay(Text(wein.typ.emoji).font(.title2))
+                    .overlay(Text(platzhalterEmoji).font(.title2))
             }
         }
         .frame(width: 54, height: 72)

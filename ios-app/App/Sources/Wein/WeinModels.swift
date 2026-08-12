@@ -4,7 +4,48 @@ import SwiftUI
 // `/wein-preise` (Envelope `{data:[…],total}`) plus die Sonderrouten `/wein-scan`, `/wein-lookup`,
 // `/wein-bewertung`, `/wein-preischeck`, `/wein-einstellungen`.
 // Werte kommen snake_case, Booleans als 0/1, die JSON-Array-Spalten (rebsorten/aromen/
-// auszeichnungen) als JSON-STRING. Decodierung durchgaengig tolerant ueber `Coerce`.
+// auszeichnungen/cocktails) als JSON-STRING. Decodierung durchgaengig tolerant ueber `Coerce`.
+//
+// WARUM der Typ weiterhin `Wein` heisst, obwohl er seit Migration 0022 AUCH Spirituosen traegt:
+// Tabelle (`weine`), Routen (`/api/v1/wein-*`), Registry-Key und Bereichs-Key bleiben unveraendert.
+// An ihnen haengt die bereits installierte App (Build 58), die nach dem Deploy weiterlaufen muss;
+// ein Umbenennen waere eine grosse, riskante Aenderung ohne fachlichen Gewinn. Beide Getraenkearten
+// liegen bewusst in EINER Tabelle — Bewertung je Person, Preis-Historie, Preis-Waechter, Keller,
+// Einkaufs-Scan und Dublettenerkennung sind fuer Whisky und Barolo identisch. Unterschieden werden
+// sie ausschliesslich ueber `Wein.art`; nur die ANZEIGE-Texte heissen „Wein & Spirituosen".
+
+// MARK: - Getraenkeart (CHECK art IN ('wein','spirituose'))
+
+/// Die eine Unterscheidung, an der alles haengt: Umschalter, Filter, Erfassungsmaske, Detailseite
+/// und `Wein.patchFields`. Bestandszeilen ohne Wert sind Weine (Default der Migration).
+enum GetraenkeArt: String, CaseIterable, Identifiable {
+    case wein, spirituose
+
+    var id: String { rawValue }
+
+    /// Mehrzahl — Umschalter, Ueberschriften, Zaehler ("8 Spirituosen").
+    var label: String {
+        switch self {
+        case .wein:       return "Wein"
+        case .spirituose: return "Spirituosen"
+        }
+    }
+
+    /// Einzahl — Meldungen und Menue-Eintraege ("Spirituose erfassen", "Wein gespeichert").
+    var einzahl: String {
+        switch self {
+        case .wein:       return "Wein"
+        case .spirituose: return "Spirituose"
+        }
+    }
+
+    var emoji: String {
+        switch self {
+        case .wein:       return "🍷"
+        case .spirituose: return "🥃"
+        }
+    }
+}
 
 // MARK: - Weintyp (CHECK typ IN (...))
 
@@ -61,6 +102,82 @@ enum WeinTyp: String, CaseIterable, Identifiable {
     }
 }
 
+// MARK: - Spirituosen-Kategorie (CHECK kategorie IN (...)), nur bei art == .spirituose
+
+/// Reihenfolge = Reihenfolge des CHECK in Migration 0022; Filter-Pills und Picker zeigen sie genau
+/// so. `sonstiges` steht bewusst am Ende (Auffangwert, keine eigene Warengruppe).
+enum SpirituosenKategorie: String, CaseIterable, Identifiable {
+    case whisky, gin, rum, wodka, tequila, mezcal, cognac, brandy
+    case grappa, obstbrand, likoer, aperitif, wermut, absinth, sonstiges
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .whisky:    return "Whisky"
+        case .gin:       return "Gin"
+        case .rum:       return "Rum"
+        case .wodka:     return "Wodka"
+        case .tequila:   return "Tequila"
+        case .mezcal:    return "Mezcal"
+        case .cognac:    return "Cognac"
+        case .brandy:    return "Brandy"
+        case .grappa:    return "Grappa"
+        case .obstbrand: return "Obstbrand"
+        case .likoer:    return "Likör"
+        case .aperitif:  return "Aperitif"
+        case .wermut:    return "Wermut"
+        case .absinth:   return "Absinth"
+        case .sonstiges: return "Sonstiges"
+        }
+    }
+
+    var emoji: String {
+        switch self {
+        case .whisky:    return "🥃"
+        case .gin:       return "🍸"
+        case .rum:       return "🏝️"
+        case .wodka:     return "🧊"
+        case .tequila:   return "🌵"
+        case .mezcal:    return "🔥"
+        case .cognac:    return "🛢️"
+        case .brandy:    return "🍐"
+        case .grappa:    return "🍇"
+        case .obstbrand: return "🍒"
+        case .likoer:    return "🍯"
+        case .aperitif:  return "🍊"
+        case .wermut:    return "🌿"
+        case .absinth:   return "🧚"
+        case .sonstiges: return "🍶"
+        }
+    }
+
+    /// Badge-Farbe, gleiche Regel wie `WeinTyp.farbe`: `Color.onFill` waehlt die Schrift anhand der
+    /// Helligkeit, hier stehen deshalb nur Toene, die zusammen mit dieser Schrift mindestens 4,5:1
+    /// erreichen (AA für Normaltext; `Pill` rendert mit .caption2 = 11 pt).
+    /// Alle fünfzehn liegen unter der Hell-Schwelle → durchgehend weiße Schrift; der knappste Wert
+    /// ist Sonstiges mit 4,8:1. Nicht ändern, ohne den Kontrast nachzurechnen.
+    var farbe: Color {
+        switch self {
+        case .whisky:    return Color(hex: "92400E")   // 7,1:1
+        case .gin:       return Color(hex: "0F766E")   // 5,5:1
+        case .rum:       return Color(hex: "9A3412")   // 7,3:1
+        case .wodka:     return Color(hex: "334155")   // 10,4:1
+        case .tequila:   return Color(hex: "4D7C0F")   // 5,0:1
+        case .mezcal:    return Color(hex: "3F6212")   // 7,1:1
+        case .cognac:    return Color(hex: "B45309")   // 5,0:1
+        case .brandy:    return Color(hex: "A16207")   // 4,9:1
+        case .grappa:    return Color(hex: "15803D")   // 5,0:1
+        case .obstbrand: return Color(hex: "BE185D")   // 6,0:1
+        case .likoer:    return Color(hex: "7E22CE")   // 7,0:1
+        case .aperitif:  return Color(hex: "C2410C")   // 5,2:1
+        case .wermut:    return Color(hex: "9F1239")   // 8,0:1
+        case .absinth:   return Color(hex: "166534")   // 7,1:1
+        case .sonstiges: return Color(hex: "6B7280")   // 4,8:1 — knappster Wert der Reihe
+        }
+    }
+}
+
 // MARK: - Tabs, Sortierung
 
 /// .alle = alles · .keller = bestand > 0 · .top = Schnitt >= 4 · .offen = von mir noch nicht bewertet.
@@ -69,12 +186,18 @@ enum WeinTab: Hashable { case alle, keller, top, offen }
 enum WeinSort: String, CaseIterable {
     case neueste, bewertung, name, jahrgang, preis
 
-    var label: String {
+    /// Beschriftung fuer Wein — unveraendert, damit bestehende Aufrufstellen weiter passen.
+    var label: String { label(for: .wein) }
+
+    /// Art-abhaengige Beschriftung: Spirituosen haben keinen Jahrgang, sondern eine Altersangabe —
+    /// derselbe Sortierfall heisst dort „Alter". Der ROHWERT bleibt `jahrgang`, damit eine einmal
+    /// gewaehlte Sortierung den Umschalter zwischen den Arten ueberlebt.
+    func label(for art: GetraenkeArt) -> String {
         switch self {
         case .neueste:   return "Neueste"
         case .bewertung: return "Bewertung"
         case .name:      return "Name"
-        case .jahrgang:  return "Jahrgang"
+        case .jahrgang:  return art == .spirituose ? "Alter" : "Jahrgang"
         case .preis:     return "Preis"
         }
     }
@@ -84,8 +207,9 @@ enum WeinSort: String, CaseIterable {
 
 struct Wein: Identifiable, Hashable {
     let id: Int
+    var art: GetraenkeArt               // wein | spirituose — bestimmt Maske, Filter und Anzeige
     var name: String
-    var weingut: String
+    var weingut: String                 // bei Spirituosen die Destillerie bzw. Marke
     var jahrgang: Int?                  // nil = jahrgangslos (viele Sekte/Champagner)
     var typ: WeinTyp
     var rebsorten: [String]
@@ -102,6 +226,19 @@ struct Wein: Identifiable, Hashable {
     var serviertemperatur: String?
     var trinkfensterVon: Int?
     var trinkfensterBis: Int?
+    // Nur Spirituosen (bei Weinen durchgaengig nil bzw. leer) — `patchFields` schickt sie
+    // entsprechend auch nur bei art == .spirituose mit.
+    var kategorie: SpirituosenKategorie? // nil = keine der 15 Kategorien erkannt
+    var stil: String?                   // Unterart, z.B. "Single Malt Islay", "London Dry"
+    var alterJahre: Int?                // Altersangabe; nil = ohne (NAS-Abfuellung)
+    var fass: String?                   // Reifung/Finish, z.B. "Ex-Bourbon, Oloroso-Finish"
+    var abgefuelltJahr: Int?            // Abfuelljahr (Single Cask/Batch), NICHT der Jahrgang
+    var trinkempfehlung: String?        // "pur", "on the rocks", "Gin Tonic mit …"
+    var cocktails: [String]
+    // Fuer beide Arten gueltig — auch eine Weinflasche wird geoeffnet; gepflegt wird es in der
+    // Praxis vor allem an der Bar.
+    var angebrochenAt: String?          // ISO-Datum des Oeffnens; nil = ungeoeffnet
+    var fuellstandProzent: Int?         // 0..100; nil = nie erfasst (NICHT 0 raten)
     var bio: Bool
     var vegan: Bool
     var flaschengroesseMl: Int
@@ -125,6 +262,9 @@ struct Wein: Identifiable, Hashable {
 
     init(fields f: [String: Any]) {
         id = Coerce.int(f["id"]) ?? 0
+        // Unbekannte/fehlende Art = Wein: genau das steht als Default in der Migration, und die
+        // Bestandszeilen sind ausnahmslos Weine.
+        art = GetraenkeArt(rawValue: Coerce.str(f["art"]) ?? "") ?? .wein
         name = Coerce.str(f["name"]) ?? ""
         weingut = Coerce.str(f["weingut"]) ?? ""
         jahrgang = Coerce.int(f["jahrgang"])
@@ -143,6 +283,17 @@ struct Wein: Identifiable, Hashable {
         serviertemperatur = Coerce.str(f["serviertemperatur"])
         trinkfensterVon = Coerce.int(f["trinkfenster_von"])
         trinkfensterBis = Coerce.int(f["trinkfenster_bis"])
+        // Spirituosen-Spalten: unbekannte Kategorie bleibt nil (kein Rueckfall auf "sonstiges" —
+        // das waere eine Behauptung, die der Datensatz nicht hergibt).
+        kategorie = SpirituosenKategorie(rawValue: Coerce.str(f["kategorie"]) ?? "")
+        stil = Coerce.str(f["stil"])
+        alterJahre = Coerce.int(f["alter_jahre"])
+        fass = Coerce.str(f["fass"])
+        abgefuelltJahr = Coerce.int(f["abgefuellt_jahr"])
+        trinkempfehlung = Coerce.str(f["trinkempfehlung"])
+        cocktails = Coerce.stringArray(f["cocktails"])
+        angebrochenAt = Coerce.str(f["angebrochen_at"])
+        fuellstandProzent = Coerce.int(f["fuellstand_prozent"])
         bio = Coerce.bool(f["bio"])
         vegan = Coerce.bool(f["vegan"])
         flaschengroesseMl = Coerce.int(f["flaschengroesse_ml"]) ?? 750
@@ -169,28 +320,25 @@ struct Wein: Identifiable, Hashable {
     /// Felder im Formular auch geleert werden koennen).
     /// BEWUSST NICHT enthalten: bester_preis*, preis_geprueft_at (setzt der Preischeck-Job) und
     /// id/created_at/updated_at.
+    /// ART-ABHAENGIG: die Spalten der jeweils ANDEREN Getraenkeart werden gar nicht geschickt —
+    /// weder mit Wert noch als NSNull. Wuerden sie als NSNull mitgehen, wuerde jedes Speichern nach
+    /// einem Umschalten die Angaben der Gegenart in der Zeile loeschen (ein falsch als Wein
+    /// erkannter Whisky verloere beim Korrigieren seine Kategorie). Dieselbe Trennung nimmt das
+    /// Backend beim Erfassen vor (`sanitizeFelder` in server/wein/enrich.ts).
     var patchFields: [String: Any] {
         // Schrittweise aufgebaut (kein grosses Dictionary-Literal) — das haelt den Swift-Typechecker
         // schnell und die Zuordnung Spalte/Wert lesbar.
         var d: [String: Any] = [:]
+        d["art"] = art.rawValue
         d["name"] = name
         d["weingut"] = weingut
         d["jahrgang"] = jahrgang ?? NSNull()
         d["typ"] = typ.rawValue
-        d["rebsorten"] = WeinFormat.jsonArray(rebsorten)
         d["land"] = land ?? NSNull()
         d["region"] = region ?? NSNull()
-        d["lage"] = lage ?? NSNull()
         d["alkohol"] = alkohol ?? NSNull()
-        d["geschmacksrichtung"] = geschmacksrichtung
-        d["suesse"] = suesse ?? NSNull()
-        d["saeure"] = saeure ?? NSNull()
-        d["tannin"] = tannin ?? NSNull()
-        d["koerper"] = koerper ?? NSNull()
         d["aromen"] = WeinFormat.jsonArray(aromen)
         d["serviertemperatur"] = serviertemperatur ?? NSNull()
-        d["trinkfenster_von"] = trinkfensterVon ?? NSNull()
-        d["trinkfenster_bis"] = trinkfensterBis ?? NSNull()
         d["bio"] = bio ? 1 : 0
         d["vegan"] = vegan ? 1 : 0
         d["flaschengroesse_ml"] = flaschengroesseMl
@@ -207,16 +355,44 @@ struct Wein: Identifiable, Hashable {
         d["foto_key"] = fotoKey ?? NSNull()
         d["quelle"] = quelle
         d["notizen"] = notizen ?? NSNull()
+        // Angebrochen/Fuellstand gelten fuer beide Arten und gehen deshalb immer mit.
+        d["angebrochen_at"] = angebrochenAt ?? NSNull()
+        d["fuellstand_prozent"] = fuellstandProzent ?? NSNull()
+
+        switch art {
+        case .wein:
+            d["rebsorten"] = WeinFormat.jsonArray(rebsorten)
+            d["lage"] = lage ?? NSNull()
+            d["geschmacksrichtung"] = geschmacksrichtung
+            d["suesse"] = suesse ?? NSNull()
+            d["saeure"] = saeure ?? NSNull()
+            d["tannin"] = tannin ?? NSNull()
+            d["koerper"] = koerper ?? NSNull()
+            d["trinkfenster_von"] = trinkfensterVon ?? NSNull()
+            d["trinkfenster_bis"] = trinkfensterBis ?? NSNull()
+        case .spirituose:
+            d["kategorie"] = kategorie?.rawValue ?? NSNull()
+            d["stil"] = stil ?? NSNull()
+            d["alter_jahre"] = alterJahre ?? NSNull()
+            d["fass"] = fass ?? NSNull()
+            d["abgefuellt_jahr"] = abgefuelltJahr ?? NSNull()
+            d["trinkempfehlung"] = trinkempfehlung ?? NSNull()
+            d["cocktails"] = WeinFormat.jsonArray(cocktails)
+        }
         return d
     }
 
-    /// Anzeigename: "Weingut Name Jahrgang" (leere Teile entfallen).
+    /// Anzeigename: Wein "Weingut Name Jahrgang", Spirituose "Destillerie Name · 16 Jahre"
+    /// (leere Teile entfallen). Spirituosen tragen keinen Jahrgang — was zwei Abfuellungen
+    /// derselben Destillerie unterscheidet, ist die Altersangabe.
     var titel: String {
         var teile: [String] = []
         if !weingut.isEmpty { teile.append(weingut) }
         if !name.isEmpty { teile.append(name) }
-        if let j = jahrgang { teile.append(String(j)) }
-        return teile.isEmpty ? "Wein" : teile.joined(separator: " ")
+        if art == .wein, let j = jahrgang { teile.append(String(j)) }
+        var text = teile.isEmpty ? art.einzahl : teile.joined(separator: " ")
+        if art == .spirituose, let alter = WeinFormat.alterText(alterJahre) { text += " · " + alter }
+        return text
     }
 
     /// Ersparnis gegenueber dem Referenzpreis in Prozent. nil = kein Preisvorteil bzw. Daten fehlen.
@@ -234,6 +410,27 @@ struct Wein: Identifiable, Hashable {
         case let (nil, bis?):  return jahr <= bis
         default: return false
         }
+    }
+
+    /// Ist die Flasche geoeffnet? Allein `angebrochen_at` entscheidet das — ein Fuellstand von
+    /// 100 % steht auch an einer ungeoeffneten Flasche.
+    var istAngebrochen: Bool {
+        guard let a = angebrochenAt else { return false }
+        return !a.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// Fuellstand als Beschriftung der naechstliegenden Stufe (100/75/50/25/10/0).
+    /// OHNE erfassten Wert nil — "leer" waere geraten und wuerde jede ungeoeffnete Flasche als
+    /// ausgetrunken anzeigen.
+    var fuellstandLabel: String? {
+        guard let p = fuellstandProzent else { return nil }
+        // Reihenfolge von voll nach leer: bei Gleichstand (z.B. 5 % — 10 und 0 sind gleich weit weg)
+        // gewinnt dadurch die vollere Stufe. Eine Flasche mit Rest ist "Neige", nicht "leer".
+        let stufen: [(wert: Int, text: String)] = [
+            (wert: 100, text: "voll"), (wert: 75, text: "¾ voll"), (wert: 50, text: "halb"),
+            (wert: 25, text: "¼"), (wert: 10, text: "Neige"), (wert: 0, text: "leer"),
+        ]
+        return stufen.min { abs($0.wert - p) < abs($1.wert - p) }?.text
     }
 
     /// Auth-faehiger Media-Pfad des Etikettenfotos (fuer `AuthImage`).
@@ -575,6 +772,13 @@ enum WeinFormat {
     static func flasche(_ ml: Int) -> String {
         let liter = Double(ml) / 1000
         return String(format: "%.2f", liter).replacingOccurrences(of: ".", with: ",") + " l"
+    }
+
+    /// Altersangabe "16 Jahre" — nil ohne Angabe. Abfuellungen ohne Alter ("NAS") sind bei
+    /// Spirituosen voellig normal und duerfen NICHT als "0 Jahre" erscheinen.
+    static func alterText(_ jahre: Int?) -> String? {
+        guard let jahre, jahre > 0 else { return nil }
+        return jahre == 1 ? "1 Jahr" : "\(String(jahre)) Jahre"
     }
 
     /// [String] → JSON-String fuer die JSON-Array-Spalten (leer = "[]").

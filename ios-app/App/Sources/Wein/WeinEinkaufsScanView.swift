@@ -1,11 +1,16 @@
 import SwiftUI
 
-// Einkaufs-Scan im Laden — das Killer-Feature des Weinbereichs: Flasche aus dem Regal nehmen,
-// Barcode anvisieren, in EINER Sekunde sehen, ob die Familie den Wein schon kennt und mochte.
+// Einkaufs-Scan im Laden — das Killer-Feature des Bereichs: Flasche aus dem Regal nehmen,
+// Barcode anvisieren, in EINER Sekunde sehen, ob die Familie sie schon kennt und mochte.
 //
 // Zwei Ergebniszustaende, beide gross und ohne Lesen erfassbar:
 //   (a) bekannt   — Ampel + Titel + beide Bewertungen mit Kommentar + Familienschnitt
 //   (b) unbekannt — "Kennt ihr noch nicht" + Vorschlagsdaten des Backends + Erfassen-Knopf
+//
+// WEIN ODER SPIRITUOSE: die Ansicht bedient beide Arten unveraendert — im Regal steht neben dem
+// Barolo der Whisky, und welche Art es ist, entscheidet nicht der Umschalter im Bereich, sondern
+// das Etikett. Die im Bereich gewaehlte Art geht nur als HINWEIS an `lookup` (bei einer bekannten
+// EAN spielt sie ohnehin keine Rolle); angezeigt wird immer die Art, die der Server erkannt hat.
 //
 // WICHTIG (Kamera): der gemeinsame `BarcodeScannerView` liefert je Instanz genau EINEN Code.
 // Waehrend ein Ergebnis auf dem Schirm steht, wird er deshalb komplett aus der Hierarchie
@@ -38,14 +43,16 @@ private struct WeinEinkaufsAmpel {
 }
 
 struct WeinEinkaufsScanView: View {
-    /// Unbekannter Wein: der Aufrufer oeffnet seinen Erfassungsfluss mit dieser EAN und dem
+    /// Unbekannte Flasche: der Aufrufer oeffnet seinen Erfassungsfluss mit dieser EAN und dem
     /// bereits recherchierten Vorschlag — damit laeuft die kostenpflichtige KI-Kette KEIN
     /// zweites Mal und der Barcode landet wirklich im Datensatz.
     /// Leerer String = ohne Barcode gesucht (Namenssuche); `nil` = das Backend hatte keinen
     /// Vorschlag (kein Schluessel, keine Daten) — dann erfasst der Nutzer wie bisher.
+    /// Die ERKANNTE ART reist im Vorschlag mit (`felder["art"]`), es braucht dafuer also keinen
+    /// zusaetzlichen Parameter; ohne Vorschlag bleibt die Erfassung bei der im Bereich gewaehlten Art.
     /// Die Ansicht schliesst sich bewusst NICHT selbst; die Praesentation bleibt beim Aufrufer.
     var onErfassen: (String, WeinVorschlag?) -> Void = { _, _ in }
-    /// Bekannter Wein: der Aufrufer oeffnet die Detailansicht.
+    /// Bekannte Flasche: der Aufrufer oeffnet die Detailansicht.
     var onOeffnen: (Wein) -> Void = { _ in }
 
     @EnvironmentObject private var store: WeinStore
@@ -71,13 +78,21 @@ struct WeinEinkaufsScanView: View {
 
     private var tint: Color { Palette.colors(for: "wein").first ?? Theme.accent }
 
+    /// Beschriftungen, die vor dem Scan stehen, richten sich nach der im Bereich gewaehlten Art —
+    /// nach dem Scan zaehlt dagegen die erkannte Art des Fundes (siehe `artPille`/`emoji`).
+    private var eingabePlatzhalter: String {
+        store.art == .spirituose ? "Barcode oder Name der Spirituose" : "Barcode oder Weinname"
+    }
+
     var body: some View {
         NavigationStack {
             Group {
                 if let t = treffer { ergebnis(t) } else { scanner }
             }
             .background(Palette.gradient(for: "wein").opacity(0.05).ignoresSafeArea())
-            .navigationTitle("Wein im Laden")
+            // Bewusst neutral: gescannt wird, was im Regal steht — der Titel darf dem Ergebnis
+            // nicht vorgreifen (und soll nicht springen, wenn der Fund die andere Art ist).
+            .navigationTitle("Im Laden scannen")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -115,7 +130,7 @@ struct WeinEinkaufsScanView: View {
                     .accessibilityIdentifier("wein-einkauf-scanner")
             } else {
                 ContentUnavailableView("Scanner nicht verfügbar", systemImage: "barcode.viewfinder",
-                                       description: Text("Gib den Barcode oder den Weinnamen unten ein."))
+                                       description: Text("Gib den Barcode oder den Namen unten ein."))
                     .frame(maxHeight: .infinity)
             }
 
@@ -131,7 +146,7 @@ struct WeinEinkaufsScanView: View {
             }
 
             HStack {
-                TextField("Barcode oder Weinname", text: $eingabe)
+                TextField(eingabePlatzhalter, text: $eingabe)
                     .textFieldStyle(.roundedBorder)
                     .autocorrectionDisabled()
                     .submitLabel(.search)
@@ -181,7 +196,9 @@ struct WeinEinkaufsScanView: View {
                     Text("Familienschnitt " + WeinText.zahl(s) + " von 5")
                         .font(.subheadline.weight(.semibold))
                 } else {
-                    Text("Ihr habt den Wein, aber noch keine Note vergeben.").font(.subheadline)
+                    // Neutral formuliert: der Fund kann Wein ODER Spirituose sein, "Flasche" stimmt
+                    // fuer beides und erspart die Artikel-Fallunterscheidung.
+                    Text("Ihr habt die Flasche, aber noch keine Note vergeben.").font(.subheadline)
                 }
             }
             .foregroundStyle(ampel.farbe.onFill)
@@ -191,11 +208,11 @@ struct WeinEinkaufsScanView: View {
             .accessibilityIdentifier("wein-einkauf-ampel")
 
             VStack(alignment: .leading, spacing: 8) {
-                Text(w.typ.emoji + " " + w.titel).font(.title3.weight(.bold))
+                Text(emoji(w) + " " + w.titel).font(.title3.weight(.bold))
                 let ort = WeinText.herkunft(land: w.land, region: w.region, lage: nil)
                 if !ort.isEmpty { Text(ort).font(.subheadline).foregroundStyle(.secondary) }
                 HStack(spacing: 6) {
-                    Pill(text: w.typ.label, color: w.typ.farbe)
+                    artPille(w)
                     if w.bestand > 0 {
                         Pill(text: String(w.bestand) + " Fl. im Keller", systemImage: "archivebox",
                              color: Color(hex: "475569"), filled: false)
@@ -272,7 +289,7 @@ struct WeinEinkaufsScanView: View {
                 Spacer(minLength: 8)
                 Pill(text: v.confidenceLabel, color: v.confidenceFarbe)
             }
-            Text(w.typ.emoji + " " + w.titel).font(.title3.weight(.bold))
+            Text(emoji(w) + " " + w.titel).font(.title3.weight(.bold))
 
             ForEach(zeilen(w), id: \.self) { z in
                 Text(z).font(.subheadline).foregroundStyle(.secondary)
@@ -300,19 +317,57 @@ struct WeinEinkaufsScanView: View {
         .accessibilityIdentifier("wein-einkauf-vorschlag")
     }
 
+    // ── Art des Fundes anzeigen (nicht die im Bereich gewaehlte) ──
+
+    /// Symbol vor dem Titel: bei Spirituosen die Kategorie, sonst der Weintyp. Ohne erkannte
+    /// Kategorie das Art-Symbol — geraten wird nichts.
+    private func emoji(_ w: Wein) -> String {
+        w.art == .spirituose ? (w.kategorie?.emoji ?? w.art.emoji) : w.typ.emoji
+    }
+
+    /// Badge unter dem Titel: Weintyp bzw. Spirituosen-Kategorie. Fehlt die Kategorie, steht dort
+    /// die blosse Getraenkeart in Grau — "Sonstiges" waere eine Behauptung, die der Fund nicht hergibt.
+    /// Ohne Emoji: das steht schon vor dem Titel, zweimal waere es Zierrat.
+    @ViewBuilder private func artPille(_ w: Wein) -> some View {
+        if w.art == .spirituose {
+            if let k = w.kategorie {
+                Pill(text: k.label, color: k.farbe)
+            } else {
+                Pill(text: w.art.einzahl, color: Color(hex: "6B7280"))
+            }
+        } else {
+            Pill(text: w.typ.label, color: w.typ.farbe)
+        }
+    }
+
     /// Die wenigen Zeilen, die im Laden wirklich zaehlen — was fehlt, faellt weg.
+    /// Art-abhaengig: beim Wein Typ/Geschmack/Rebsorten, bei der Spirituose Kategorie/Stil/Alter
+    /// und die Fassreifung. Die erste Zeile beginnt IMMER mit einem Wort zur Art, damit der
+    /// Trefferkarte auch ohne Bild anzusehen ist, worum es geht.
     private func zeilen(_ w: Wein) -> [String] {
         var out: [String] = []
-        var art: [String] = [w.typ.label]
-        if w.geschmacksrichtung != "unbekannt" && !w.geschmacksrichtung.isEmpty {
-            art.append(w.geschmacksrichtung)
+        var kopf: [String] = []
+        if w.art == .spirituose {
+            kopf.append(w.kategorie?.label ?? w.art.einzahl)
+            if let s = w.stil, !s.isEmpty { kopf.append(s) }
+            if let alter = WeinFormat.alterText(w.alterJahre) { kopf.append(alter) }
+        } else {
+            kopf.append(w.typ.label)
+            if w.geschmacksrichtung != "unbekannt" && !w.geschmacksrichtung.isEmpty {
+                kopf.append(w.geschmacksrichtung)
+            }
         }
-        if let a = w.alkohol, a > 0 { art.append(WeinText.alkohol(a)) }
-        out.append(art.joined(separator: " · "))
+        if let a = w.alkohol, a > 0 { kopf.append(WeinText.alkohol(a)) }
+        out.append(kopf.joined(separator: " · "))
 
-        let ort = WeinText.herkunft(land: w.land, region: w.region, lage: w.lage)
+        // Die Lage gehoert zum Wein; bei Spirituosen ist die Spalte leer und bliebe ohnehin ohne Wirkung.
+        let ort = WeinText.herkunft(land: w.land, region: w.region, lage: w.art == .wein ? w.lage : nil)
         if !ort.isEmpty { out.append(ort) }
-        if !w.rebsorten.isEmpty { out.append(w.rebsorten.joined(separator: ", ")) }
+        if w.art == .spirituose {
+            if let f = w.fass, !f.isEmpty { out.append(f) }
+        } else if !w.rebsorten.isEmpty {
+            out.append(w.rebsorten.joined(separator: ", "))
+        }
         if let p = w.referenzpreis { out.append("Referenzpreis ca. " + WeinText.eur(p)) }
         return out
     }
@@ -384,12 +439,15 @@ struct WeinEinkaufsScanView: View {
         defer { laeuft = false }
         let alsEan = istBarcode(begriff)
         do {
+            // `art` ist nur der Hinweis fuer die Anreicherung einer UNBEKANNTEN Flasche; die Suche
+            // selbst laeuft art-uebergreifend, damit ein Whisky auch im Wein-Modus gefunden wird.
             let lookup = try await store.api.lookup(ean: alsEan ? begriff : nil,
-                                                    name: alsEan ? nil : begriff)
+                                                    name: alsEan ? nil : begriff,
+                                                    art: store.art)
             treffer = Treffer(ean: alsEan ? begriff : "", begriff: begriff, lookup: lookup)
         } catch {
             fehler = (error as? APIError)?.errorDescription
-                ?? "Der Wein konnte nicht nachgeschlagen werden."
+                ?? "Die Flasche konnte nicht nachgeschlagen werden."
         }
     }
 }

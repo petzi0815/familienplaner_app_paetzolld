@@ -3,9 +3,15 @@ import { log } from "@/server/observability/logger";
 import { hasOpenAI, openaiChat, parseJsonLoose } from "@/server/elisbooks/openai";
 import { hasPerplexity, perplexityAsk } from "@/server/wein/perplexity";
 import { getWeinSettings } from "@/server/wein/settings";
+import type { GetraenkeArt } from "@/server/wein/enrich";
 
-// Preisrecherche für die Weine im Keller — gemeinsame Grundlage von Route
+// Preisrecherche für Weine UND Spirituosen — gemeinsame Grundlage von Route
 // (`POST /api/v1/wein-preischeck`) und Job (`wein-preischeck`, nachts um 6).
+//
+// Beide Getränkearten durchlaufen dieselbe Kette (eine Tabelle, ein Job, ein Kostendeckel).
+// Art-abhängig sind ausschließlich die Formulierungen: wie die Ware benannt wird, woran „genau
+// dieses Produkt" hängt (Wein am Jahrgang, Spirituose an Abfüllung/Altersangabe) und welche
+// Flaschengröße gilt, wenn am Datensatz keine hinterlegt ist (750 vs. 700 ml).
 //
 // Zweistufig, weil beide Stufen etwas können, was die andere nicht kann:
 //   1. Perplexity ('sonar-pro') sucht LIVE im Netz nach aktuellen Händlerangeboten. Die Antwort ist
@@ -28,6 +34,12 @@ export interface PreisTreffer {
 export interface PreisErgebnis {
   weinId: number;
   titel: string;
+  /**
+   * Getränkeart der Zeile. Entscheidet über die Benennung der Ware in den Prompts und in den
+   * Meldungen des Jobs — nicht über die Auswertung: Treffer, Ausreißerfilter und Rabattrechnung
+   * sind für beide Arten identisch.
+   */
+  art: GetraenkeArt;
   treffer: PreisTreffer[];
   /** Günstigstes gefundenes Angebot (fehlt, wenn nichts gefunden wurde). */
   bester?: PreisTreffer;
@@ -91,16 +103,89 @@ interface WeinRow {
   name: string;
   weingut: string | null;
   jahrgang: number | null;
+  art: string | null;
+  kategorie: string | null;
+  stil: string | null;
+  alter_jahre: number | null;
   flaschengroesse_ml: number | null;
   ean: string | null;
   referenzpreis: number | null;
 }
 
-const WEIN_COLS = "id, name, weingut, jahrgang, flaschengroesse_ml, ean, referenzpreis";
+const WEIN_COLS =
+  "id, name, weingut, jahrgang, art, kategorie, stil, alter_jahre, flaschengroesse_ml, ean, referenzpreis";
 
-/** Anzeigename „Weingut Name Jahrgang" — auch der Suchbegriff für die Recherche. */
-function weinTitel(w: { name: string; weingut?: string | null; jahrgang?: number | null }): string {
-  return [w.weingut?.trim(), w.name?.trim(), w.jahrgang ? String(w.jahrgang) : null].filter(Boolean).join(" ").trim();
+/**
+ * Getränkeart einer Zeile. Die Spalte ist NOT NULL mit Default 'wein', gelesen wird trotzdem
+ * defensiv: alles, was nicht ausdrücklich 'spirituose' heißt, gilt als Wein. Damit verhält sich
+ * jede Zeile aus der Zeit vor Migration 0022 exakt wie bisher.
+ */
+const zuArt = (v: unknown): GetraenkeArt => (v === "spirituose" ? "spirituose" : "wein");
+
+/** Notnagel, wenn eine Zeile keinen brauchbaren Namen hergibt („Spirituose 42"). */
+const platzhalterTitel = (art: GetraenkeArt, id: number) =>
+  `${art === "spirituose" ? "Spirituose" : "Wein"} ${id}`;
+
+/**
+ * Anzeigename und zugleich der Suchbegriff der Recherche — art-abhängig, weil die beiden Waren
+ * über verschiedene Merkmale identifiziert werden: ein Wein über Weingut und Jahrgang, eine
+ * Spirituose über Destillerie, Stil und Altersangabe (ein Jahrgang steht dort meist gar nicht auf
+ * der Flasche). Leere Teile entfallen, damit weder ein „0 Jahre" noch doppelte Leerzeichen in der
+ * Suchanfrage landen.
+ */
+function weinTitel(w: {
+  name: string;
+  weingut?: string | null;
+  jahrgang?: number | null;
+  art?: string | null;
+  stil?: string | null;
+  alter_jahre?: number | null;
+}): string {
+  const teile = zuArt(w.art) === "spirituose"
+    ? [w.weingut?.trim(), w.name?.trim(), w.stil?.trim(), w.alter_jahre ? `${w.alter_jahre} Jahre` : null]
+    : [w.weingut?.trim(), w.name?.trim(), w.jahrgang ? String(w.jahrgang) : null];
+  return teile.filter(Boolean).join(" ").trim();
+}
+
+/**
+ * Die art-abhängigen Bausteine der Prompts an einem Ort. Alles andere an der Recherche bleibt
+ * wörtlich identisch — insbesondere das Zeilenformat „Händler | Preis in EUR | URL", an dem die
+ * Auswertbarkeit der Perplexity-Antwort hängt (siehe Kommentar bei `frage`).
+ */
+function artWorte(art: GetraenkeArt): {
+  /** Nominativ Einzahl, als Label vor dem Suchbegriff. */
+  ware: string;
+  /** Akkusativ („Recherchiere Angebote für …"). */
+  diesenAkk: string;
+  /** Nominativ („Nur genau …"). */
+  dieserNom: string;
+  /** Fachgebiet im System-Prompt der Recherche. */
+  gebiet: string;
+  /** Händlergattung und Beispiele für die Nachfass-Runde. */
+  haendlerArt: string;
+  haendlerBeispiele: string;
+  /** Flaschengröße, wenn am Datensatz keine hinterlegt ist. */
+  standardMl: number;
+} {
+  return art === "spirituose"
+    ? {
+      ware: "Spirituose",
+      diesenAkk: "diese Spirituose",
+      dieserNom: "diese Spirituose",
+      gebiet: "Spirituosen",
+      haendlerArt: "Spirituosenhändler",
+      haendlerBeispiele: "idealo.de, whisky.de, Whiskyworld, Weisshaus, Conalco, Drinkology",
+      standardMl: 700,
+    }
+    : {
+      ware: "Wein",
+      diesenAkk: "diesen Wein",
+      dieserNom: "dieser Wein",
+      gebiet: "Wein",
+      haendlerArt: "Weinhändler",
+      haendlerBeispiele: "wein.cc, idealo.de, Weinfreunde, Vinos, Hawesko, Weinquelle, Gourmetwelten",
+      standardMl: 750,
+    };
 }
 
 // ── Normalisierung der Perplexity-Prosa ──────────────────────────────────────
@@ -242,12 +327,15 @@ export async function checkPreisFuerWein(
   opts: { dryRun?: boolean } = {},
 ): Promise<PreisErgebnis> {
   const w = db.prepare(`SELECT ${WEIN_COLS} FROM weine WHERE id=?`).get(weinId) as WeinRow | undefined;
-  if (!w) return { weinId, titel: `Wein ${weinId}`, treffer: [], fehler: "Wein nicht gefunden." };
+  // Ohne Zeile ist die Art unbekannt — neutral formulieren statt einen Whisky „Wein" zu nennen.
+  if (!w) return { weinId, titel: platzhalterTitel("wein", weinId), art: "wein", treffer: [], fehler: "Eintrag nicht gefunden." };
 
-  const titel = weinTitel(w) || `Wein ${weinId}`;
+  const art = zuArt(w.art);
+  const titel = weinTitel(w) || platzhalterTitel(art, weinId);
   const basis: PreisErgebnis = {
     weinId,
     titel,
+    art,
     treffer: [],
     ...(w.referenzpreis != null ? { referenzpreis: w.referenzpreis } : {}),
   };
@@ -261,26 +349,34 @@ export async function checkPreisFuerWein(
     return { ...basis, fehler: "Auswertung der Angebote benötigt OPENAI_API_KEY im Backend (Coolify)." };
   }
 
-  const ml = w.flaschengroesse_ml && w.flaschengroesse_ml > 0 ? w.flaschengroesse_ml : 750;
+  const worte = artWorte(art);
+  const ml = w.flaschengroesse_ml && w.flaschengroesse_ml > 0 ? w.flaschengroesse_ml : worte.standardMl;
+  // Woran hängt „genau dieses Produkt"? Beim Wein am Jahrgang. Bei einer Spirituose gibt es den
+  // meist nicht, dafür trennen Abfüllung und Altersangabe die Preise sehr deutlich (Ardbeg 10 Jahre
+  // und Ardbeg Uigeadail sind dieselbe Destillerie und kosten das Doppelte auseinander).
+  const genauFrage = art === "spirituose"
+    ? " und genau diese Abfüllung/Altersangabe"
+    : w.jahrgang ? ` und genau der Jahrgang ${w.jahrgang}` : "";
+  const keineAnderen = art === "spirituose" ? "keine anderen Abfüllungen" : "keine anderen Jahrgänge";
   // Zeilenformat statt Freitext — bewusst identisch zu `researchWine` in enrich.ts. Die frühere,
   // frei formulierte Frage lieferte im Live-Test bei DEMSELBEN Wein mal drei Angebote, mal eines,
   // mal keines, während der Scan-Pfad mit diesem Format stabil dieselben drei fand: eine feste
   // Zeilenstruktur macht die Antwort für die anschließende Extraktion verlässlich auswertbar.
   const frage = (nachfassen: boolean) =>
-    `Recherchiere aktuelle Angebote für diesen Wein: ${titel}${w.ean ? ` (EAN ${w.ean})` : ""}\n\n` +
+    `Recherchiere aktuelle Angebote für ${worte.diesenAkk}: ${titel}${w.ean ? ` (EAN ${w.ean})` : ""}\n\n` +
     `Liste ALLE konkreten Angebote deutscher Online-Händler für die ${ml}-ml-Flasche auf, je Zeile im Format\n` +
     `"Händler | Preis in EUR | URL".\n` +
-    `Nur genau dieser Wein${w.jahrgang ? ` und genau der Jahrgang ${w.jahrgang}` : ""} — keine anderen Jahrgänge, ` +
+    `Nur genau ${worte.dieserNom}${genauFrage} — ${keineAnderen}, ` +
     "keine Kisten-, Gebinde- oder Literpreise, keine Schätzungen.\n" +
     'Hänge "(Aktion)" an, wenn ein Angebot erkennbar ein Sonder- oder Aktionspreis ist.\n' +
     (nachfassen
-      ? "Suche gründlich und beziehe ausdrücklich auch Preisvergleiche und größere Weinhändler ein " +
-        "(z. B. wein.cc, idealo.de, Weinfreunde, Vinos, Hawesko, Weinquelle, Gourmetwelten).\n"
+      ? `Suche gründlich und beziehe ausdrücklich auch Preisvergleiche und größere ${worte.haendlerArt} ein ` +
+        `(z. B. ${worte.haendlerBeispiele}).\n`
       : "") +
     'Findest du kein einziges Angebot, antworte nur mit "KEINE ANGEBOTE".';
 
   const SYSTEM_RECHERCHE =
-    "Du bist ein nüchterner Preis-Rechercheur für Wein in Deutschland. Nenne nur Angebote, die du " +
+    `Du bist ein nüchterner Preis-Rechercheur für ${worte.gebiet} in Deutschland. Nenne nur Angebote, die du ` +
     "wirklich gefunden hast, jeweils mit Händler, Flaschenpreis in Euro und Link. Keine Schätzungen, " +
     "keine Vermutungen, keine Preisspannen ohne Quelle.";
 
@@ -322,17 +418,28 @@ export async function checkPreisFuerWein(
     "Du extrahierst Preisangebote aus einem Rechercheergebnis. Du erfindest nichts und übernimmst nur, " +
     "was im Text wirklich steht. Antworte AUSSCHLIESSLICH als JSON, kein weiterer Text.";
 
+  // Auch die Auswertung muss die Ware richtig benennen und dieselbe Eingrenzung mitbekommen wie die
+  // Frage — sonst übernimmt gpt-4o brav das Angebot zum falschen Jahrgang bzw. zur falschen
+  // Abfüllung, das die Recherche mitgeliefert hat. Die Kategorie steht als Zusatz dabei, weil sie
+  // einen Fehltreffer („Gin" statt „Whisky" gleichen Namens) sofort erkennbar macht.
+  const kennung = art === "spirituose"
+    ? (w.kategorie ? ` (Kategorie ${w.kategorie})` : "")
+    : (w.jahrgang ? "" : " (Jahrgang unbekannt)");
+  const genauExtrakt = art === "spirituose"
+    ? " (genau diese Abfüllung/Altersangabe)"
+    : w.jahrgang ? ` und den Jahrgang ${w.jahrgang}` : "";
+
   /** Rechercheergebnis in geprüfte Treffer überführen. `null` = Auswertung nicht möglich. */
   async function extrahiere(rech: { quellen: string[]; text: string }): Promise<PreisTreffer[] | null> {
     const quellenListe = rech.quellen.map((q, i) => `${i + 1}. ${q}`).join("\n") || "(keine)";
     const user =
-      `Wein: ${titel}${w!.jahrgang ? "" : " (Jahrgang unbekannt)"}, Flaschengröße ${ml} ml.\n\n` +
+      `${worte.ware}: ${titel}${kennung}, Flaschengröße ${ml} ml.\n\n` +
       `Rechercheergebnis:\n"""\n${rech.text.slice(0, 8000)}\n"""\n\n` +
       `Quellen (nummeriert):\n${quellenListe}\n\n` +
       "Gib die konkreten Angebote in genau diesem JSON-Schema zurück:\n" +
       '{ "angebote": [ { "preis": number, "haendler": string, "url": string|null } ] }\n' +
       "Regeln:\n" +
-      `- Nur Angebote für genau diesen Wein${w!.jahrgang ? ` und den Jahrgang ${w!.jahrgang}` : ""}.\n` +
+      `- Nur Angebote für genau ${worte.diesenAkk}${genauExtrakt}.\n` +
       "- preis = Preis für EINE Flasche in Euro, ohne Versand, Punkt als Dezimaltrennzeichen. " +
       "Kisten-/Gebinde-/Literpreise nicht umrechnen, sondern weglassen.\n" +
       "- haendler = Name des Shops (z. B. \"Weinfreunde\"), nicht die URL.\n" +
@@ -407,9 +514,13 @@ export async function checkPreisFuerWein(
 // ── Auswahl + Sammellauf ─────────────────────────────────────────────────────
 
 /**
- * Weine, die eine Preisprüfung brauchen: beobachtet, mit Referenzpreis (ohne ihn gibt es nichts zu
- * vergleichen) und länger als `intervallTage` nicht geprüft. Ältester zuerst, damit über mehrere
+ * Flaschen, die eine Preisprüfung brauchen: beobachtet, mit Referenzpreis (ohne ihn gibt es nichts
+ * zu vergleichen) und länger als `intervallTage` nicht geprüft. Ältester zuerst, damit über mehrere
  * Läufe jeder drankommt.
+ *
+ * Bewusst OHNE Einschränkung auf die Getränkeart: der Wächter beobachtet Keller und Bar in EINEM
+ * Lauf — zwei getrennte Läufe würden nur den Kostendeckel verdoppeln, ohne dass sich an der
+ * Recherche etwas ändert. Die Art wird mitgeliefert, damit Meldungen die Ware richtig benennen.
  *
  * `julianday(...)` statt eines Textvergleichs, weil `preis_geprueft_at` je nach Schreibweg
  * 'YYYY-MM-DD HH:MM:SS' (SQLite) oder ISO mit 'T'/'Z' (JS) enthalten kann — als Text verglichen
@@ -420,16 +531,19 @@ export function faelligeWeine(
   db: BetterSqlite3.Database,
   intervallTage: number,
   limit: number = MAX_PRO_LAUF,
-): { id: number; titel: string }[] {
+): { id: number; titel: string; art: GetraenkeArt }[] {
   const tage = Number.isFinite(intervallTage) ? Math.max(0, intervallTage) : 7;
   const rows = db.prepare(
-    "SELECT id, name, weingut, jahrgang FROM weine " +
+    "SELECT id, name, weingut, jahrgang, art, stil, alter_jahre FROM weine " +
     "WHERE preis_beobachten=1 AND referenzpreis IS NOT NULL AND referenzpreis > 0 " +
     "AND (preis_geprueft_at IS NULL OR preis_geprueft_at='' OR julianday(preis_geprueft_at) IS NULL " +
     "     OR julianday(preis_geprueft_at) <= julianday('now') - ?) " +
     "ORDER BY COALESCE(julianday(preis_geprueft_at), 0) ASC, id ASC LIMIT ?",
-  ).all(tage, Math.max(1, limit)) as { id: number; name: string; weingut: string | null; jahrgang: number | null }[];
-  return rows.map((r) => ({ id: r.id, titel: weinTitel(r) || `Wein ${r.id}` }));
+  ).all(tage, Math.max(1, limit)) as Pick<WeinRow, "id" | "name" | "weingut" | "jahrgang" | "art" | "stil" | "alter_jahre">[];
+  return rows.map((r) => {
+    const art = zuArt(r.art);
+    return { id: r.id, titel: weinTitel(r) || platzhalterTitel(art, r.id), art };
+  });
 }
 
 /**

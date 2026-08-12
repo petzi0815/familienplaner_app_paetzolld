@@ -76,8 +76,10 @@ targets:
         # UIApplicationShortcutIconType-Konstanten kennen kein Weinglas.
         # Die Typ-Suffixe sind ein harter Vertrag mit AppState.applyShortcut(_:).
         UIApplicationShortcutItems:
+          # Titel bewusst neutral: der Bereich fuehrt seit Migration 0022 Wein UND Spirituosen,
+          # der Typ (…newwine) bleibt unveraendert — daran haengen AppDelegate/SceneDelegate.
           - UIApplicationShortcutItemType: app.yagemi.familienplaner.newwine
-            UIApplicationShortcutItemTitle: Wein erfassen
+            UIApplicationShortcutItemTitle: Getränk erfassen
             UIApplicationShortcutItemIconSymbolName: wineglass
           - UIApplicationShortcutItemType: app.yagemi.familienplaner.scanbook
             UIApplicationShortcutItemTitle: Buch scannen

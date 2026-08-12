@@ -2,9 +2,9 @@ import { getDb } from "@/server/db/connection";
 import { getAuth, hasRole } from "@/server/auth/auth";
 import { unauthorized, forbidden, fail, ok } from "@/server/http/respond";
 import { hasOpenAI } from "@/server/elisbooks/openai";
-import { enrichWine, type WeinPreis } from "@/server/wein/enrich";
+import { enrichWine, type GetraenkeArt, type WeinPreis } from "@/server/wein/enrich";
 
-// Einkaufs-Scan im Laden: „Kennen wir den Wein — und wie fanden wir ihn?"
+// Einkaufs-Scan im Laden: „Kennen wir die Flasche — und wie fanden wir sie?"
 // EAN (Barcode) oder Name → bekannter Wein inkl. beider Bewertungen + Schnitt.
 // Unbekannt + EAN vorhanden → optional ein KI-Vorschlag (damit man ihn direkt anlegen kann);
 // `?enrich=0` schaltet das ab, wenn nur die schnelle Kennen-wir-den-schon-Antwort gebraucht wird.
@@ -17,6 +17,16 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
 interface Bewertung { owner: string; sterne: number; kommentar: string }
+
+/**
+ * Hinweis des Aufrufers auf die Getränkeart (`?art=`). Ungültige Werte werden still ignoriert — der
+ * Hinweis steuert nur die Prompts der KI-Kette, erkannt wird die Art ohnehin am Etikett bzw. an den
+ * Kategorien der Produktdatenbank.
+ */
+function leseArt(v: string | null): GetraenkeArt | undefined {
+  const s = (v ?? "").trim().toLowerCase();
+  return s === "wein" || s === "spirituose" ? s : undefined;
+}
 
 /** Durchschnitt der Bewertungen (auf eine Nachkommastelle), NULL wenn niemand bewertet hat. */
 function schnittVon(bewertungen: Bewertung[]): number | null {
@@ -33,11 +43,15 @@ export async function GET(req: Request): Promise<Response> {
   const ean = (params.get("ean") ?? "").trim();
   const name = (params.get("name") ?? "").trim();
   const mitKi = (params.get("enrich") ?? "1") !== "0";
+  const artHinweis = leseArt(params.get("art"));
   if (!ean && !name) return fail("no_input", "Parameter 'ean' oder 'name' erforderlich.", 400);
 
   const db = getDb();
   let wein: Record<string, unknown> | undefined;
   try {
+    // Weder EAN- noch Namenssuche werden auf `art` eingegrenzt: der Barcode ist eindeutig, und im
+    // Laden soll der Scan auch dann „kennen wir schon" melden, wenn die Flasche unter der anderen
+    // Art erfasst wurde. Der Hinweis dient nur der KI-Kette weiter unten.
     if (ean) {
       wein = db.prepare(
         "SELECT * FROM weine WHERE TRIM(COALESCE(ean,'')) <> '' AND TRIM(ean) = ? ORDER BY id DESC LIMIT 1",
@@ -75,7 +89,7 @@ export async function GET(req: Request): Promise<Response> {
   let confidence = "niedrig";
   if (ean && mitKi && hasOpenAI()) {
     try {
-      const roh = await enrichWine({ ean });
+      const roh = await enrichWine({ ean, art: artHinweis });
       const felder = roh.felder ?? {};
       if (Object.keys(felder).length) {
         vorschlag = { ...felder, ean: String(felder.ean ?? "").trim() || ean };

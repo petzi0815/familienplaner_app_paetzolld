@@ -6,6 +6,12 @@ import SwiftUI
 ///
 /// Der angezeigte Datensatz wird ueber `store.weine` nachgeschlagen (`current`), damit
 /// Bestandsaenderungen, Bewertungen und Preisergebnisse sofort sichtbar sind.
+///
+/// ART-ABHAENGIG (seit Migration 0022): Geschmacksprofil, Rebsorten, Geschmacksrichtung und
+/// Trinkfenster gibt es NUR beim Wein; Kategorie/Stil/Alter/Fass/Abfuelljahr, Trinkempfehlung,
+/// Cocktails und der Fuellstand NUR bei der Spirituose. Bewertungen, Keller, Preise, Historie
+/// und Foto sind fuer beide Arten identisch — sie sind der Grund, warum beide in EINER Tabelle
+/// liegen. Kein Abschnitt darf leer erscheinen: fehlt ein Wert, faellt die Zeile weg.
 struct WeinDetailView: View {
     let wein: Wein
 
@@ -20,6 +26,12 @@ struct WeinDetailView: View {
     private var tint: Color { Palette.colors(for: "wein").first ?? Theme.accent }
     private var preise: [WeinPreis] { store.preise[current.id] ?? [] }
 
+    /// Akkusativ fuer Fliesstext ("… hat diese Spirituose noch nicht bewertet"). Eigene Property,
+    /// weil `GetraenkeArt.einzahl` nur das nackte Wort liefert und der Artikel sich unterscheidet.
+    private var diesesGetraenk: String {
+        current.art == .spirituose ? "diese Spirituose" : "diesen Wein"
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
@@ -30,10 +42,13 @@ struct WeinDetailView: View {
                 aromen
                 // Gruppiert, weil ein ViewBuilder-Block hoechstens zehn Kinder aufnimmt.
                 Group {
+                    trinkempfehlung
+                    cocktails
                     hintergrund
                     auszeichnungen
                     trinkfenster
                     kellerBlock
+                    fuellstandBlock
                     preisBlock
                     notizen
                 }
@@ -98,9 +113,21 @@ struct WeinDetailView: View {
             }
             Text(current.titel).font(.title3.weight(.bold))
             FlowLayout(spacing: 6) {
-                Pill(text: current.typ.emoji + " " + current.typ.label, color: current.typ.farbe)
-                if current.geschmacksrichtung != "unbekannt" {
-                    Pill(text: WeinGeschmack.label(current.geschmacksrichtung), color: tint, filled: false)
+                // Beim Wein Typ + Geschmacksrichtung, bei der Spirituose Kategorie + Stil.
+                // Fehlt die Kategorie (die Erkennung war sich nicht sicher), bleibt der Platz
+                // leer — ein „Sonstiges"-Badge waere eine Behauptung, die niemand aufgestellt hat.
+                if current.art == .wein {
+                    Pill(text: current.typ.emoji + " " + current.typ.label, color: current.typ.farbe)
+                    if current.geschmacksrichtung != "unbekannt" {
+                        Pill(text: WeinGeschmack.label(current.geschmacksrichtung), color: tint, filled: false)
+                    }
+                } else {
+                    if let k = current.kategorie {
+                        Pill(text: k.emoji + " " + k.label, color: k.farbe)
+                    }
+                    if let s = current.stil, !s.isEmpty {
+                        Pill(text: s, color: tint, filled: false)
+                    }
                 }
                 if current.bio { Pill(text: "Bio", systemImage: "leaf.fill", color: Color(hex: "16A34A")) }
                 if current.vegan { Pill(text: "Vegan", systemImage: "carrot.fill", color: Color(hex: "65A30D")) }
@@ -109,7 +136,10 @@ struct WeinDetailView: View {
                          color: Color(hex: "475569"), filled: false)
                 }
             }
-            let ort = WeinText.herkunft(land: current.land, region: current.region, lage: current.lage)
+            // Die Lage ist eine reine Weinangabe (Einzellage) — bei Spirituosen bliebe sie ohnehin
+            // leer, wird aber gar nicht erst abgefragt, damit ein Altbestand nichts durchreicht.
+            let ort = WeinText.herkunft(land: current.land, region: current.region,
+                                        lage: current.art == .wein ? current.lage : nil)
             if !ort.isEmpty {
                 Label(ort, systemImage: "mappin.and.ellipse").font(.subheadline).foregroundStyle(.secondary)
             }
@@ -166,7 +196,7 @@ struct WeinDetailView: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
-                    Text("Die andere Person hat diesen Wein noch nicht bewertet.")
+                    Text("Die andere Person hat " + diesesGetraenk + " noch nicht bewertet.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
@@ -175,22 +205,50 @@ struct WeinDetailView: View {
 
     // ── Stammdaten ──
 
+    /// Der Rahmen ist fuer beide Arten gleich (Hersteller, Alkohol, Serviertemperatur, Flasche,
+    /// EAN); dazwischen steht der art-eigene Teil. Zeilen ohne Wert entfallen ganz — „Alter: —"
+    /// waere eine Zeile, die nichts sagt.
     private var stammdaten: some View {
         block("Stammdaten") {
             VStack(spacing: 0) {
-                if !current.weingut.isEmpty { InfoRow(icon: "🏛️", label: "Weingut", value: current.weingut) }
-                InfoRow(icon: "📅", label: "Jahrgang", value: WeinText.jahrgang(current.jahrgang))
-                if !current.rebsorten.isEmpty {
-                    InfoRow(icon: "🍇", label: "Rebsorten", value: current.rebsorten.joined(separator: ", "))
+                if !current.weingut.isEmpty {
+                    InfoRow(icon: current.art == .spirituose ? "🏭" : "🏛️",
+                            label: current.art == .spirituose ? "Destillerie" : "Weingut",
+                            value: current.weingut)
                 }
+                if current.art == .wein { weinStammdaten } else { spirituosenStammdaten }
                 if let a = current.alkohol { InfoRow(icon: "🥃", label: "Alkohol", value: WeinText.alkohol(a)) }
-                InfoRow(icon: "🍬", label: "Geschmack", value: WeinGeschmack.label(current.geschmacksrichtung))
                 if let t = current.serviertemperatur, !t.isEmpty {
                     InfoRow(icon: "🌡️", label: "Serviertemperatur", value: t)
                 }
                 InfoRow(icon: "🍾", label: "Flasche", value: WeinText.flasche(current.flaschengroesseMl))
                 if let e = current.ean, !e.isEmpty { InfoRow(icon: "🔖", label: "EAN", value: e) }
             }
+        }
+    }
+
+    /// Jahrgang steht auch ohne Wert da ("o. J." = jahrgangslos, eine echte Aussage bei Sekt);
+    /// Rebsorten nur, wenn welche erfasst sind.
+    @ViewBuilder private var weinStammdaten: some View {
+        InfoRow(icon: "📅", label: "Jahrgang", value: WeinText.jahrgang(current.jahrgang))
+        if !current.rebsorten.isEmpty {
+            InfoRow(icon: "🍇", label: "Rebsorten", value: current.rebsorten.joined(separator: ", "))
+        }
+        InfoRow(icon: "🍬", label: "Geschmack", value: WeinGeschmack.label(current.geschmacksrichtung))
+    }
+
+    /// Kein Jahrgang: was zwei Abfuellungen derselben Destillerie unterscheidet, sind Altersangabe
+    /// und Abfuelljahr. Abfuellungen ohne Alter (NAS) sind normal — `WeinFormat.alterText` liefert
+    /// dafuer nil und die Zeile entfaellt, statt "0 Jahre" zu behaupten.
+    @ViewBuilder private var spirituosenStammdaten: some View {
+        if let k = current.kategorie { InfoRow(icon: k.emoji, label: "Kategorie", value: k.label) }
+        if let s = current.stil, !s.isEmpty { InfoRow(icon: "🏷️", label: "Stil", value: s) }
+        if let alter = WeinFormat.alterText(current.alterJahre) {
+            InfoRow(icon: "⏳", label: "Alter", value: alter)
+        }
+        if let f = current.fass, !f.isEmpty { InfoRow(icon: "🛢️", label: "Fass", value: f) }
+        if let j = current.abgefuelltJahr, j > 0 {
+            InfoRow(icon: "📅", label: "Abgefüllt", value: String(j))
         }
     }
 
@@ -205,8 +263,10 @@ struct WeinDetailView: View {
         return w
     }
 
+    /// Nur beim Wein: Suesse/Saeure/Tannin/Koerper sind Weinspalten und werden fuer Spirituosen
+    /// weder erfasst noch gespeichert (`patchFields` schickt sie dort gar nicht mit).
     @ViewBuilder private var geschmacksprofil: some View {
-        if !profilWerte.isEmpty {
+        if current.art == .wein, !profilWerte.isEmpty {
             block("Geschmacksprofil") {
                 VStack(spacing: 8) {
                     ForEach(profilWerte) { e in
@@ -223,6 +283,30 @@ struct WeinDetailView: View {
                 FlowLayout(spacing: 6) {
                     ForEach(current.aromen, id: \.self) { a in
                         Pill(text: a, color: tint, filled: false)
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Nur Spirituosen: Trinkempfehlung + Cocktails ──
+
+    /// „pur", „on the rocks", „Gin Tonic mit Fever-Tree" — eine Zeile Fliesstext, kein Feldsalat.
+    @ViewBuilder private var trinkempfehlung: some View {
+        if current.art == .spirituose, let text = current.trinkempfehlung, !text.isEmpty {
+            block("Trinkempfehlung") {
+                Text(text).font(.subheadline).frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
+    /// Passende Drinks als Chips — gleiche Optik wie die Aromen, weil es dieselbe Art Liste ist.
+    @ViewBuilder private var cocktails: some View {
+        if current.art == .spirituose, !current.cocktails.isEmpty {
+            block("Cocktails") {
+                FlowLayout(spacing: 6) {
+                    ForEach(current.cocktails, id: \.self) { c in
+                        Pill(text: c, color: tint, filled: false)
                     }
                 }
             }
@@ -252,8 +336,9 @@ struct WeinDetailView: View {
         }
     }
 
+    /// Nur beim Wein: eine Spirituose reift in der Flasche nicht weiter, sie hat kein Trinkfenster.
     @ViewBuilder private var trinkfenster: some View {
-        if current.trinkfensterVon != nil || current.trinkfensterBis != nil {
+        if current.art == .wein, current.trinkfensterVon != nil || current.trinkfensterBis != nil {
             block("Trinkfenster") {
                 HStack(spacing: 8) {
                     Text(WeinText.trinkfenster(current.trinkfensterVon, current.trinkfensterBis))
@@ -302,6 +387,98 @@ struct WeinDetailView: View {
                     InfoRow(icon: "📦", label: "Lagerort", value: ort)
                 }
             }
+        }
+    }
+
+    // ── Fuellstand (nur Spirituosen) ──
+
+    /// Die Frage an der Bar ist nicht „wie viele Flaschen", sondern „wie viel ist noch drin".
+    /// Deshalb hier ein Balken statt eines Zaehlers — und sechs feste Stufen statt eines
+    /// Schiebereglers: niemand misst den Rest einer Flasche prozentgenau, und ein Tipp ist
+    /// schneller als eine Ziehbewegung.
+    @ViewBuilder private var fuellstandBlock: some View {
+        if current.art == .spirituose {
+            block("Füllstand") {
+                VStack(alignment: .leading, spacing: 12) {
+                    fuellstandAnzeige
+                    FlowLayout(spacing: 6) {
+                        ForEach(Self.fuellstandStufen, id: \.self) { p in
+                            FilterPill(label: Self.stufenText(p),
+                                       selected: current.fuellstandProzent == p,
+                                       color: tint) {
+                                Task { await store.setFuellstand(current, p) }
+                            }
+                            .accessibilityIdentifier("wein-fuellstand-" + String(p))
+                        }
+                    }
+                    angebrochenZeile
+                }
+            }
+        }
+    }
+
+    /// Ohne erfassten Wert wird KEIN Balken gezeigt: einer auf 0 % saehe aus wie eine leere
+    /// Flasche, obwohl der Wert schlicht fehlt.
+    @ViewBuilder private var fuellstandAnzeige: some View {
+        if let p = current.fuellstandProzent {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    Text(current.fuellstandLabel ?? Self.stufenText(p)).font(.subheadline.weight(.semibold))
+                    Spacer(minLength: 0)
+                    Text(String(p) + " %").font(.caption).foregroundStyle(.secondary)
+                }
+                ProgressView(value: Double(min(100, max(0, p))), total: 100)
+                    .progressViewStyle(.linear)
+                    .tint(tint)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Füllstand " + String(p) + " Prozent")
+            .accessibilityIdentifier("wein-fuellstand")
+        } else {
+            Text("Füllstand noch nicht erfasst.")
+                .font(.caption).foregroundStyle(.secondary)
+                .accessibilityIdentifier("wein-fuellstand")
+        }
+    }
+
+    /// Angebrochen ist eine eigene Aussage: eine volle, aber geoeffnete Flasche altert anders als
+    /// eine ungeoeffnete. Der Store setzt beim Oeffnen zusaetzlich den Fuellstand auf 100, wenn
+    /// noch keiner erfasst war — deshalb steht hier nur der Schalter, keine Rechnerei.
+    private var angebrochenZeile: some View {
+        // Beide Beschriftungen vorab als String — ein Ternaer aus zwei Literalen direkt im
+        // `Button(...)` liesse dem Compiler die Wahl zwischen LocalizedStringKey und String.
+        let offen = current.istAngebrochen
+        let seit = WeinText.datum(current.angebrochenAt)
+        let stand: String = offen ? (seit.isEmpty ? "angebrochen" : "angebrochen seit " + seit) : "ungeöffnet"
+        let knopf: String = offen ? "Als ungeöffnet markieren" : "Flasche öffnen"
+        return HStack(spacing: 10) {
+            Label(stand, systemImage: offen ? "drop.fill" : "seal")
+                .font(.caption).foregroundStyle(.secondary)
+            Spacer(minLength: 0)
+            Button(knopf) {
+                Task { await store.setAngebrochen(current, !offen) }
+            }
+            .font(.caption)
+            .buttonStyle(.bordered)
+            .tint(tint)
+            .accessibilityIdentifier("wein-angebrochen")
+        }
+    }
+
+    /// Die sechs Stufen des Balkens — dieselben Werte, aus denen `Wein.fuellstandLabel` seine
+    /// Beschriftung ableitet.
+    private static let fuellstandStufen = [100, 75, 50, 25, 10, 0]
+
+    /// Beschriftung einer Stufe, wortgleich zu `Wein.fuellstandLabel` — Knopf und Anzeige duerfen
+    /// nicht verschiedene Woerter fuer denselben Zustand benutzen.
+    private static func stufenText(_ prozent: Int) -> String {
+        switch prozent {
+        case 100: return "voll"
+        case 75:  return "¾ voll"
+        case 50:  return "halb"
+        case 25:  return "¼"
+        case 10:  return "Neige"
+        default:  return "leer"
         }
     }
 

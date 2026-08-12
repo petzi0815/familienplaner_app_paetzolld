@@ -1,10 +1,16 @@
 import SwiftUI
 import UIKit
 
-/// Schritt 1 der Wein-Erfassung. Drei gleichwertige Einstiege — Etikett fotografieren, EAN scannen
-/// oder von Hand tippen — und EIN Knopf, der die Erkennung samt Recherche im Backend anstößt
-/// (POST /api/v1/wein-scan). Hier wird NICHTS gespeichert: die Antwort landet als `WeinVorschlag`
-/// in Schritt 2 (`WeinPruefenView`), wo jedes Feld geprüft und erst dann angelegt wird.
+/// Schritt 1 der Erfassung (Wein ODER Spirituose). Drei gleichwertige Einstiege — Etikett
+/// fotografieren, EAN scannen oder von Hand tippen — und EIN Knopf, der die Erkennung samt
+/// Recherche im Backend anstößt (POST /api/v1/wein-scan). Hier wird NICHTS gespeichert: die
+/// Antwort landet als `WeinVorschlag` in Schritt 2 (`WeinPruefenView`), wo jedes Feld geprüft und
+/// erst dann angelegt wird.
+///
+/// Ganz oben steht der Getränkeart-Umschalter. Er geht als `art` an `/wein-scan` und ist dort nur
+/// ein HINWEIS: erkennt die Kette am Etikett bzw. am Barcode etwas anderes, gewinnt die Erkennung
+/// (im Laden schaltet niemand erst um, bevor er scannt) — der Vorschlag bringt seine Art dann
+/// selbst mit und Schritt 2 folgt ihr.
 ///
 /// Wird als Sheet präsentiert (eigener NavigationStack). Schritt 2 wird gepusht — closure-basiert
 /// über `navigationDestination(isPresented:)`, nicht wertbasiert (siehe Lernpunkt Geschenkplaner).
@@ -28,8 +34,16 @@ struct WeinErfassenView: View {
     @State private var ean = ""
     @State private var weingut = ""
     @State private var name = ""
+    /// Rohtext des dritten Feldes: bei Wein der Jahrgang, bei Spirituosen die Altersangabe.
+    /// EIN Feld für beide, damit der Identifier `wein-erfassen-jahrgang` (XCUITest) bleibt und
+    /// ein Umschalten die Eingabe nicht wegwirft.
     @State private var jahrgang = ""
     @State private var hinweis = ""
+    /// Vom Nutzer gewählte Getränkeart. nil = Umschalter noch nicht angefasst → es gilt `startArt`.
+    /// Der Umweg über Optional erspart eine Zuweisung in `vorbelegen()`: `store` steht beim
+    /// Initialisieren der States noch nicht bereit, und ein Nachsetzen im `.task` ließe den
+    /// Umschalter beim ersten Bild sichtbar umspringen.
+    @State private var artWahl: GetraenkeArt?
 
     // Ablauf
     @State private var zeigeScanner = false
@@ -44,13 +58,14 @@ struct WeinErfassenView: View {
     var body: some View {
         NavigationStack {
             Form {
+                artSection
                 fotoSection
                 barcodeSection
                 manuellSection
                 hinweisSection
                 aktionSection
             }
-            .navigationTitle("Wein erfassen")
+            .navigationTitle(art.einzahl + " erfassen")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -93,6 +108,11 @@ struct WeinErfassenView: View {
         // Der gescannte Barcode gehört in den Datensatz — sonst meldet der nächste Regal-Scan
         // dieselbe Flasche wieder als unbekannt.
         if Coerce.str(v.felder["ean"]) == nil, !start.isEmpty { v.felder["ean"] = start }
+        // Ohne erkannte Art (älteres Backend) gilt die hier vorbelegte — sonst zeigte Schritt 2
+        // eine andere Maske, als der Umschalter oben behauptet.
+        if GetraenkeArt(rawValue: Coerce.str(v.felder["art"]) ?? "") == nil {
+            v.felder["art"] = art.rawValue
+        }
         vorschlag = v
         // Ein Moment Vorlauf: `navigationDestination` greift nicht zuverlässig, wenn das Ziel
         // schon während des ersten Layouts gesetzt wird.
@@ -101,6 +121,24 @@ struct WeinErfassenView: View {
     }
 
     // MARK: - Abschnitte
+
+    /// Getränkeart. Steht ganz oben, weil sie bestimmt, wonach recherchiert wird und welche Felder
+    /// Schritt 2 zeigt. Vorbelegt mit dem, was der Bereich gerade zeigt (`store.art`) — wer im
+    /// Spirituosen-Tab auf „erfassen" tippt, meint fast immer eine Spirituose.
+    private var artSection: some View {
+        Section {
+            Picker("Getränkeart", selection: artBindung) {
+                ForEach(GetraenkeArt.allCases) { a in
+                    Text(a.emoji + " " + a.label).tag(a)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .accessibilityIdentifier("wein-erfassen-art")
+        } footer: {
+            Text("Erkennt die KI eine andere Art, gewinnt die Erkennung — umschalten geht im nächsten Schritt weiterhin.")
+        }
+    }
 
     private var fotoSection: some View {
         Section {
@@ -135,23 +173,27 @@ struct WeinErfassenView: View {
         } header: {
             Text("Barcode")
         } footer: {
-            Text("Viele Weine haben eine EAN auf der Rückseite. Damit findet die Recherche oft direkt den passenden Jahrgang.")
+            Text(art == .wein
+                 ? "Viele Weine haben eine EAN auf der Rückseite. Damit findet die Recherche oft direkt den passenden Jahrgang."
+                 : "Fast jede Flasche hat eine EAN auf der Rückseite. Damit findet die Recherche oft direkt die richtige Abfüllung.")
         }
     }
 
     private var manuellSection: some View {
         Section {
-            TextField("Weingut", text: $weingut)
+            TextField(herstellerLabel, text: $weingut)
                 .accessibilityIdentifier("wein-erfassen-weingut")
-            TextField("Name des Weins", text: $name)
+            TextField(nameLabel, text: $name)
                 .accessibilityIdentifier("wein-erfassen-name")
-            TextField("Jahrgang", text: $jahrgang)
+            TextField(jahrLabel, text: $jahrgang)
                 .keyboardType(.numberPad)
                 .accessibilityIdentifier("wein-erfassen-jahrgang")
         } header: {
             Text("Von Hand")
         } footer: {
-            Text("Weingut, Name und Jahrgang genügen. Den Rest recherchiert die KI.")
+            Text(art == .wein
+                 ? "Weingut, Name und Jahrgang genügen. Den Rest recherchiert die KI."
+                 : "Destillerie, Name und — falls vorhanden — die Altersangabe genügen. Den Rest recherchiert die KI.")
         }
     }
 
@@ -163,7 +205,9 @@ struct WeinErfassenView: View {
         } header: {
             Text("Hinweis für die KI")
         } footer: {
-            Text("Alles, was hilft: Rebsorte, Region, Händler oder was sonst auf dem Etikett steht.")
+            Text(art == .wein
+                 ? "Alles, was hilft: Rebsorte, Region, Händler oder was sonst auf dem Etikett steht."
+                 : "Alles, was hilft: Stil, Fassreifung, Region, Händler oder was sonst auf dem Etikett steht.")
         }
     }
 
@@ -215,6 +259,29 @@ struct WeinErfassenView: View {
 
     // MARK: - Ableitungen
 
+    /// Gültige Vorbelegung des Umschalters, solange der Nutzer ihn nicht angefasst hat: hat der
+    /// Einkaufs-Scan schon eine Art erkannt, gilt sie — sonst die im Bereich zuletzt gewählte.
+    private var startArt: GetraenkeArt {
+        if let v = startVorschlag,
+           let erkannt = GetraenkeArt(rawValue: Coerce.str(v.felder["art"]) ?? "") { return erkannt }
+        return store.art
+    }
+
+    /// Die aktuell gültige Getränkeart (Nutzerwahl schlägt Vorbelegung).
+    private var art: GetraenkeArt { artWahl ?? startArt }
+
+    private var artBindung: Binding<GetraenkeArt> {
+        Binding(get: { art }, set: { artWahl = $0 })
+    }
+
+    /// Beschriftung des Hersteller-Feldes. Bei Spirituosen steht in derselben Spalte `weingut` die
+    /// Destillerie bzw. die Marke (Gin und Likör haben oft keine Destillerie im Namen).
+    private var herstellerLabel: String { art == .wein ? "Weingut" : "Destillerie / Marke" }
+    /// Kurzform fürs KI-Freitextfeld (dort stört der Schrägstrich).
+    private var herstellerBegriff: String { art == .wein ? "Weingut" : "Destillerie" }
+    private var nameLabel: String { art == .wein ? "Name des Weins" : "Name der Spirituose" }
+    private var jahrLabel: String { art == .wein ? "Jahrgang" : "Alter in Jahren" }
+
     private var eanSauber: String { ean.trimmingCharacters(in: .whitespaces) }
     private var weingutSauber: String { weingut.trimmingCharacters(in: .whitespaces) }
     private var nameSauber: String { name.trimmingCharacters(in: .whitespaces) }
@@ -234,10 +301,10 @@ struct WeinErfassenView: View {
     /// Freitext für die Analyse: die manuellen Felder plus der Zusatzhinweis.
     private var freitext: String? {
         var teile: [String] = []
-        if !weingutSauber.isEmpty { teile.append("Weingut: " + weingutSauber) }
+        if !weingutSauber.isEmpty { teile.append(herstellerBegriff + ": " + weingutSauber) }
         if !nameSauber.isEmpty { teile.append("Name: " + nameSauber) }
         let j = jahrgang.trimmingCharacters(in: .whitespaces)
-        if !j.isEmpty { teile.append("Jahrgang: " + j) }
+        if !j.isEmpty { teile.append(art == .wein ? "Jahrgang: " + j : "Altersangabe: " + j + " Jahre") }
         let h = hinweis.trimmingCharacters(in: .whitespacesAndNewlines)
         if !h.isEmpty { teile.append(h) }
         return teile.isEmpty ? nil : teile.joined(separator: ", ")
@@ -248,13 +315,14 @@ struct WeinErfassenView: View {
     private func analysieren() async {
         laeuft = true
         fehler = ""
-        schritt = foto != nil ? "Etikett lesen ..." : "Wein nachschlagen ..."
+        schritt = foto != nil ? "Etikett lesen ..." : art.einzahl + " nachschlagen ..."
         // Zweiter Fortschrittstext, damit die mehrsekündige Kette nicht wie ein Hänger wirkt.
         let ticker = Task { await fortschrittTicken() }
         do {
             let ergebnis = try await store.api.scan(image: foto?.jpegForUpload(),
                                                     ean: eanSauber.isEmpty ? nil : eanSauber,
-                                                    text: freitext)
+                                                    text: freitext,
+                                                    art: art)
             ticker.cancel()
             vorschlag = angereichert(ergebnis)
             laeuft = false
@@ -277,23 +345,41 @@ struct WeinErfassenView: View {
     /// Eigene Eingaben gewinnen dort, wo die KI nichts geliefert hat (sie kennt EAN/Notizen nicht).
     private func angereichert(_ v: WeinVorschlag) -> WeinVorschlag {
         var f = v.felder
+        // Über die Art entscheidet das Backend: kommt eine mit, gilt sie (die Erkennung schlägt die
+        // Vorauswahl), sonst die im Formular gewählte. Sie bestimmt auch, in welche Spalte die
+        // eigene Jahreszahl gehört.
+        let ergebnisArt = GetraenkeArt(rawValue: Coerce.str(f["art"]) ?? "") ?? art
+        f["art"] = ergebnisArt.rawValue
         if Coerce.str(f["ean"]) == nil, !eanSauber.isEmpty { f["ean"] = eanSauber }
         if Coerce.str(f["weingut"]) == nil, !weingutSauber.isEmpty { f["weingut"] = weingutSauber }
         if Coerce.str(f["name"]) == nil, !nameSauber.isEmpty { f["name"] = nameSauber }
-        if Coerce.int(f["jahrgang"]) == nil, let j = Int(jahrgang.trimmingCharacters(in: .whitespaces)) {
-            f["jahrgang"] = j
+        if let zahl = Int(jahrgang.trimmingCharacters(in: .whitespaces)) {
+            uebernehmeJahreszahl(zahl, zielArt: ergebnisArt, in: &f)
         }
         if Coerce.str(f["quelle"]) == nil { f["quelle"] = quelleWert }
         return WeinVorschlag(felder: f, preise: v.preise, quellen: v.quellen,
                              confidence: v.confidence, hinweise: v.hinweise, dublette: v.dublette)
     }
 
+    /// Die eine Zahl aus dem dritten Eingabefeld in die richtige Spalte legen: Wein → `jahrgang`,
+    /// Spirituose → `alter_jahre`. Bei umgeschalteter Art ist ein „2019" dort KEINE Altersangabe —
+    /// lieber nichts eintragen als 2019 Jahre Fassreifung zu behaupten.
+    private func uebernehmeJahreszahl(_ zahl: Int, zielArt: GetraenkeArt, in f: inout [String: Any]) {
+        if zielArt == .wein {
+            if Coerce.int(f["jahrgang"]) == nil { f["jahrgang"] = zahl }
+        } else if (1...100).contains(zahl), Coerce.int(f["alter_jahre"]) == nil {
+            f["alter_jahre"] = zahl
+        }
+    }
+
     /// Ohne KI weiter (kein OpenAI-Key, kein Netz oder schlicht schneller von Hand).
     private func manuellWeiter() {
-        var f: [String: Any] = ["quelle": "manuell"]
+        var f: [String: Any] = ["quelle": "manuell", "art": art.rawValue]
         if !nameSauber.isEmpty { f["name"] = nameSauber }
         if !weingutSauber.isEmpty { f["weingut"] = weingutSauber }
-        if let j = Int(jahrgang.trimmingCharacters(in: .whitespaces)) { f["jahrgang"] = j }
+        if let zahl = Int(jahrgang.trimmingCharacters(in: .whitespaces)) {
+            uebernehmeJahreszahl(zahl, zielArt: art, in: &f)
+        }
         if !eanSauber.isEmpty { f["ean"] = eanSauber }
         let h = hinweis.trimmingCharacters(in: .whitespacesAndNewlines)
         if !h.isEmpty { f["notizen"] = h }

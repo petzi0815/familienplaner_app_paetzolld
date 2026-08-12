@@ -27,7 +27,9 @@ let BEREICH_REGISTRY: [BereichDef] = [
     .init(key: "vertraege",       title: "Verträge",    emoji: "📄",  makeRoot: { AnyView(VertraegeRootView(settings: $0)) }),
     .init(key: "trauerkarten",    title: "Trauerkarten", emoji: "🕊️", makeRoot: { AnyView(TrauerkartenRootView(settings: $0)) }),
     .init(key: "pizza",           title: "Pizza",       emoji: "🍕",  makeRoot: { AnyView(PizzaRootView(settings: $0)) }),
-    .init(key: "wein",            title: "Wein",        emoji: "🍷",  makeRoot: { AnyView(WeinRootView(settings: $0)) }),
+    // Key bleibt "wein" (Tabelle, Routen und die installierte App haengen daran) — nur der
+    // sichtbare Titel traegt seit Migration 0022 beide Getraenkearten.
+    .init(key: "wein",            title: "Wein & Spirituosen", emoji: "🍷",  makeRoot: { AnyView(WeinRootView(settings: $0)) }),
 ]
 
 private let BEREICH_BY_KEY: [String: BereichDef] = Dictionary(uniqueKeysWithValues: BEREICH_REGISTRY.map { ($0.key, $0) })

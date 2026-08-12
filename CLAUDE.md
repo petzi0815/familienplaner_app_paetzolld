@@ -6,6 +6,48 @@
 
 ## ▶️ WIEDERAUFNAHME (nächste Session) — START HIER
 
+**NEU 2026-08-12 (9. Session) — AUS „WEIN" WIRD „WEIN & SPIRITUOSEN" 🍷🥃: gleiches Muster (EAN/Etikett/KI, Bewertung je Person, Preis-Wächter, Keller), nur ohne Wein-Charakteristik — plus Umschalter. Migration 0022. Details: [[session-2026-08-12_spirituosen]].**
+- **Wunsch (Lars):** Spirituosen mit inventarisieren, „alles gleiches Muster über EAN erfassbar, nur
+  halt ohne Wein-Charakteristik, ggf. Switch zwischen Wein und Spirituosen".
+- **EINE Tabelle `weine`, neue Spalte `art`** ('wein'|'spirituose') — bewusst KEINE zweite Tabelle:
+  Bewertung je Person, Preis-Historie, Nachtjob, Keller, Einkaufs-Scan und Dublettensuche sind für
+  Whisky und Barolo identisch; eine zweite Tabelle hätte ~1200 Zeilen samt Job verdoppelt.
+  **Migration 0022 rein additiv** (`ADD COLUMN`, kein Rebuild): `art`, `kategorie` (15 CHECK-Werte),
+  `stil`, `alter_jahre`, `fass`, `abgefuellt_jahr`, `trinkempfehlung`, `cocktails` (JSON),
+  `angebrochen_at`, `fuellstand_prozent` (BETWEEN 0..100). `art` NOT NULL DEFAULT 'wein' hält die
+  **installierte Build 58 am Leben** (sie sendet kein `art`) — live gegen DB-Kopie verifiziert.
+- **Namen bleiben** (Tabelle `weine`, Routen `/api/v1/wein-*`, Registry-Key, iOS-Typ `Wein`,
+  Dateien `Wein*.swift`, Bereichs-Key `wein`) — nur Anzeigetexte wurden „Wein & Spirituosen".
+  Umbenennen hätte die laufende App gebrochen, ohne fachlichen Gewinn.
+- **KI-Kette art-fähig** (`enrich.ts`): EIN Vision-Aufruf klassifiziert die Art gleich mit (kein
+  zweiter, kostenpflichtiger Aufruf). Vorrang: **Etikett > Open Food Facts > Hinweis der App > wein**;
+  widerspricht die Erkennung dem Umschalter, **gewinnt die Erkennung** + Klartext-Hinweis (im Laden
+  scannt niemand erst den Schalter). Fremdfelder der Gegenart werden verworfen → keine Rebsorte am
+  Whisky. Perplexity-Blockaufbau und die Referenzpreis-Regel **wörtlich** erhalten.
+- **⚠️ NON-OBVIOUS, nur live gefunden — Open-Food-Facts-Kategorien:** die Marker-Liste sah vollständig
+  aus, traf aber die Realität nicht. OFF führt Gin als `en:distilled-beverages, en:hard-liquors,
+  **en:gins**` — „spirits" kommt gar nicht vor und `\bgin\b` scheitert am **Plural-s** ⇒ Gin wurde
+  als WEIN erfasst (Alkohol 40 % fiel zusätzlich an der Wein-Obergrenze 25 durch). Und `en:eaux-de-vie`
+  ist bei OFF ein **Oberbegriff über Rum** ⇒ Captain Morgan wurde „Obstbrand". Ebenso: `liqueur`
+  matcht `en:liqueur-wines` ⇒ **Portwein wäre zur Spirituose** geworden (Negative-Lookahead ergänzt),
+  und `en:fruit-brandies` muss VOR der Brandy-Regel stehen, sonst wird Williamsbirne zum Weinbrand.
+  Details: [[reference-openfoodfacts-kategorien]].
+- **iOS:** Art-Umschalter als erste Zeile der Steuerleiste (eigene Knöpfe `wein-art-wein` /
+  `wein-art-spirituose`, **bewusst NICHT `SegmentBar`** — dessen IDs sind fest, und ein Container-
+  Identifier hätte die Kind-IDs überschrieben = die Alarmo-Falle). Filterzeile/Dropdowns/Kennzahlen/
+  Sortierung/Menütexte art-abhängig; Keller und Liste folgen dem Umschalter (sonst widerspräche der
+  Inhalt dem art-gefilterten Segment-Zähler). **Angebrochene Flaschen**: „geöffnet seit" + Füllstand
+  in 6 Stufen mit Balken, im Keller über das Kontextmenü setzbar.
+- **Verifiziert:** `tsc` + `next build` grün · Migration **38/38** gegen Seed-DB-Kopie mit
+  nachgestellten Prod-Daten (kein Datenverlust, CHECKs, CASCADE, `constraints.ts` liest beide Enums)
+  · Build-58-Kompatibilität · Swift-Quick-Scan sauber · **Art-Erkennung 38/38 gegen ECHTE
+  OFF-Produkte** + 9/9 Kategoriebäume (Porto/Sherry bleiben Wein). 2 Review-Runden: 12 Agenten,
+  4 bestätigte Befunde (2 davon nur live sichtbar), alle behoben.
+- **OFFEN / von Lars zu prüfen:** (1) Etikett-Foto einer Spirituose im Alltag (die Kette wurde über
+  EAN und Text verifiziert). (2) Ob der Umschalter an der richtigen Stelle sitzt. (3) Weinessig-EANs
+  werden weiterhin als Weißwein vorgeschlagen — **vorbestehend**, nicht Teil dieser Änderung.
+  (4) `BOOTSTRAP_AGENT_API_KEY` rotieren (steht seit früheren Sessions offen).
+
 **NEU 2026-07-31 (8. Session) — NEUER LEBENSBEREICH „WEIN" 🍷: zweischrittige KI-Erfassung (OpenAI + Perplexity), Bewertung je Person, Einkaufs-Scan, Weinkeller, Preisbeobachtung mit Push. Backend live `3218906`, TestFlight Build 55 (`ios.yml`-Lauf 55, Commit `5dd70ea`), CI 3/3 grün. Details: [[session-2026-07-31_wein-lebensbereich]].**
 - **Zweck** (Lars): leckeren Wein schnell listen — Etikett fotografieren, EAN scannen oder tippen,
   KI ergänzt den Rest. **Zweischrittig**: Schritt 1 erfassen, Schritt 2 zeigt alles inkl. Preisen,
@@ -371,8 +413,9 @@ Details & Phasenplan: **`docs/MIGRATION_PLAN.md`**.
 Termine · Reisen · Samu-Inventar (Kleidung/Spielzeug/Marken/Bedarf) · Wunschliste ·
 Geschenkplaner · Garten · Vorratskammer · Gypsi (Katzenfutter) · Reiniger · Elisbooks
 (physische Bücher) · E-Book-Downloader · Smart Home/HA-Voice · Verträge · Abfuhrkalender ·
-Aufgaben · Trauerkarten · Pizza machen (nur iOS) · **Wein** (nur iOS). Neue Bereiche jederzeit
-über die `lebensbereiche`-Registry ergänzbar.
+Aufgaben · Trauerkarten · Pizza machen (nur iOS) · **Wein & Spirituosen** (nur iOS; eine Tabelle
+`weine`, getrennt über die Spalte `art`). Neue Bereiche jederzeit über die `lebensbereiche`-Registry
+ergänzbar.
 
 ## API-v1-Konventionen
 
