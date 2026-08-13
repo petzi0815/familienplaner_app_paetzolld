@@ -7,10 +7,13 @@ struct EbookCover: View {
     var width: CGFloat = 66
     var height: CGFloat = 92
     var emoji: String = "📚"
+    /// Vorschaubreite: die Listenkarte reicht mit einer Verkleinerung, das Detail bleibt beim
+    /// Original — deshalb entscheidet die Aufrufstelle und nicht diese Ansicht.
+    var thumb: Int? = nil
     var body: some View {
         Group {
             if let path {
-                AuthImage(path: path, contentMode: .fill)
+                AuthImage(path: path, contentMode: .fill, thumb: thumb)
             } else {
                 Palette.gradient(for: "ebooks").opacity(0.85)
                     .overlay(Text(emoji).font(.system(size: height * 0.42)).opacity(0.9))
@@ -36,7 +39,7 @@ struct EbookCard: View {
     var body: some View {
         let info = EbookStyle.statusInfo(item)
         HStack(alignment: .top, spacing: 12) {
-            EbookCover(path: item.coverPath)
+            EbookCover(path: item.coverPath, thumb: 320)
 
             VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .top, spacing: 8) {

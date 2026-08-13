@@ -206,7 +206,9 @@ struct WeinKarte: View {
     private var etikett: some View {
         Group {
             if let path = wein.imagePath {
-                AuthImage(path: path, contentMode: .fill)
+                // Karten-Etikett rendert 54x72 pt — die Vorschau reicht dafuer, das Original
+                // (bis 2000 px) waere hier reine Ladezeit.
+                AuthImage(path: path, contentMode: .fill, thumb: 160)
             } else {
                 Palette.gradient(for: "wein").opacity(0.20)
                     .overlay(Text(platzhalterEmoji).font(.title2))

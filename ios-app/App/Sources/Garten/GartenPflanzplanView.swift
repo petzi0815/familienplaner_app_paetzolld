@@ -81,7 +81,9 @@ struct GartenPflanzplanView: View {
         return HStack(spacing: 2) {
             HStack(spacing: 5) {
                 if let path = s.firstImagePath {
-                    AuthImage(path: path, contentMode: .fill).frame(width: 22, height: 22).clipShape(Circle())
+                    // 22 pt Kreis pro Zeile — hier lohnt die kleinste Vorschaustufe am meisten,
+                    // weil der Plan alle aktiven Samen untereinander zeigt.
+                    AuthImage(path: path, contentMode: .fill, thumb: 160).frame(width: 22, height: 22).clipShape(Circle())
                 } else {
                     Circle().fill(Color(hex: "D1FAE5")).frame(width: 22, height: 22)
                         .overlay(Text("🌱").font(.system(size: 10)))

@@ -73,7 +73,8 @@ struct GeschenkEinkaufView: View {
     private func ausgewaehltCard(_ g: GGeschenk) -> some View {
         HStack(alignment: .top, spacing: 12) {
             if let path = g.imagePath {
-                AuthImage(path: path, contentMode: .fill)
+                // 56x56 pt Zeilenbild — Vorschau statt Originalfoto.
+                AuthImage(path: path, contentMode: .fill, thumb: 160)
                     .frame(width: 56, height: 56)
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             }

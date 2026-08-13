@@ -589,7 +589,8 @@ struct ReiseKachel: View {
     private var cover: some View {
         Group {
             if let pfad = reise.coverPfad {
-                AuthImage(path: pfad, contentMode: .fill)
+                // Karten-Cover bis 96x74 pt — mittlere Stufe; das Reise-Detail zeigt das Original.
+                AuthImage(path: pfad, contentMode: .fill, thumb: 320)
             } else {
                 Palette.gradient(for: "reisen").opacity(0.85)
                     .overlay(Text(reise.typEmoji).font(kompakt ? .title3 : .title))

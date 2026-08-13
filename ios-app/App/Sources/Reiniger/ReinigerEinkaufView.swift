@@ -36,7 +36,8 @@ struct ReinigerEinkaufRow: View {
         HStack(spacing: 12) {
             Group {
                 if let path = produkt.imagePath {
-                    AuthImage(path: path, contentMode: .fill)
+                    // 48x48 pt Zeilenbild — Vorschau statt Originalfoto.
+                    AuthImage(path: path, contentMode: .fill, thumb: 160)
                 } else {
                     LinearGradient(colors: [Color(hex: "BAE6FD"), Color(hex: "D9F99D")], startPoint: .topLeading, endPoint: .bottomTrailing)
                         .overlay(Text(ReinigerStyle.cat(produkt.kategorie).emoji).font(.system(size: 22)))

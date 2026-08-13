@@ -318,7 +318,8 @@ struct GGiftListCard: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             if let path = g.imagePath {
-                AuthImage(path: path, contentMode: .fill)
+                // 64x64 pt Zeilenbild — Vorschau statt Originalfoto.
+                AuthImage(path: path, contentMode: .fill, thumb: 160)
                     .frame(width: 64, height: 64)
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             }

@@ -129,7 +129,9 @@ struct KostenEntryRow: View {
         HStack(alignment: .top, spacing: 10) {
             if let path = eintrag.belegPath {
                 Button(action: onBeleg) {
-                    AuthImage(path: path, contentMode: .fill).frame(width: 46, height: 46)
+                    // 46x46 pt Beleg-Vorschau in der Zeile; das lesbare Original zeigt erst
+                    // `BelegPreviewSheet` beim Antippen.
+                    AuthImage(path: path, contentMode: .fill, thumb: 160).frame(width: 46, height: 46)
                         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 }.buttonStyle(.plain)
             }

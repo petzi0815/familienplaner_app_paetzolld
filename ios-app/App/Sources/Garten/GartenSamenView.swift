@@ -161,7 +161,8 @@ struct GartenSamenCard: View {
     private var thumb: some View {
         Group {
             if let path = samen.firstImagePath {
-                AuthImage(path: path, contentMode: .fill)
+                // 80x80 pt Kachel — mittlere Stufe, damit sie auch auf 3x-Geraeten scharf bleibt.
+                AuthImage(path: path, contentMode: .fill, thumb: 320)
             } else {
                 LinearGradient(colors: [Color(hex: "D1FAE5"), Color(hex: "DCFCE7")], startPoint: .topLeading, endPoint: .bottomTrailing)
                     .overlay(Text(samen.emoji).font(.system(size: 30)).opacity(0.6))

@@ -55,7 +55,9 @@ struct TrauerkarteCell: View {
         VStack(alignment: .leading, spacing: 0) {
             Color(.tertiarySystemBackground)
                 .aspectRatio(4.0 / 3.0, contentMode: .fit)
-                .overlay { AuthImage(path: karte.fotoPath, contentMode: .fill) }
+                // Rasterzelle ab 150 pt Breite — mittlere Stufe; der Trauertext ist erst im
+                // Detail lesbar, das weiter das Original laedt.
+                .overlay { AuthImage(path: karte.fotoPath, contentMode: .fill, thumb: 320) }
                 .clipped()
                 .overlay(alignment: .topTrailing) {
                     Text(TrauerStyle.eur(karte.geldbetrag))

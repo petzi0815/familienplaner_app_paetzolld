@@ -50,7 +50,8 @@ struct GypsiFutterCard: View {
     private var thumb: some View {
         Group {
             if let path = f.imagePath {
-                AuthImage(path: path, contentMode: .fill)
+                // 80x80 pt Kachel — mittlere Stufe, damit sie auch auf 3x-Geraeten scharf bleibt.
+                AuthImage(path: path, contentMode: .fill, thumb: 320)
             } else {
                 LinearGradient(colors: [Color(hex: "FBBF24"), Color(hex: "FB923C")],
                                startPoint: .top, endPoint: .bottom)

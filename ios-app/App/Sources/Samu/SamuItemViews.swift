@@ -13,7 +13,8 @@ struct SamuItemCard: View {
             ZStack(alignment: .topLeading) {
                 Group {
                     if let path = item.imagePath {
-                        AuthImage(path: path, contentMode: .fill)
+                        // Rasterkarte (130 pt hoch) — mittlere Stufe; das Original zeigt das Detail.
+                        AuthImage(path: path, contentMode: .fill, thumb: 320)
                     } else {
                         Palette.gradient(for: "samu").opacity(0.18)
                             .overlay(Text(item.typEmoji).font(.system(size: 44)).opacity(0.5))

@@ -69,7 +69,8 @@ struct ResourceListView: View {
         let badge = badgeValue(rec.fields)
         return HStack(spacing: 12) {
             if let url = recordImageURL(rec.fields, resource.image) {
-                AuthImage(path: url).frame(width: 48, height: 48)
+                // 48x48 pt Zeilenbild — Vorschau statt Originalfoto.
+                AuthImage(path: url, thumb: 160).frame(width: 48, height: 48)
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
             VStack(alignment: .leading, spacing: 2) {
@@ -95,7 +96,8 @@ struct ResourceListView: View {
 
     private func cell(_ rec: GenericRecord) -> some View {
         Color.clear.aspectRatio(1, contentMode: .fit)
-            .overlay { AuthImage(path: recordImageURL(rec.fields, resource.image)) }
+            // Rasterzelle ab 110 pt Kantenlaenge — mittlere Vorschaustufe.
+            .overlay { AuthImage(path: recordImageURL(rec.fields, resource.image), thumb: 320) }
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay(alignment: .bottomLeading) {
                 Text(titleText(rec.fields, spec)).font(.caption2.weight(.bold)).lineLimit(1)

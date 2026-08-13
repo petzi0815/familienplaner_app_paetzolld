@@ -97,7 +97,8 @@ struct ReinigerUseCaseCard: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             if let path = imagePath {
-                AuthImage(path: path, contentMode: .fill)
+                // 52x52 pt Zeilenbild — Vorschau statt Originalfoto.
+                AuthImage(path: path, contentMode: .fill, thumb: 160)
                     .frame(width: 52, height: 52)
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             }

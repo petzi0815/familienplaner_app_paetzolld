@@ -122,7 +122,8 @@ struct GartenDuengerCard: View {
             ZStack(alignment: .topLeading) {
                 Group {
                     if let path = duenger.firstImagePath {
-                        AuthImage(path: path, contentMode: .fill)
+                        // Karte im 2-spaltigen Raster (~170 pt breit, 130 pt hoch) — mittlere Stufe.
+                        AuthImage(path: path, contentMode: .fill, thumb: 320)
                     } else {
                         LinearGradient(colors: [Color(hex: "FEF3C7"), Color(hex: "FDE68A")], startPoint: .topLeading, endPoint: .bottomTrailing)
                             .overlay(Text(duenger.typEmoji).font(.system(size: 46)).opacity(0.7))

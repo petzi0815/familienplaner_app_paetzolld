@@ -10,7 +10,8 @@ struct VorratThumb: View {
     var body: some View {
         Group {
             if let path = item.imagePath {
-                AuthImage(path: path, contentMode: .fill)
+                // Groesste Aufrufstelle ist 52 pt (Ablaufend-Liste) — die kleinste Vorschaustufe reicht.
+                AuthImage(path: path, contentMode: .fill, thumb: 160)
             } else {
                 Palette.gradient(for: "vorratskammer").opacity(0.18)
                     .overlay(Text(VorratKat.info(item.kategorie).emoji).font(.title3))
