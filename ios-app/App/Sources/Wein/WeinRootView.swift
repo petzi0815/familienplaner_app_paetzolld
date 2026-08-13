@@ -148,7 +148,11 @@ struct WeinRootView: View {
             // stehen bleibt — kein Bestaetigungsschirm dazwischen. Beendet wird sie ueber deren
             // Fertig-Knopf; danach faellt die Bilanz an (`serieBeenden`).
             .fullScreenCover(isPresented: $serieFoto, onDismiss: serieBeenden) {
-                WeinSerienFotoView(lauf: serienLauf, store: store)
+                // `schliessen` ausdruecklich mitgeben statt die Umgebung zu bemuehen: der Zustand
+                // des Aufrufers ist die verlaesslichere Quelle. Die erste Fassung dieser Serie
+                // schloss ueber `dismiss()` aus einer fremden Hierarchie — und genau deshalb tat
+                // der Fertig-Knopf am Geraet gar nichts.
+                WeinSerienFotoView(lauf: serienLauf, store: store, schliessen: { serieFoto = false })
             }
             .sheet(item: $sheet, onDismiss: {
                 // Die Vorbelegung aus dem Laden gilt nur fuer die eine Erfassung, die ihr folgt —

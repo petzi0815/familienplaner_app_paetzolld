@@ -1,16 +1,22 @@
 import SwiftUI
 import UIKit
 
-/// Schritt 1 der Erfassung (Wein ODER Spirituose). Drei gleichwertige Einstiege — Etikett
-/// fotografieren, EAN scannen oder von Hand tippen — und EIN Knopf, der die Erkennung samt
-/// Recherche im Backend anstößt (POST /api/v1/wein-scan). Hier wird NICHTS gespeichert: die
-/// Antwort landet als `WeinVorschlag` in Schritt 2 (`WeinPruefenView`), wo jedes Feld geprüft und
-/// erst dann angelegt wird.
+/// Einzelerfassung (Wein ODER Spirituose). Drei Einstiege — Etikett fotografieren, EAN scannen
+/// oder von Hand tippen —, die aber NICHT dasselbe tun:
 ///
-/// Ganz oben steht der Getränkeart-Umschalter. Er geht als `art` an `/wein-scan` und ist dort nur
-/// ein HINWEIS: erkennt die Kette am Etikett bzw. am Barcode etwas anderes, gewinnt die Erkennung
-/// (im Laden schaltet niemand erst um, bevor er scannt) — der Vorschlag bringt seine Art dann
-/// selbst mit und Schritt 2 folgt ihr.
+///   * **Foto und EAN reihen ein** (`store.erfassen` → POST /api/v1/wein-erfassen). Der Server legt
+///     die Zeile sofort an und erkennt sie im Hintergrund; das Blatt schließt sich unmittelbar.
+///     Vorher lief hier die volle Kette live (`/wein-scan`, OpenAI + Perplexity + OpenAI) und der
+///     Nutzer sah zwanzig Sekunden und länger eine Fortschrittsanzeige — genau das, was die
+///     Reihenerfassung längst besser macht. Wer eine Flasche in der Hand hält, will sie loswerden
+///     und nicht bei ihr stehen bleiben.
+///   * **Von Hand geht weiter über die Prüfmaske** (`WeinPruefenView`, Schritt 2). Dort gibt es
+///     nichts zu erkennen — wer tippt, hat die Angaben ja schon —, und die Maske IST das
+///     Eingabeformular. Sie einzureihen hieße, dieselben Felder gleich noch einmal zu erfragen.
+///
+/// Ganz oben steht der Getränkeart-Umschalter. Er geht als `art` mit und ist nur ein HINWEIS:
+/// erkennt die Kette am Etikett bzw. am Barcode etwas anderes, gewinnt die Erkennung (im Laden
+/// schaltet niemand erst um, bevor er scannt).
 ///
 /// Wird als Sheet präsentiert (eigener NavigationStack). Schritt 2 wird gepusht — closure-basiert
 /// über `navigationDestination(isPresented:)`, nicht wertbasiert (siehe Lernpunkt Geschenkplaner).
@@ -21,6 +27,12 @@ struct WeinErfassenView: View {
     /// Im Einkaufs-Scan bereits recherchierter Vorschlag. Liegt er vor, springt die Erfassung
     /// direkt in Schritt 2 — die (kostenpflichtige) KI-Kette läuft dann kein zweites Mal.
     var startVorschlag: WeinVorschlag? = nil
+    /// Vorbelegtes Regal/Fach. Wird beim Einreihen mitgeschickt, damit die Flasche im Keller nicht
+    /// unter „Ohne Lagerort" landet und hinterher einzeln nachgetragen werden muss.
+    var startLagerort: String = ""
+    /// Vorbelegtes Gebäude (zuhause | Büro). Beantwortet eine andere Frage als `startLagerort` und
+    /// gilt neben ihm — wer im Büro einräumt, meint jede Flasche dieses Durchgangs.
+    var startStandort: WeinStandort? = nil
     /// Nach dem Anlegen mit der neuen Wein-ID gerufen (z. B. um die Liste zu aktualisieren).
     var onGespeichert: (Int) -> Void = { _ in }
     /// Vorhandenen Wein öffnen — kommt aus der Dubletten-Karte in Schritt 2.
@@ -47,8 +59,8 @@ struct WeinErfassenView: View {
 
     // Ablauf
     @State private var zeigeScanner = false
+    /// Der Upload läuft (Sekunden, nicht Minuten — erkannt wird erst danach im Hintergrund).
     @State private var laeuft = false
-    @State private var schritt = ""
     @State private var fehler = ""
     @State private var vorschlag: WeinVorschlag?
     @State private var zeigePruefen = false
@@ -136,7 +148,9 @@ struct WeinErfassenView: View {
             .labelsHidden()
             .accessibilityIdentifier("wein-erfassen-art")
         } footer: {
-            Text("Erkennt die KI eine andere Art, gewinnt die Erkennung — umschalten geht im nächsten Schritt weiterhin.")
+            // „Im nächsten Schritt" gibt es für Foto und EAN nicht mehr — die Maske ist nach dem
+            // Einreihen zu. Korrigiert wird eine falsch geratene Art danach am Eintrag selbst.
+            Text("Erkennt die KI am Etikett eine andere Art, gewinnt die Erkennung. Ändern geht später jederzeit am Eintrag.")
         }
     }
 
@@ -146,7 +160,7 @@ struct WeinErfassenView: View {
         } header: {
             Text("Etikett fotografieren")
         } footer: {
-            Text("Die KI liest das Etikett aus. Das Bild wird danach als Etikettenfoto gespeichert.")
+            Text("Das Etikett wird im Hintergrund ausgelesen. Das Bild bleibt als Etikettenfoto am Eintrag.")
         }
     }
 
@@ -174,8 +188,8 @@ struct WeinErfassenView: View {
             Text("Barcode")
         } footer: {
             Text(art == .wein
-                 ? "Viele Weine haben eine EAN auf der Rückseite. Damit findet die Recherche oft direkt den passenden Jahrgang."
-                 : "Fast jede Flasche hat eine EAN auf der Rückseite. Damit findet die Recherche oft direkt die richtige Abfüllung.")
+                 ? "Viele Weine haben eine EAN auf der Rückseite. Damit findet die Recherche im Hintergrund oft direkt den passenden Jahrgang."
+                 : "Fast jede Flasche hat eine EAN auf der Rückseite. Damit findet die Recherche im Hintergrund oft direkt die richtige Abfüllung.")
         }
     }
 
@@ -191,9 +205,12 @@ struct WeinErfassenView: View {
         } header: {
             Text("Von Hand")
         } footer: {
+            // Getippte Angaben gehen NICHT mit ans Einreihen — die Route dort kennt nur Bild und
+            // Barcode. Das muss hier stehen, sonst tippt jemand drei Felder voll und wundert sich,
+            // warum davon nichts ankommt.
             Text(art == .wein
-                 ? "Weingut, Name und Jahrgang genügen. Den Rest recherchiert die KI."
-                 : "Destillerie, Name und — falls vorhanden — die Altersangabe genügen. Den Rest recherchiert die KI.")
+                 ? "Weingut, Name und Jahrgang gehören zum Weg von Hand — dafür der Knopf unten. Beim Einreihen zählen Foto und EAN."
+                 : "Destillerie, Name und Altersangabe gehören zum Weg von Hand — dafür der Knopf unten. Beim Einreihen zählen Foto und EAN.")
         }
     }
 
@@ -203,28 +220,30 @@ struct WeinErfassenView: View {
                 .lineLimit(1...3)
                 .accessibilityIdentifier("wein-erfassen-hinweis")
         } header: {
-            Text("Hinweis für die KI")
+            Text("Hinweis")
         } footer: {
             Text(art == .wein
-                 ? "Alles, was hilft: Rebsorte, Region, Händler oder was sonst auf dem Etikett steht."
-                 : "Alles, was hilft: Stil, Fassreifung, Region, Händler oder was sonst auf dem Etikett steht.")
+                 ? "Alles, was hilft: Rebsorte, Region, Händler. Wird beim Weg von Hand als Notiz übernommen."
+                 : "Alles, was hilft: Stil, Fassreifung, Region, Händler. Wird beim Weg von Hand als Notiz übernommen.")
         }
     }
 
     private var aktionSection: some View {
         Section {
-            Button { Task { await analysieren() } } label: {
+            // Beschriftung = Wirkung: der Knopf reiht ein, er erkennt nicht. Ein Knopf, der etwas
+            // anderes tut als er verspricht, ist schlimmer als der alte, langsame Ablauf.
+            Button { Task { await einreihen() } } label: {
                 HStack(spacing: 8) {
                     if laeuft { ProgressView() }
-                    Text(laeuft ? schritt : "Erkennen und recherchieren")
+                    Text(laeuft ? "Wird eingereiht ..." : "Einreihen")
                 }
                 .frame(maxWidth: .infinity)
             }
             .buttonStyle(.glassProminent)
-            .disabled(laeuft || !bereit)
+            .disabled(laeuft || !einreihbar)
             .accessibilityIdentifier("wein-erfassen-start")
 
-            Button("Ohne Recherche weiter") { manuellWeiter() }
+            Button("Von Hand ausfüllen") { manuellWeiter() }
                 .font(.subheadline)
                 .disabled(laeuft)
                 .accessibilityIdentifier("wein-erfassen-manuell")
@@ -233,9 +252,9 @@ struct WeinErfassenView: View {
                 Text(fehler).font(.footnote).foregroundStyle(.red)
             }
         } footer: {
-            Text(laeuft
-                 ? "Das dauert ein paar Sekunden."
-                 : "Etikett bzw. Barcode lesen, Hintergrund und aktuelle Preise suchen. Gespeichert wird noch nichts.")
+            Text(einreihbar
+                 ? "Die Flasche wird sofort angelegt; Etikett lesen, Hintergrund und Preise suchen laufen danach im Hintergrund. Dieses Blatt schließt sich dabei."
+                 : "Zum Einreihen genügt ein Etikettenfoto oder eine EAN. Wer nur tippt, nimmt den Weg von Hand.")
         }
     }
 
@@ -277,8 +296,6 @@ struct WeinErfassenView: View {
     /// Beschriftung des Hersteller-Feldes. Bei Spirituosen steht in derselben Spalte `weingut` die
     /// Destillerie bzw. die Marke (Gin und Likör haben oft keine Destillerie im Namen).
     private var herstellerLabel: String { art == .wein ? "Weingut" : "Destillerie / Marke" }
-    /// Kurzform fürs KI-Freitextfeld (dort stört der Schrägstrich).
-    private var herstellerBegriff: String { art == .wein ? "Weingut" : "Destillerie" }
     private var nameLabel: String { art == .wein ? "Name des Weins" : "Name der Spirituose" }
     private var jahrLabel: String { art == .wein ? "Jahrgang" : "Alter in Jahren" }
 
@@ -286,79 +303,51 @@ struct WeinErfassenView: View {
     private var weingutSauber: String { weingut.trimmingCharacters(in: .whitespaces) }
     private var nameSauber: String { name.trimmingCharacters(in: .whitespaces) }
 
-    /// Mindestens ein Einstieg muss belegt sein, sonst hat die KI nichts zu tun.
-    private var bereit: Bool {
-        foto != nil || !eanSauber.isEmpty || !nameSauber.isEmpty || !weingutSauber.isEmpty
-    }
+    /// Einreihen geht NUR mit Etikettenfoto oder Barcode: die Warteschlange erkennt genau daraus.
+    /// Eine Zeile ohne beides wäre eine leere Flasche im Inventar, die niemand mehr zuordnen kann —
+    /// getippte Angaben nehmen deshalb den Weg von Hand.
+    private var einreihbar: Bool { foto != nil || !eanSauber.isEmpty }
 
-    /// Woher die Angaben stammen (CHECK-Werte der Spalte `quelle`).
-    private var quelleWert: String {
-        if foto != nil { return "foto" }
-        if !eanSauber.isEmpty { return "ean" }
-        return "ki"
-    }
+    // MARK: - Einreihen (Foto- und EAN-Weg)
 
-    /// Freitext für die Analyse: die manuellen Felder plus der Zusatzhinweis.
-    private var freitext: String? {
-        var teile: [String] = []
-        if !weingutSauber.isEmpty { teile.append(herstellerBegriff + ": " + weingutSauber) }
-        if !nameSauber.isEmpty { teile.append("Name: " + nameSauber) }
-        let j = jahrgang.trimmingCharacters(in: .whitespaces)
-        if !j.isEmpty { teile.append(art == .wein ? "Jahrgang: " + j : "Altersangabe: " + j + " Jahre") }
-        let h = hinweis.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !h.isEmpty { teile.append(h) }
-        return teile.isEmpty ? nil : teile.joined(separator: ", ")
-    }
-
-    // MARK: - Analyse
-
-    private func analysieren() async {
+    /// Flasche einreihen und das Blatt schließen. Hier wird bewusst NICHT auf die Erkennung
+    /// gewartet: der Server legt die Zeile sofort an, die Kette (Etikett lesen, Recherche, Preise)
+    /// läuft danach im Hintergrund, und die Liste zeigt den Eintrag derweil in der Warteschlange.
+    /// Das ist derselbe Weg wie in der Reihenerfassung — nur für eine einzelne Flasche.
+    @MainActor
+    private func einreihen() async {
+        guard !laeuft, einreihbar else { return }
         laeuft = true
         fehler = ""
-        schritt = foto != nil ? "Etikett lesen ..." : art.einzahl + " nachschlagen ..."
-        // Zweiter Fortschrittstext, damit die mehrsekündige Kette nicht wie ein Hänger wirkt.
-        let ticker = Task { await fortschrittTicken() }
-        do {
-            let ergebnis = try await store.api.scan(image: foto?.jpegForUpload(),
-                                                    ean: eanSauber.isEmpty ? nil : eanSauber,
-                                                    text: freitext,
-                                                    art: art)
-            ticker.cancel()
-            vorschlag = angereichert(ergebnis)
+        // Der Umschalter dieser Maske ist die Ansage des Nutzers, welche Getränkeart er gerade
+        // pflegt. `store.erfassen` schickt `store.art` mit, und der Bereich filtert danach: ohne
+        // diese Übernahme ginge die Flasche als Wein weg UND die frisch eingereihte Zeile wäre
+        // hinter dem Umschalter versteckt — der Toast meldete etwas, das man nirgends sieht.
+        if store.art != art { store.art = art }
+        // 1600 px reichen für ein Etikett und halten den Upload auch im Laden klein (gleiche
+        // Kantenlänge wie in der Reihenerfassung — dieselbe Erkennungskette dahinter).
+        let jpeg = foto?.jpegForUpload(maxEdge: 1600)
+        if foto != nil, jpeg == nil {
+            // Lieber hier stehen bleiben als eine Zeile ohne Bild einreihen, die nie erkannt wird.
             laeuft = false
-            schritt = ""
-            zeigePruefen = true
-        } catch {
-            ticker.cancel()
-            laeuft = false
-            schritt = ""
-            fehler = (error as? APIError)?.errorDescription ?? "Die Analyse hat nicht geklappt."
+            fehler = "Das Foto ließ sich nicht aufbereiten. Bitte noch einmal aufnehmen."
+            return
         }
-    }
-
-    private func fortschrittTicken() async {
-        try? await Task.sleep(nanoseconds: 3_500_000_000)
-        guard !Task.isCancelled else { return }
-        schritt = "Preise und Hintergrund recherchieren ..."
-    }
-
-    /// Eigene Eingaben gewinnen dort, wo die KI nichts geliefert hat (sie kennt EAN/Notizen nicht).
-    private func angereichert(_ v: WeinVorschlag) -> WeinVorschlag {
-        var f = v.felder
-        // Über die Art entscheidet das Backend: kommt eine mit, gilt sie (die Erkennung schlägt die
-        // Vorauswahl), sonst die im Formular gewählte. Sie bestimmt auch, in welche Spalte die
-        // eigene Jahreszahl gehört.
-        let ergebnisArt = GetraenkeArt(rawValue: Coerce.str(f["art"]) ?? "") ?? art
-        f["art"] = ergebnisArt.rawValue
-        if Coerce.str(f["ean"]) == nil, !eanSauber.isEmpty { f["ean"] = eanSauber }
-        if Coerce.str(f["weingut"]) == nil, !weingutSauber.isEmpty { f["weingut"] = weingutSauber }
-        if Coerce.str(f["name"]) == nil, !nameSauber.isEmpty { f["name"] = nameSauber }
-        if let zahl = Int(jahrgang.trimmingCharacters(in: .whitespaces)) {
-            uebernehmeJahreszahl(zahl, zielArt: ergebnisArt, in: &f)
+        let ok = await store.erfassen(image: jpeg,
+                                      ean: eanSauber.isEmpty ? nil : eanSauber,
+                                      standort: startStandort,
+                                      lagerort: startLagerort.isEmpty ? nil : startLagerort)
+        laeuft = false
+        guard ok else {
+            // Den Klartext des Fehlers hat der Store schon als Meldung gesetzt — die liegt aber
+            // hinter diesem Blatt. Deshalb hier eine eigene Zeile, damit der Nutzer überhaupt
+            // merkt, dass nichts eingereiht wurde, und es erneut versuchen kann.
+            fehler = "Das Einreihen hat nicht geklappt. Bitte noch einmal versuchen."
+            return
         }
-        if Coerce.str(f["quelle"]) == nil { f["quelle"] = quelleWert }
-        return WeinVorschlag(felder: f, preise: v.preise, quellen: v.quellen,
-                             confidence: v.confidence, hinweise: v.hinweise, dublette: v.dublette)
+        // Die Rückmeldung im Klartext („… eingereiht — wird jetzt erkannt") kommt vom Store und
+        // erscheint als Toast im Bereich; die Liste hat er ebenfalls schon nachgezogen.
+        dismiss()
     }
 
     /// Die eine Zahl aus dem dritten Eingabefeld in die richtige Spalte legen: Wein → `jahrgang`,
@@ -372,7 +361,10 @@ struct WeinErfassenView: View {
         }
     }
 
-    /// Ohne KI weiter (kein OpenAI-Key, kein Netz oder schlicht schneller von Hand).
+    /// Der Weg von Hand: die getippten Angaben in die Prüfmaske übernehmen (Schritt 2). Hier gibt
+    /// es nichts zu erkennen — wer Weingut, Name und Jahrgang selbst eintippt, braucht weder
+    /// Etikett-Vision noch Recherche —, und die Prüfmaske ist ohnehin das Eingabeformular.
+    /// Deshalb bleibt genau dieser Weg unverändert, während Foto und EAN einreihen.
     private func manuellWeiter() {
         var f: [String: Any] = ["quelle": "manuell", "art": art.rawValue]
         if !nameSauber.isEmpty { f["name"] = nameSauber }
@@ -381,6 +373,10 @@ struct WeinErfassenView: View {
             uebernehmeJahreszahl(zahl, zielArt: art, in: &f)
         }
         if !eanSauber.isEmpty { f["ean"] = eanSauber }
+        // Eine Vorbelegung gilt für beide Wege: sonst müsste der Nutzer das Regal, das er gerade
+        // einräumt, in der Prüfmaske noch einmal eintippen.
+        if !startLagerort.isEmpty { f["lagerort"] = startLagerort }
+        if let s = startStandort { f["standort"] = s.rawValue }
         let h = hinweis.trimmingCharacters(in: .whitespacesAndNewlines)
         if !h.isEmpty { f["notizen"] = h }
         vorschlag = WeinVorschlag(felder: f, preise: [], quellen: [], confidence: "niedrig",

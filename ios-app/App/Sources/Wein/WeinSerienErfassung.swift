@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftUI
 import UIKit
 
@@ -117,11 +118,18 @@ final class WeinSerienLauf: ObservableObject {
 
 // MARK: - Serie 1: fotografieren
 
-/// Kamera im Dauerbetrieb: Flasche anvisieren, ausloesen, naechste Flasche. Die Kamera schliesst
-/// sich nach dem Bild NICHT und zeigt auch keinen Bestaetigungsschirm — sie laeuft mit einer
-/// EIGENEN Bedienebene statt mit der Standardsteuerung (`ImagePicker(serienBedienung:)`, dort ist
-/// begruendet warum). Beendet wird die Serie ueber „Fertig" in dieser Ebene, danach meldet der
-/// Bereich die Bilanz.
+/// Kamera im Dauerbetrieb: Flasche anvisieren, ausloesen, naechste Flasche. Kein
+/// Bestaetigungsschirm, kein Schliessen zwischendurch — beendet wird ueber „Fertig".
+///
+/// Der Sucher kommt aus `WeinKamera.swift` (AVFoundation). Warum NICHT
+/// `UIImagePickerController` mit eigener `cameraOverlayView`, steht dort ausfuehrlich: dessen
+/// Vorschau ist fest 4:3 (schwarzes unteres Drittel), seine Ebene haengt ausserhalb der
+/// SwiftUI-Hierarchie (Knoepfe reagieren nicht) und kennt die sicheren Bereiche nicht (Text unter
+/// der Dynamic Island).
+///
+/// Der Aufbau hier ist genau die Antwort darauf: EIN ZStack, unten der Sucher mit
+/// `.ignoresSafeArea()`, darueber die Bedienelemente OHNE — dadurch weichen Zaehler und Knoepfe
+/// automatisch der Dynamic Island und dem Home-Indikator aus.
 struct WeinSerienFotoView: View {
     @ObservedObject var lauf: WeinSerienLauf
     /// Store bewusst durchgereicht statt `@EnvironmentObject`: eine vollflaechig praesentierte
@@ -129,38 +137,109 @@ struct WeinSerienFotoView: View {
     /// bei den Sheets in `WeinRootView`).
     let store: WeinStore
 
-    /// Ohne Kamera (Simulator, verweigerte Hardware) hat die Serie keinen Sinn — der Bereich
-    /// weicht dann auf die normale Erfassung aus, statt eine leere Kamera zu zeigen.
-    static var kameraVerfuegbar: Bool { UIImagePickerController.isSourceTypeAvailable(.camera) }
+    /// Beendet die Serie. Der Aufrufer gibt sie mit, weil er den Zustand der Praesentation haelt —
+    /// das ist der verlaessliche Weg. `nil` faellt auf `dismiss` zurueck, was hier ebenfalls
+    /// funktioniert: diese Ansicht IST der Inhalt des `fullScreenCover`, also keine fremde
+    /// Hierarchie mehr (daran war die alte Fassung gescheitert — dort sass der Knopf in einem
+    /// eigenen UIHostingController, dessen `dismiss` ins Leere ging).
+    var schliessen: (() -> Void)? = nil
+
+    @Environment(\.dismiss) private var dismiss
+
+    /// Die Kamera gehoert dieser Ansicht: mit ihr aufgebaut, mit ihr gestoppt.
+    @StateObject private var kamera = WeinKameraModell()
+
+    /// Kurzer weisser Aufblitz beim Ausloesen — die einzige optische Rueckmeldung, die es ohne
+    /// Bestaetigungsschirm gibt.
+    @State private var blitz = false
+    /// Kurzlebiger Klartext ueber dem Sucher (fehlgeschlagene Aufnahme, noch nicht bereit).
+    @State private var hinweis: String?
+    @State private var hinweisAufgabe: Task<Void, Never>?
+
+    /// Ohne Kamera (Simulator, fehlende Hardware) hat die Serie keinen Sinn — der Bereich weicht
+    /// dann auf die normale Erfassung aus, statt eine leere Kamera zu zeigen.
+    static var kameraVerfuegbar: Bool { WeinKameraModell.kameraVorhanden }
 
     var body: some View {
-        // Zaehler UND Bedienelemente liegen in der Kamera-Ebene, nicht in einem ZStack darueber:
-        // die Ebene ist Teil des Kamerabildschirms und laeuft nicht Gefahr, dessen eigene Flaechen
-        // zu ueberdecken — und der Zaehler steht damit genau dort, wo auch der Ausloeser sitzt.
-        ImagePicker(
-            sourceType: .camera,
-            serienBedienung: { knoepfe in
-                AnyView(WeinSerienKameraBedienung(lauf: lauf,
-                                                  ausloesen: knoepfe.ausloesen,
-                                                  fertig: knoepfe.fertig))
-            },
-            onPick: { bild in lauf.einreihen(store: store, image: bild) }
-        )
-        .ignoresSafeArea()
+        ZStack {
+            // Grund fuer alle Zustaende: auch der Fehlerfall steht auf Schwarz, nicht auf der
+            // Systemfarbe des Blattes.
+            Color.black.ignoresSafeArea()
+
+            inhalt
+
+            // Aufblitz ueber dem Bild, aber UNTER den Knoepfen — und ohne Trefferflaeche, sonst
+            // schluckt er genau die Beruehrung, die ihn ausgeloest hat.
+            Color.white
+                .opacity(blitz ? 0.85 : 0)
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+
+            // BEWUSST ohne .ignoresSafeArea(): so und nur so respektieren Zaehler und Knoepfe die
+            // Dynamic Island oben und den Home-Indikator unten.
+            bedienung
+        }
+        .onAppear {
+            // Die Closure faengt AUSDRUECKLICH nur `lauf` und `store` ein, nicht `self`.
+            // `self` waere die Ansicht, und die haelt ueber `@StateObject` das Kameramodell —
+            // das Modell haelt die Closure, die Closure hielte die Ansicht, die Ansicht das
+            // Modell: ein geschlossener Ring, der nach jedem Durchgang eine komplette Kamera-Kette
+            // samt Sitzung im Speicher liesse. Genau dann, wenn nebenher Bilder kodiert und
+            // hochgeladen werden.
+            kamera.onBild = { [lauf, store] bild in
+                // Fehlschlaege meldet die Ansicht ueber `kamera.aufnahmeFehler` (siehe unten) —
+                // dafuer braucht es hier keinen Zugriff auf ihren Zustand.
+                guard let bild else { return }
+                lauf.einreihen(store: store, image: bild)
+            }
+            kamera.starten()
+        }
+        // Fehlgeschlagene Aufnahme: die Kamera steht ja noch offen, ein Satz reicht und der Nutzer
+        // loest einfach neu aus. Still verschwinden darf sie nicht.
+        .onChange(of: kamera.aufnahmeFehler) { _, _ in
+            zeige("Aufnahme fehlgeschlagen — bitte erneut auslösen")
+        }
+        .onDisappear {
+            hinweisAufgabe?.cancel()
+            // Sonst laeuft die Kamera weiter und die gruene Aufnahme-Anzeige bleibt an.
+            kamera.stoppen()
+        }
     }
-}
 
-/// Die Bedienebene der Foto-Serie: Zaehler oben, grosser Ausloeser unten, „Fertig" daneben.
-/// Sie ersetzt die Standardsteuerung der Kamera — nur deshalb entfaellt der Bestaetigungsschirm
-/// und der Sucher steht nach jedem Bild sofort wieder bereit (Begruendung in `ImagePicker`).
-private struct WeinSerienKameraBedienung: View {
-    /// Beobachtet: die Ebene lebt in einem eigenen Hosting-Controller und zieht ihren Stand damit
-    /// selbst nach, sobald ein Upload durch ist.
-    @ObservedObject var lauf: WeinSerienLauf
-    let ausloesen: () -> Void
-    let fertig: () -> Void
+    // ── Sucher bzw. Klartext statt schwarzem Bild ──
 
-    var body: some View {
+    @ViewBuilder
+    private var inhalt: some View {
+        switch kamera.zustand {
+        case .startet, .bereit:
+            WeinKameraVorschau(sitzung: kamera.sitzung)
+                .ignoresSafeArea()
+        case .keinZugriff:
+            stoerung("Kamerazugriff ist deaktiviert — in den Einstellungen erlauben",
+                     symbol: "camera.metering.unknown")
+        case .fehler(let text):
+            stoerung(text, symbol: "exclamationmark.triangle.fill")
+        }
+    }
+
+    /// Fehlerbild. Es verdraengt den Sucher, NICHT die Bedienleiste — „Fertig" muss auch hier
+    /// funktionieren, sonst sitzt der Nutzer in einem schwarzen Bildschirm fest.
+    private func stoerung(_ text: String, symbol: String) -> some View {
+        VStack(spacing: 14) {
+            Image(systemName: symbol)
+                .font(.system(size: 44))
+            Text(text)
+                .font(.headline)
+                .multilineTextAlignment(.center)
+        }
+        .foregroundStyle(.white)
+        .padding(28)
+        .accessibilityIdentifier("wein-serie-stoerung")
+    }
+
+    // ── Bedienung ──
+
+    private var bedienung: some View {
         VStack(spacing: 0) {
             fahne
             Spacer(minLength: 0)
@@ -177,7 +256,7 @@ private struct WeinSerienKameraBedienung: View {
             Text(lauf.stand)
                 .font(.subheadline.weight(.semibold))
                 .accessibilityIdentifier("wein-serie-zaehler")
-            Text("Für jede Flasche auslösen — Fertig beendet die Serie")
+            Text(hinweis ?? "Für jede Flasche auslösen — Fertig beendet die Serie")
                 .font(.caption2)
                 .opacity(0.85)
         }
@@ -204,9 +283,10 @@ private struct WeinSerienKameraBedienung: View {
 
     /// Bewusst NIE gesperrt — auch nicht, waehrend Uploads laufen: die Uploads gehen nebenlaeufig
     /// raus, und genau das ist der Sinn der Serie. Ein Ausloeser, der auf das Netz wartet, waere
-    /// langsamer als die Einzelerfassung.
+    /// langsamer als die Einzelerfassung. Auch im Stoerfall bleibt er stehen und bedienbar; er
+    /// sagt dann, warum gerade nichts geht (ein grau abgesetzter Knopf erklaert nichts).
     private var ausloeser: some View {
-        Button(action: ausloesen) {
+        Button(action: ausloesenGedrueckt) {
             ZStack {
                 Circle().stroke(Color.white.opacity(0.9), lineWidth: 4).frame(width: 78, height: 78)
                 Circle().fill(Color.white).frame(width: 64, height: 64)
@@ -220,7 +300,7 @@ private struct WeinSerienKameraBedienung: View {
     }
 
     private var fertigKnopf: some View {
-        Button(action: fertig) {
+        Button(action: beenden) {
             Text("Fertig")
                 .font(.headline)
                 .foregroundStyle(.white)
@@ -231,6 +311,44 @@ private struct WeinSerienKameraBedienung: View {
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("wein-serie-schliessen")
+    }
+
+    // ── Aktionen ──
+
+    private func ausloesenGedrueckt() {
+        guard kamera.ausloesen() else {
+            zeige("Kamera ist noch nicht bereit")
+            return
+        }
+        aufblitzen()
+    }
+
+    /// Sichtbare Quittung fuer die Ausloesung. Der Haptik-Impuls kommt BEWUSST nicht hier, sondern
+    /// aus `WeinSerienLauf.einreihen` — also in dem Moment, in dem das Bild wirklich vorliegt und
+    /// in die Warteschlange geht. Zwei Impulse im Abstand von Sekundenbruchteilen lesen sich als
+    /// Stottern, nicht als Bestaetigung.
+    private func aufblitzen() {
+        blitz = true
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 60_000_000)
+            withAnimation(.easeOut(duration: 0.18)) { blitz = false }
+        }
+    }
+
+    /// Serie beenden. Ueber die Closure des Aufrufers, sonst ueber `dismiss` (siehe `schliessen`).
+    private func beenden() {
+        if let aktion = schliessen { aktion() } else { dismiss() }
+    }
+
+    /// Kurzlebiger Hinweis in der Fahne; loest sich nach ein paar Sekunden von selbst wieder auf.
+    private func zeige(_ text: String) {
+        hinweis = text
+        hinweisAufgabe?.cancel()
+        hinweisAufgabe = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            guard !Task.isCancelled else { return }
+            hinweis = nil
+        }
     }
 }
 

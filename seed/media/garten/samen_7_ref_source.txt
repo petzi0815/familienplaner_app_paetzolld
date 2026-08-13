@@ -1,8 +1,20 @@
-Referenzbild für Thymian (Thymus vulgaris) - ID 7
+Referenzbild für Thymian (Thymus vulgaris) — garten_samen id 7
 
-Empfohlene Bildquellen:
+ERLEDIGT am 2026-08-13. Die Datei samen_7_ref.jpg war 0 Byte gross (der ursprüngliche Download
+war fehlgeschlagen und wurde trotzdem unter dem Zieldateinamen abgelegt). Ersetzt durch das hier
+unter Punkt 1 genannte Bild:
+
+  Datei   : Thymus_vulgaris0.jpg
+  Quelle  : Wikimedia Commons
+            https://commons.wikimedia.org/wiki/File:Thymus_vulgaris0.jpg
+  Urheber : Kurt Stüber, caliban.mpiz-koeln.mpg.de (Teil von www.biolib.de)
+  Lizenz  : CC BY-SA 3.0
+  Ablage  : 640x480, auf JPEG-Qualität 85 neu kodiert (das Original ist nicht grösser)
+
+Die Nennung von Urheber und Lizenz gehört zu den Bedingungen von CC BY-SA und steht deshalb hier —
+nicht als Beiwerk, sondern weil sie mit der Datei zusammen aufbewahrt werden muss.
+
+Ursprüngliche Notiz (Quellenvorschläge des Migrations-Skripts):
 1. Wikimedia Commons: https://commons.wikimedia.org/wiki/File:Thymus_vulgaris0.jpg
 2. Plantura: https://www.plantura.garden/kraeuter/thymian/thymian-pflanzen
 3. NaturaDB: https://www.naturadb.de/pflanzen/thymus-vulgaris/
-
-Bitte manuell ein hochauflösendes Bild als 'samen_7_ref.jpg' herunterladen.

@@ -58,7 +58,7 @@ targets:
           - CFBundleURLName: app.yagemi.familienplaner
             CFBundleURLSchemes:
               - familienplaner
-        NSCameraUsageDescription: "Zum Aufnehmen von Fotos und Scannen von Barcodes (Bücher-ISBN, Lebensmittel)."
+        NSCameraUsageDescription: "Zum Aufnehmen von Fotos und Scannen von Barcodes — Etiketten von Wein und Spirituosen, Bücher-ISBN, Lebensmittel."
         NSPhotoLibraryUsageDescription: "Zum Auswählen von Fotos aus der Mediathek."
         # Erlaubt canOpenURL für die Google-Maps-App (Ort auf dem Dashboard antippen).
         LSApplicationQueriesSchemes:

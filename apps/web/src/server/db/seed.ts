@@ -47,4 +47,45 @@ export function ensureSeeded(): void {
       log.info("Bereichs-Media nachgezogen", { sub, to: dst });
     }
   }
+
+  ersetzeLeereMedien(seedMedia);
+}
+
+/**
+ * Ersetzt Mediendateien im DATA_DIR, die 0 Byte gross sind, durch die Fassung aus dem Seed.
+ *
+ * Warum das nötig ist: die beiden Kopierschritte oben überspringen alles, was am Ziel schon
+ * existiert — richtig so, sonst überschriebe jeder Neustart die vom Nutzer hochgeladenen Bilder.
+ * Eine 0-Byte-Datei ist aber nie ein gültiger Inhalt, sondern immer ein abgebrochener Download
+ * oder Upload. Ohne diese Ausnahme bliebe sie für immer stehen: das Seed brächte die reparierte
+ * Datei mit, und das Volume zeigte weiter die leere (so geschehen bei `garten/samen_7_ref.jpg`,
+ * dessen Download bei der ursprünglichen Migration fehlschlug).
+ *
+ * Bewusst NUR die Länge 0 als Kriterium: alles andere — etwa „Datei sieht nicht nach einem Bild
+ * aus" — wäre eine Vermutung über fremde Inhalte und könnte echte Nutzerdaten überschreiben.
+ * Läuft still und best effort; ein Fehler hier darf den Boot nicht aufhalten.
+ */
+function ersetzeLeereMedien(seedMedia: string): void {
+  if (!fs.existsSync(seedMedia) || !fs.existsSync(config.mediaDir)) return;
+  let ersetzt = 0;
+  const durchlaufen = (relativ: string): void => {
+    const quelle = path.join(seedMedia, relativ);
+    for (const eintrag of fs.readdirSync(quelle, { withFileTypes: true })) {
+      const rel = relativ ? path.join(relativ, eintrag.name) : eintrag.name;
+      if (eintrag.isDirectory()) { durchlaufen(rel); continue; }
+      const ziel = path.join(config.mediaDir, rel);
+      try {
+        if (!fs.existsSync(ziel) || fs.statSync(ziel).size > 0) continue;
+        if (fs.statSync(path.join(seedMedia, rel)).size === 0) continue; // Seed selbst leer: nichts zu holen
+        fs.copyFileSync(path.join(seedMedia, rel), ziel);
+        ersetzt++;
+      } catch { /* einzelne Datei nicht lesbar — der Rest laeuft weiter */ }
+    }
+  };
+  try {
+    durchlaufen("");
+    if (ersetzt) log.info("Leere Mediendateien aus dem Seed ersetzt", { anzahl: ersetzt });
+  } catch (e) {
+    log.warn("Prüfung auf leere Mediendateien fehlgeschlagen", { error: String(e) });
+  }
 }
