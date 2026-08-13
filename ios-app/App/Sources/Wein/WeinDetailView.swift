@@ -9,10 +9,13 @@ import SwiftUI
 ///
 /// ART-ABHAENGIG (seit Migration 0022): Geschmacksprofil, Rebsorten, Geschmacksrichtung und
 /// Trinkfenster gibt es NUR beim Wein; Kategorie/Stil/Alter/Fass/Abfuelljahr, Trinkempfehlung,
-/// Cocktails, Fuellstand und der Standort-Umschalter NUR bei der Spirituose (das Abzeichen im
-/// Kopf zeigt einen geparkten Bestand dagegen bei beiden Arten — siehe dort). Bewertungen, Keller, Preise, Historie
-/// und Foto sind fuer beide Arten identisch — sie sind der Grund, warum beide in EINER Tabelle
-/// liegen. Kein Abschnitt darf leer erscheinen: fehlt ein Wert, faellt die Zeile weg.
+/// Cocktails und der Fuellstand NUR bei der Spirituose. Bewertungen, Keller, Preise, Historie,
+/// Foto und der Standort (Abzeichen im Kopf UND Umschalter im Keller-Block) sind fuer beide Arten
+/// identisch — sie sind der Grund, warum beide in EINER Tabelle liegen. Kein Abschnitt darf leer
+/// erscheinen: fehlt ein Wert, faellt die Zeile weg.
+///
+/// „Bearbeiten" in der Toolbar oeffnet die Erfassungsmaske im Bearbeiten-Modus (`bearbeitenSheet`);
+/// dort ist auch eine falsche Klassifikation (Weinart bzw. Kategorie) korrigierbar.
 struct WeinDetailView: View {
     let wein: Wein
 
@@ -22,6 +25,8 @@ struct WeinDetailView: View {
     @State private var speichert = false
     @State private var pruefe = false
     @State private var vorbereitet = false
+    /// Bearbeiten-Sheet (dieselbe Maske wie beim Anlegen, siehe `bearbeitenSheet`).
+    @State private var bearbeiten = false
 
     private var current: Wein { store.weine.first { $0.id == wein.id } ?? wein }
     private var tint: Color { Palette.colors(for: "wein").first ?? Theme.accent }
@@ -37,6 +42,7 @@ struct WeinDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 kopf
+                erkennungsblock
                 bewertungsblock
                 stammdaten
                 geschmacksprofil
@@ -57,10 +63,33 @@ struct WeinDetailView: View {
             .padding(16)
         }
         .background(Palette.gradient(for: "wein").opacity(0.05).ignoresSafeArea())
-        .navigationTitle(current.name)
+        // Ohne Namen (Flasche wartet noch auf die Erkennung) traegt der Titel `Wein.titel` —
+        // "Wird erkannt …" statt einer leeren Leiste.
+        .navigationTitle(current.name.isEmpty ? current.titel : current.name)
         .navigationBarTitleDisplayMode(.inline)
         .task { await ersteLadung() }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button("Bearbeiten") { bearbeiten = true }
+                    .accessibilityIdentifier("wein-bearbeiten")
+            }
+        }
+        .sheet(isPresented: $bearbeiten) { bearbeitenSheet }
         .areaToast($store.message, isError: store.messageIsError)
+    }
+
+    /// Bearbeitet wird in DERSELBEN Maske wie beim Anlegen (`WeinPruefenView`): dort stehen alle
+    /// art-abhaengigen Feldgruppen schon, eine zweite Maske liefe binnen einer Aenderung auseinander.
+    /// Sie bringt keinen NavigationStack mit (im Erfassungs-Fluss lebt sie im Stack des Sheets) —
+    /// hier stellt ihn deshalb das Sheet. Der Store wird ausdruecklich mitgegeben: Sheets erben die
+    /// EnvironmentObjects ihres Aufrufers nicht verlaesslich (gleiches Muster wie in `WeinRootView`).
+    /// Uebergeben wird `current` und nicht `wein`: der Store haelt den frischen Stand, `wein` ist
+    /// nur der Wert, mit dem die Seite einmal geoeffnet wurde.
+    private var bearbeitenSheet: some View {
+        NavigationStack {
+            WeinPruefenView(bearbeiten: current, schliessen: { bearbeiten = false })
+                .environmentObject(store)
+        }
     }
 
     // ── Laden / Speichern ──
@@ -140,12 +169,23 @@ struct WeinDetailView: View {
                 // weiter unten: „3 Flaschen" ohne den Zusatz laedt genau zu der Suche zu Hause ein,
                 // die das Feature verhindern soll. Gefuellt, damit es die einzige Pille ist, die
                 // hier eine Einschraenkung ausspricht.
-                // Bewusst NICHT auf Spirituosen eingeschraenkt (anders als der Umschalter): die
-                // Spalte gilt fuer beide Arten, und ein anderweitig geparkter Wein darf auf seiner
-                // eigenen Detailseite nicht so aussehen, als staende er zu Hause.
+                // Fuer beide Getraenkearten — wie der Umschalter im Keller-Block, der inzwischen
+                // ebenfalls bei beiden steht: ein geparkter Wein darf auf seiner eigenen
+                // Detailseite nicht so aussehen, als staende er zu Hause.
                 if current.istImBuero {
                     Pill(text: current.standort.emoji + " " + current.standort.label,
                          color: Color(hex: "0369A1"))
+                }
+                // Wartet die Flasche noch auf die Hintergrund-Erkennung (oder ist sie daran
+                // gescheitert), steht das hier — sonst wirkt eine Karte ohne Weingut, Land und
+                // Preis wie ein kaputter Datensatz statt wie einer, der gleich fertig ist.
+                if current.istUnfertig {
+                    Pill(text: current.kiStatus.label, systemImage: current.kiStatus.symbol,
+                         color: current.kiStatus.farbe)
+                }
+                if current.istDublette {
+                    Pill(text: "möglicherweise doppelt", systemImage: "doc.on.doc",
+                         color: Color(hex: "C2410C"))
                 }
             }
             // Die Lage ist eine reine Weinangabe (Einzellage) — bei Spirituosen bliebe sie ohnehin
@@ -155,6 +195,62 @@ struct WeinDetailView: View {
             if !ort.isEmpty {
                 Label(ort, systemImage: "mappin.and.ellipse").font(.subheadline).foregroundStyle(.secondary)
             }
+        }
+    }
+
+    // ── Hintergrund-Erkennung ──
+
+    /// Steht nur da, solange es etwas zu sagen gibt: waehrend die Erkennung laeuft, nach einem
+    /// Fehlschlag oder wenn ein aehnlicher Eintrag vermutet wird. Bei einer fertig erkannten,
+    /// eindeutigen Flasche — dem Normalfall — faellt der ganze Block weg.
+    @ViewBuilder private var erkennungsblock: some View {
+        if current.istUnfertig || current.istDublette {
+            block("Erkennung") {
+                VStack(alignment: .leading, spacing: 10) {
+                    erkennungsText
+                    if let id = current.dubletteVon { dublettenZeile(id) }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private var erkennungsText: some View {
+        if current.kiStatus == .fehler {
+            // Der Klartext des Servers, wenn es einen gibt — ohne ihn sucht man den Fehler bei der
+            // Flasche statt beim fehlenden Schluessel oder beim unlesbaren Etikett.
+            Text(current.kiFehler.map { "Fehler: " + $0 } ?? current.kiStatus.label)
+                .font(.subheadline).foregroundStyle(.secondary)
+            Text("Über Bearbeiten lässt sich die Flasche von Hand ausfüllen oder erneut erkennen.")
+                .font(.caption).foregroundStyle(.secondary)
+        } else if current.istUnfertig {
+            Text("Etikett und Preise werden im Hintergrund ergänzt. Das dauert einen Moment.")
+                .font(.subheadline).foregroundStyle(.secondary)
+        }
+    }
+
+    /// Verweis auf den vermuteten vorhandenen Eintrag. Zusammengefuehrt wird NIE automatisch —
+    /// zwei Flaschen desselben Weins sind der Normalfall; entscheiden muss das ein Mensch, und
+    /// dafuer muss er den anderen Eintrag erst einmal ansehen koennen.
+    @ViewBuilder private func dublettenZeile(_ id: Int) -> some View {
+        if let vorhanden = store.weine.first(where: { $0.id == id }) {
+            HStack(spacing: 10) {
+                Label("Ähnlich: " + vorhanden.titel, systemImage: "doc.on.doc")
+                    .font(.caption).foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                NavigationLink {
+                    WeinDetailView(wein: vorhanden).environmentObject(store)
+                } label: {
+                    Text("Ansehen").font(.caption)
+                }
+                .buttonStyle(.bordered)
+                .tint(tint)
+                .accessibilityIdentifier("wein-dublette-ansehen")
+            }
+        } else {
+            // Kann passieren, wenn die Liste noch nicht (neu) geladen ist — dann lieber sagen, dass
+            // es einen Verdacht gibt, als gar nichts zu zeigen.
+            Text("Ein ähnlicher Eintrag ist vermerkt, aber gerade nicht geladen.")
+                .font(.caption).foregroundStyle(.secondary)
         }
     }
 
@@ -398,6 +494,7 @@ struct WeinDetailView: View {
                 if let ort = current.lagerort, !ort.isEmpty {
                     InfoRow(icon: "📦", label: "Lagerort", value: ort)
                 }
+                standortZeile
             }
         }
     }
@@ -408,9 +505,10 @@ struct WeinDetailView: View {
     /// Deshalb hier ein Balken statt eines Zaehlers — und sechs feste Stufen statt eines
     /// Schiebereglers: niemand misst den Rest einer Flasche prozentgenau, und ein Tipp ist
     /// schneller als eine Ziehbewegung.
-    /// Die Karte traegt inzwischen den ganzen Zustand DIESER Flasche — Fuellstand, angebrochen und
-    /// Standort. Der Umschalter sitzt deshalb hier und nicht im Keller-Block: dort geht es um den
-    /// Bestand (beide Arten), hier um die eine Flasche, und geparkt wird nur bei Spirituosen.
+    /// Die Karte traegt den Zustand DIESER Flasche — Fuellstand und angebrochen.
+    /// Der Standort-Umschalter stand frueher hier, weil nur Spirituosen geparkt wurden; jetzt gilt
+    /// er fuer beide Arten und sitzt deshalb im Keller-Block, neben dem Lagerort: dort steht, WO
+    /// die Flaschen liegen (Gebaeude und Regal), hier, wie viel noch drin ist.
     @ViewBuilder private var fuellstandBlock: some View {
         if current.art == .spirituose {
             block("Füllstand") {
@@ -427,7 +525,6 @@ struct WeinDetailView: View {
                         }
                     }
                     angebrochenZeile
-                    standortZeile
                 }
             }
         }
@@ -481,9 +578,12 @@ struct WeinDetailView: View {
         }
     }
 
-    /// Wo die Flasche steht — Gebaeude, nicht Regal: der `lagerort` im Keller-Block bleibt daneben
+    /// Wo die Flasche steht — Gebaeude, nicht Regal: der `lagerort` direkt darueber bleibt daneben
     /// gueltig („im Buero, dort im Schrank links"). Geparkt heisst NICHT weg: der Bestand bleibt
     /// unangetastet, es kommt nur das Label dazu, damit zu Hause niemand danach sucht.
+    /// Gilt fuer BEIDE Getraenkearten: eine Weinkiste im Buero ist genauso wenig zu Hause wie die
+    /// Ginflasche, und ein Abzeichen ohne Bedienelement (so war es vorher beim Wein) ist schlimmer
+    /// als eins zu viel.
     /// Aufbau wie `angebrochenZeile` — beide Beschriftungen vorab als String, weil ein Ternaer aus
     /// zwei Literalen direkt im `Button(...)` dem Compiler die Wahl zwischen LocalizedStringKey und
     /// String liesse.

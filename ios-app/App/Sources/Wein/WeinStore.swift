@@ -148,8 +148,46 @@ final class WeinStore: ObservableObject, NotifiableStore {
         return SpirituosenKategorie.allCases.filter { vorhanden.contains($0) }
     }
 
+    // MARK: - Warteschlange der Hintergrund-Erkennung
+    //
+    // Die Zaehler werden aus der GELADENEN Liste abgeleitet und NICHT als eigener Zustand gehalten:
+    // das Segment "Queue (n)" und die Liste darunter muessen dieselbe Menge meinen. Ein zweiter,
+    // getrennt gepflegter Zaehler koennte der angezeigten Liste widersprechen ("Queue (3)" ueber
+    // zwei Zeilen) — der billige Serverzaehler dient deshalb nur als AUSLOESER fuers Nachladen
+    // (siehe `queueNachladen()`), nicht als Anzeigewert.
+    // Sie folgen wie alles andere dem Umschalter: wer gerade Spirituosen pflegt, sieht auch nur
+    // deren offene Erkennungen.
+
+    /// Noch nicht fertig erkannte Flaschen der aktuellen Art, aelteste zuerst.
+    /// Die Reihenfolge laeuft ueber die ID: `ki_queued_at` steht nicht im Modell, und die IDs werden
+    /// aufsteigend vergeben — die zuerst eingereihte Flasche hat die kleinste. Genau diese
+    /// Reihenfolge arbeitet auch der Server ab.
+    var queueEintraege: [Wein] {
+        weineDerArt.filter { $0.kiStatus != .fertig }.sorted { $0.id < $1.id }
+    }
+
+    var queueOffen: Int { weineDerArt.filter { $0.kiStatus == .offen }.count }
+    var queueLaeuft: Int { weineDerArt.filter { $0.kiStatus == .laeuft }.count }
+    var queueFehler: Int { weineDerArt.filter { $0.kiStatus == .fehler }.count }
+
+    /// Zahl fuer das Segment "Queue (n)". 0 heisst: das Segment erscheint gar nicht — im Alltag
+    /// bleibt die Leiste dadurch unveraendert.
+    var queueGesamt: Int { queueEintraege.count }
+
+    /// Laeuft gerade ein von Hand angestossener Sammellauf ("Alle jetzt verarbeiten")? Die Ansicht
+    /// sperrt den Knopf damit; ein zweiter Anstoss waere nutzlos (der Server laesst ohnehin nur
+    /// einen Sammellauf zu) und saehe fuer den Nutzer wie ein Fehler aus.
+    @Published private(set) var anreicherungLaeuft = false
+
     /// Reihenfolge: Art → Tab → Suchtext → art-eigene Filter/Land/Mindeststerne → Sortierung.
     var gefiltert: [Wein] {
+        // Die Warteschlange steht BEWUSST vor allem anderen und umgeht Suche, Filter und Sortierung:
+        // eine noch nicht erkannte Flasche hat weder Namen noch Land noch Rebsorte, jeder Filter
+        // wuerde sie also wegwerfen — und dann waere das Segment leer, obwohl es genau wegen dieser
+        // Zeilen ueberhaupt erschienen ist. Auch die Sortierung ist hier fest (aelteste zuerst):
+        // abgearbeitet wird von oben, das soll man sehen.
+        if tab == .queue { return queueEintraege }
+
         var out = weineDerArt
 
         switch tab {
@@ -157,6 +195,7 @@ final class WeinStore: ObservableObject, NotifiableStore {
         case .keller: out = out.filter { $0.bestand > 0 }
         case .top:    out = out.filter { (schnitt($0) ?? 0) >= 4 }
         case .offen:  out = out.filter { meine($0) == nil }
+        case .queue:  break   // oben schon beantwortet, steht nur der Vollstaendigkeit halber hier
         }
 
         // Stil und Cocktails sind fuer Spirituosen das, was Rebsorte und Aroma fuer den Wein sind —
@@ -190,10 +229,12 @@ final class WeinStore: ObservableObject, NotifiableStore {
                 }
             }
             if let st = filterStil, !st.isEmpty { out = out.filter { $0.stil == st } }
-            // Standort greift wie Kategorie/Stil nur hier: das Menue dazu steht in der
-            // Spirituosen-Zeile, ein unter "Weine" wirkender Filter waere dort nicht zu loesen.
-            if let so = filterStandort { out = out.filter { $0.standort == so } }
         }
+        // Standort gilt seit dem Buero-Ausbau fuer BEIDE Arten: das Menue dazu steht jetzt in der
+        // Dropdown-Zeile von Wein wie Spirituose, ein gesetzter Filter ist also ueberall zu sehen
+        // und zu loesen. Vorher stand er im Spirituosen-Zweig — unter "Weine" haette er unsichtbar
+        // weitergefiltert.
+        if let so = filterStandort { out = out.filter { $0.standort == so } }
         if let l = filterLand, !l.isEmpty { out = out.filter { $0.land == l } }
         if let s = filterMinSterne { out = out.filter { (schnitt($0) ?? 0) >= Double(s) } }
 
@@ -269,8 +310,10 @@ final class WeinStore: ObservableObject, NotifiableStore {
     var filterAktiv: Bool {
         let artEigen = art == .wein
             ? (!filterTyp.isEmpty || filterRebsorte != nil)
-            : (!filterKategorie.isEmpty || filterStil != nil || filterStandort != nil)
-        return artEigen || filterLand != nil || filterMinSterne != nil
+            : (!filterKategorie.isEmpty || filterStil != nil)
+        // Standort zaehlt jetzt bei beiden Arten mit — er wirkt bei beiden und ist bei beiden
+        // bedienbar (siehe `gefiltert`).
+        return artEigen || filterStandort != nil || filterLand != nil || filterMinSterne != nil
     }
 
     // MARK: - Mutationen
@@ -313,17 +356,56 @@ final class WeinStore: ObservableObject, NotifiableStore {
     }
 
     /// Flaschenzahl im Keller setzen (optimistisch, bei Fehler zurueckgedreht).
-    func setBestand(_ wein: Wein, _ n: Int) async {
+    /// Der Rueckgabewert sagt, ob der Server es angenommen hat — die Wisch-Aktionen haengen ihre
+    /// Erfolgsmeldung daran. Aus dem Store-Zustand allein waere das nicht ablesbar: nach dem
+    /// Zurueckdrehen sieht ein Fehlschlag genauso aus wie ein Aufruf, bei dem sich nichts geaendert hat.
+    @discardableResult
+    func setBestand(_ wein: Wein, _ n: Int) async -> Bool {
         let neu = max(0, n)
         let alt = wein.bestand
-        guard neu != alt else { return }
+        guard neu != alt else { return true }
         patchLokal(wein.id) { $0.bestand = neu }
         do {
             let w = try await api.update(wein.id, ["bestand": neu])
             ersetzeOderErgaenze(w)
+            return true
         } catch {
             patchLokal(wein.id) { $0.bestand = alt }
             notify(errText(error), error: true)
+            return false
+        }
+    }
+
+    /// Eine Flasche entnehmen (Wisch-Aktion). Nie unter 0 — das erledigt schon `setBestand`, hier
+    /// steht zusaetzlich der Klartext davor, damit ein Wisch auf einen leeren Eintrag nicht wirkungslos
+    /// aussieht.
+    func bestandMinusEins(_ wein: Wein) async {
+        guard wein.bestand > 0 else {
+            notify("Es ist keine Flasche mehr verbucht", error: true)
+            return
+        }
+        let neu = wein.bestand - 1
+        if await setBestand(wein, neu) { notify(WeinStore.bestandsMeldung(neu)) }
+    }
+
+    /// Ganzen Bestand auf 0 setzen (Wisch-Aktion "Leer"). Die Flasche bleibt im Inventar — mit
+    /// Bewertung, Preis-Historie und Foto; sie faellt nur aus dem Keller. Wer sie wirklich loswerden
+    /// will, loescht sie.
+    func leeren(_ wein: Wein) async {
+        guard wein.bestand > 0 else {
+            notify("Es ist keine Flasche mehr verbucht", error: true)
+            return
+        }
+        if await setBestand(wein, 0) { notify("Als leer markiert") }
+    }
+
+    /// Rueckmeldung nach dem Entnehmen. Bewusst mit Einzahl/Mehrzahl und einem eigenen Satz fuer 0:
+    /// "Noch 1 Flaschen" oder "Noch 0 Flaschen" waere beides falsch.
+    private static func bestandsMeldung(_ rest: Int) -> String {
+        switch rest {
+        case 0:  return "Letzte Flasche entnommen"
+        case 1:  return "Noch 1 Flasche"
+        default: return "Noch \(String(rest)) Flaschen"
         }
     }
 
@@ -434,9 +516,7 @@ final class WeinStore: ObservableObject, NotifiableStore {
     func delete(_ wein: Wein) async {
         do {
             try await api.delete(wein.id)
-            weine.removeAll { $0.id == wein.id }
-            bewertungen[wein.id] = nil
-            preise[wein.id] = nil
+            entferneLokal(wein.id)
             notify("Gelöscht")
         } catch {
             notify(errText(error), error: true)
@@ -471,6 +551,101 @@ final class WeinStore: ObservableObject, NotifiableStore {
         return try? await api.uploadFoto(jpeg: jpeg)
     }
 
+    // MARK: - Schnellerfassung und Warteschlange
+
+    /// Flasche einreihen: Etikettenfoto ODER Barcode rein, der Server legt die Zeile SOFORT an und
+    /// erkennt sie im Hintergrund. `art` geht immer als Hinweis mit (der Umschalter der Ansicht) —
+    /// widerspricht das Etikett, gewinnt laut Backend die Erkennung.
+    ///
+    /// `serie` ist der Serienmodus (Kamera bleibt offen, ein Barcode nach dem anderen): dort wird
+    /// WEDER nachgeladen NOCH gemeldet. Die Ansicht zaehlt selbst und fasst am Ende alles in einem
+    /// Toast zusammen; ein Nachladen je Ausloesung waere eine volle Liste pro Foto, und ein Toast je
+    /// Ausloesung wuerde die Rueckmeldung ueberschreiben, die der Nutzer gerade lesen soll.
+    /// Der Rueckgabewert ist die Grundlage dieser Zaehlung — ein fehlgeschlagener Upload (Flugmodus)
+    /// darf nicht still verschwinden.
+    @discardableResult
+    func erfassen(image: Data? = nil, ean: String? = nil, standort: WeinStandort? = nil,
+                  lagerort: String? = nil, serie: Bool = false) async -> Bool {
+        do {
+            _ = try await api.erfassen(image: image, ean: ean, art: art,
+                                       standort: standort, lagerort: lagerort)
+            if !serie {
+                await reload()
+                notify(art.einzahl + " eingereiht — wird jetzt erkannt")
+            }
+            return true
+        } catch {
+            if !serie { notify(errText(error), error: true) }
+            return false
+        }
+    }
+
+    /// Erkennung anstossen: ohne `id` alles Offene der Reihe nach ("Alle jetzt verarbeiten"), mit
+    /// `id` genau diese eine Flasche ("Erneut versuchen", "Erneut erkennen lassen") — die ignoriert
+    /// serverseitig auch die Versuchsgrenze.
+    /// Laeuft minutenlang; danach wird die Liste nachgezogen, damit die frisch erkannten Flaschen
+    /// mit Namen dastehen.
+    func anreicherungStarten(id: Int? = nil) async {
+        // Nicht still verschlucken: wer waehrend eines Laufs noch einmal tippt, bekommt gesagt,
+        // warum nichts passiert. Ein zweiter Anstoss brauchte ohnehin nicht anzukommen — der Server
+        // laesst nur einen Sammellauf gleichzeitig zu.
+        guard !anreicherungLaeuft else {
+            notify("Es läuft schon eine Erkennung")
+            return
+        }
+        anreicherungLaeuft = true
+        defer { anreicherungLaeuft = false }
+        do {
+            let lauf = try await api.anreicherungStarten(id: id)
+            await reload()
+            notify(WeinStore.laufMeldung(verarbeitet: lauf.verarbeitet, fertig: lauf.fertig, fehler: lauf.fehler),
+                   error: lauf.verarbeitet > 0 && lauf.fertig == 0)
+        } catch {
+            // Klartext des Backends stehen lassen (fehlender Schluessel = 501, Anbieter nicht
+            // erreichbar = 502) — eine Pauschalmeldung liesse den Fehler bei der Flasche suchen.
+            notify(errText(error), error: true)
+        }
+    }
+
+    /// Ergebnis eines Laufs in einem Satz. Jede Zahl wird ueber `String(...)` gesetzt (sonst macht
+    /// die Interpolation aus 1024 ein "1.024"), und jede Form muss auch bei 1 und bei 0 stimmen.
+    private static func laufMeldung(verarbeitet: Int, fertig: Int, fehler: Int) -> String {
+        if verarbeitet == 0 { return "Gerade ist nichts zu erkennen" }
+        if fehler == 0 { return fertig == 1 ? "1 Flasche erkannt" : "\(String(fertig)) Flaschen erkannt" }
+        if fertig == 0 { return fehler == 1 ? "Erkennung fehlgeschlagen" : "\(String(fehler)) Flaschen nicht erkannt" }
+        return "\(String(fertig)) erkannt, \(String(fehler)) fehlgeschlagen"
+    }
+
+    /// Zaehlerstand der Warteschlange beim Server holen und die Liste NUR nachziehen, wenn sich
+    /// wirklich etwas bewegt hat. Genau dafuer gibt es die schmale GET-Route: die Ansicht ruft das
+    /// im Sekundentakt, solange die Queue nicht leer und sichtbar ist — eine volle Liste alle zehn
+    /// Sekunden waere Verschwendung.
+    /// BEWUSST OHNE eigenen Timer im Store: ein Timer hier liefe auch weiter, wenn der Bereich gar
+    /// nicht mehr sichtbar ist. Das Takten gehoert zur Ansicht (`scenePhase`), sie ist die Einzige,
+    /// die weiss, ob gerade jemand hinschaut.
+    /// Fehler bleiben stumm — ein kurzer Netzhaenger beim Nachzaehlen ist keine Meldung wert und
+    /// wuerde alle zehn Sekunden dieselbe Fehlerblase erzeugen.
+    func queueNachladen() async {
+        guard let z = try? await api.queueZaehler(art: art) else { return }
+        if z.offen != queueOffen || z.laeuft != queueLaeuft || z.fehler != queueFehler {
+            await reload()
+        }
+    }
+
+    /// Nicht erkannte Flasche wegwerfen (Knopf "Verwerfen" in der Queue). Loescht die Zeile — bei
+    /// einem Fehlauslöser der Kamera ist genau das gemeint, und der Datensatz enthaelt ausser dem
+    /// Foto ohnehin nichts.
+    /// Eigene Meldung statt `delete`: dort steht "Gelöscht", was nach einem Verlust klingt.
+    func verwerfen(_ wein: Wein) async {
+        do {
+            try await api.delete(wein.id)
+            entferneLokal(wein.id)
+            notify("Verworfen")
+        } catch {
+            notify(errText(error), error: true)
+        }
+    }
+
     // MARK: - Lokaler Cache
 
     private func patchLokal(_ id: Int, _ mutate: (inout Wein) -> Void) {
@@ -480,6 +655,15 @@ final class WeinStore: ObservableObject, NotifiableStore {
     private func ersetzeOderErgaenze(_ w: Wein) {
         guard w.id > 0 else { return }
         if let i = weine.firstIndex(where: { $0.id == w.id }) { weine[i] = w } else { weine.insert(w, at: 0) }
+    }
+
+    /// Zeile samt allem, was an ihrer ID haengt, aus dem lokalen Stand nehmen. Bewertungen und
+    /// Preis-Historie MUESSEN mit weg: sonst zeigte eine spaeter mit derselben ID neu angelegte
+    /// Flasche die Sterne ihrer Vorgaengerin.
+    private func entferneLokal(_ id: Int) {
+        weine.removeAll { $0.id == id }
+        bewertungen[id] = nil
+        preise[id] = nil
     }
 
     // notify(_:error:) und errText(_:) kommen aus NotifiableStore.

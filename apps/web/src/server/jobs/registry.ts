@@ -6,6 +6,7 @@ import { retryAll, pendingCount, queuedCount, verifyQueued, repairUnverifiedDown
 import { getCategoryInfo } from "@/server/legacy/termine-db";
 import { getWeinSettings } from "@/server/wein/settings";
 import { faelligeWeine, runPreischeck, type PreisErgebnis, type PreisTreffer } from "@/server/wein/pricecheck";
+import { verarbeiteOffene } from "@/server/wein/anreicherung";
 import { hasPerplexity } from "@/server/wein/perplexity";
 import { hasOpenAI } from "@/server/elisbooks/openai";
 
@@ -1019,6 +1020,58 @@ export const JOBS: JobDef[] = [
       else if (neue.length) messages.push("Push ist in den Einstellungen abgeschaltet — keine Meldung gesendet");
 
       return { messages, affected: r.geprueft };
+    },
+  },
+  {
+    name: "wein-anreicherung",
+    // Alle 5 Minuten: die Erfassung stößt die Erkennung selbst an (fire-and-forget in
+    // `POST /api/v1/wein-erfassen`), dieser Job ist das Sicherheitsnetz dahinter. Ein Deploy oder
+    // Container-Neustart mitten im Lauf kappt den Anstoß lautlos — ohne den Job bliebe die Flasche
+    // für immer auf „offen"/„läuft" stehen, und die Zusage „nichts geht verloren" wäre gebrochen.
+    schedule: "*/5 * * * *",
+    topic: "wein",
+    description:
+      "Eingereihte Flaschen (Foto/EAN) im Hintergrund erkennen: hängengebliebene Läufe zurückholen " +
+      "und offene Zeilen der Reihe nach durch die KI-Kette schicken.",
+    async run(ctx) {
+      // Ohne den Schlüssel läuft keine Erkennung. Statt jede Zeile durchzuprobieren und dabei
+      // `ki_versuche` hochzuzählen (nach drei Fehlschlägen fiele sie aus der automatischen
+      // Wiederholung), hier derselbe saubere No-Op wie beim Preischeck — die Warteschlange bleibt
+      // unangetastet und wird abgearbeitet, sobald der Schlüssel gesetzt ist.
+      if (!hasOpenAI()) return { messages: ["OPENAI_API_KEY nicht konfiguriert — Anreicherung übersprungen"], affected: 0 };
+
+      // Fälligkeit vorab zählen: das ist zugleich die Trockenlauf-Antwort. `verarbeiteOffene` würde
+      // im Trockenlauf nichts anderes tun, als die (kostenpflichtigen) OpenAI- und
+      // Perplexity-Anfragen trotzdem abzufeuern — ein dry_run darf kein Geld kosten.
+      //
+      // Die drei Bedingungen spiegeln die Auswahl in `server/wein/anreicherung.ts`
+      // (Stale-Rückholung nach 15 Minuten, automatische Wiederholung bis 3 Versuche); ändert sie
+      // sich dort, gehört sie hier nachgezogen — falsch gezählt wird höchstens der Trockenlauf,
+      // gearbeitet wird ausschließlich mit der Auswahl des Moduls.
+      let faellig = 0;
+      try {
+        const r = ctx.db.prepare(
+          "SELECT COUNT(*) AS n FROM weine WHERE ki_status='offen' " +
+          "   OR (ki_status='laeuft' AND (ki_queued_at IS NULL OR datetime(ki_queued_at) < datetime('now','-15 minutes'))) " +
+          "   OR (ki_status='fehler' AND COALESCE(ki_versuche,0) < 3)",
+        ).get() as { n: number };
+        faellig = Number(r?.n) || 0;
+      } catch (e) {
+        // Migration 0024 noch nicht angewandt → nichts einzureihen, kein Fehler.
+        return { messages: ["Warteschlange nicht verfügbar: " + String((e as Error)?.message ?? e).slice(0, 120)], affected: 0 };
+      }
+
+      if (!faellig) return { messages: ["nichts einzureihen"], affected: 0 };
+      if (ctx.dryRun) return { messages: [`${faellig} Flasche(n) fällig (offen, hängengeblieben oder mit freiem Versuch)`], affected: 0 };
+
+      // Ohne `limit`: der Deckel je Lauf steht im Modul (eine Quelle der Wahrheit für die Kosten).
+      const r = await verarbeiteOffene(ctx.db, {});
+      const messages = [`Anreicherung: ${r.verarbeitet} verarbeitet, ${r.fertig} fertig, ${r.fehler} fehlgeschlagen (${faellig} fällig)`];
+      // `eintraege` ist die Zeilenschau des Moduls (was mit welcher Flasche passiert ist). Bewusst
+      // formatunabhängig ins Protokoll gehoben — steht dort ein Objekt statt eines Satzes, ist ein
+      // lesbares JSON immer noch brauchbar, „[object Object]" wäre es nicht.
+      for (const e of r.eintraege ?? []) messages.push("• " + (typeof e === "string" ? e : JSON.stringify(e)));
+      return { messages, affected: r.fertig };
     },
   },
 ];

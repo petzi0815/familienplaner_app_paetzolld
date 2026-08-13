@@ -102,7 +102,15 @@ struct WeinListView: View {
             }
             .accessibilityIdentifier("wein-swipe-loeschen-" + String(w.id))
             if w.bestand > 0 {
-                Button { Task { await store.setBestand(w, w.bestand - 1) } } label: {
+                // Zwei Stufen, weil beim Inventarisieren beides vorkommt: eine Flasche geleert
+                // (haeufig) oder die letzte Restmenge weg (dann will niemand fuenfmal wischen).
+                // Beide laufen ueber den Store, der optimistisch setzt und bei Fehlern zurueckdreht.
+                Button { Task { await store.leeren(w) } } label: {
+                    Label("Leer", systemImage: "xmark.circle")
+                }
+                .tint(Color(hex: "B45309"))
+                .accessibilityIdentifier("wein-swipe-leer-" + String(w.id))
+                Button { Task { await store.bestandMinusEins(w) } } label: {
                     Label("Getrunken", systemImage: "wineglass")
                 }
                 .tint(Color(hex: "7C3AED"))
@@ -132,6 +140,7 @@ struct WeinKarte: View {
             etikett
             VStack(alignment: .leading, spacing: 5) {
                 Text(wein.titel).font(.subheadline.weight(.semibold)).lineLimit(2)
+                zustandsAbzeichen
                 if !herkunft.isEmpty {
                     Text(herkunft).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
@@ -144,12 +153,13 @@ struct WeinKarte: View {
                     Pill(text: String(wein.bestand) + " Fl.", systemImage: "archivebox",
                          color: Color(hex: "475569"), filled: false)
                 }
-                if wein.art == .spirituose && wein.istImBuero {
+                if wein.istImBuero {
                     // Direkt unter der Flaschenzahl, weil es genau sie einschraenkt: die drei
                     // Flaschen gibt es, nur eben nicht zu Hause. Kein Bestands-Vorbehalt (wie beim
                     // Abzeichen „angebrochen"): geparkt ist eine Eigenschaft des Eintrags.
-                    // NUR bei Spirituosen — geparkt wird ausschliesslich dort, und an jeder
-                    // Weinkarte waere das Abzeichen eine Angabe ohne Bedienelement dahinter.
+                    // Fuer BEIDE Getraenkearten: seit dem Umbau laesst sich auch eine Kiste Barolo
+                    // im Buero parken, und was geparkt ist, muss im Katalog sichtbar sein — sonst
+                    // sucht man sie zu Hause, und genau das soll der Standort ersparen.
                     Pill(text: WeinStandort.buero.emoji + " " + WeinStandort.buero.kurz,
                          color: Color(hex: "475569"), filled: false)
                 }
@@ -165,6 +175,34 @@ struct WeinKarte: View {
         .padding(10)
         .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .contentShape(Rectangle())
+    }
+
+    /// Abzeichen fuer Zeilen, an denen noch etwas offen ist: die Hintergrund-Erkennung laeuft bzw.
+    /// ist gescheitert, oder sie haelt die Flasche fuer eine Dublette. Beides sind KEINE Filter und
+    /// keine Fehler des Bestands — die Zeile zaehlt ueberall normal mit und traegt nur zusaetzlich
+    /// diesen Hinweis.
+    /// Sie stehen unter dem Titel und nicht in der rechten Spalte: dort ist es schmal, und genau
+    /// diese Zeilen haben sonst nichts zu zeigen (kein Land, keine Rebsorte, keine Bewertung).
+    /// Untereinander statt nebeneinander, weil "möglicherweise doppelt" allein schon breit ist.
+    /// Zusammengefuehrt wird nie automatisch — der Verweis auf den vorhandenen Eintrag samt Knopf
+    /// „Ansehen" steht im Detail, hier waere dafuer kein Platz.
+    /// Die aeussere Bedingung ist wichtig: eine leere `VStack` waere zwar unsichtbar, bekaeme in der
+    /// umgebenden Spalte aber trotzdem ihren Abstand — jede fertige Karte wuerde dadurch hoeher.
+    @ViewBuilder private var zustandsAbzeichen: some View {
+        if wein.istUnfertig || wein.istDublette {
+            VStack(alignment: .leading, spacing: 4) {
+                if wein.istUnfertig {
+                    // Text/Farbe/Symbol kommen aus `WeinKiStatus` — dieselbe Quelle wie die
+                    // Warteschlangen-Zeile, damit beide Orte nicht auseinanderlaufen.
+                    Pill(text: wein.kiStatus.label, systemImage: wein.kiStatus.symbol,
+                         color: wein.kiStatus.farbe, filled: false)
+                }
+                if wein.istDublette {
+                    Pill(text: "möglicherweise doppelt", systemImage: "doc.on.doc",
+                         color: Color(hex: "EA580C"), filled: false)
+                }
+            }
+        }
     }
 
     /// Einordnungs-Pille: Weintyp bzw. Spirituosen-Kategorie. Ist bei einer Spirituose keine der

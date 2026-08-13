@@ -11,6 +11,8 @@ import SwiftUI
 //
 // Die Zeile ist absichtlich KEIN NavigationLink: ein Link mit zwei Knoepfen darin ist in einer
 // `List` unzuverlaessig, und hier zaehlt das Zaehlen. Der Weg ins Detail bleibt der Alle-Tab.
+// Zusaetzlich zu den Zaehl-Knoepfen liegen die beiden haeufigsten Bestands-Aenderungen als
+// Wisch-Aktionen an der Zeile („−1" und „Leer") — derselbe Handgriff wie in der Katalogliste.
 //
 // Seit den Spirituosen zeigt die Zeile zusaetzlich Fuellstand und "angebrochen": eine offene
 // Whiskyflasche steht Monate an der Bar, und ob noch ein Drittel drin ist, entscheidet ueber den
@@ -107,9 +109,10 @@ struct WeinKellerView: View {
                                 rang: Self.rangBuero)
     }
 
-    /// Im Buero geparkte Flaschen der angezeigten Getraenkeart. Nicht auf Spirituosen eingeschraenkt:
-    /// die Spalte gilt fuer beide Arten, und was geparkt IST, muss auch sichtbar sein — nur die
-    /// Bedienelemente zum Umschalten bleiben den Spirituosen vorbehalten.
+    /// Im Buero geparkte Flaschen der angezeigten Getraenkeart. Die Spalte gilt fuer beide Arten —
+    /// seit dem Umschalter im Kontextmenue an JEDER Zeile (nicht mehr nur an Spirituosen) auch die
+    /// Bedienung dazu: geparkt wird, was zu Hause keinen Platz hat, und das ist bei einer Kiste
+    /// Barolo nicht anders als bei einer Kiste Whisky.
     private var imBuero: [Wein] { imKeller.filter { $0.istImBuero } }
 
     private var flaschenGesamt: Int { imKeller.reduce(0) { $0 + $1.bestand } }
@@ -266,20 +269,42 @@ struct WeinKellerView: View {
             .listRowSeparator(.hidden)
             .listRowBackground(Color.clear)
             .listRowInsets(EdgeInsets(top: 5, leading: 14, bottom: 5, trailing: 14))
+            // Wischen als zweiter, schneller Weg zum Bestand — dieselben zwei Faelle, die den Keller
+            // ueberhaupt ausmachen: eine Flasche entnommen und "die Kiste ist alle". Die Zaehl-
+            // Knoepfe in der Zeile bleiben der genaue Weg (auch nach oben); der Wisch spart den
+            // Zielvorgang auf ein kleines Symbol, wenn die Hand schon an der Zeile ist.
+            // KEIN Vollwisch: beide Aktionen greifen in den Bestand ein, und ein versehentlicher
+            // Durchzug haette die naechstliegende — "Leer" — ohne Rueckfrage ausgeloest.
+            // Eine Bestandspruefung braucht es hier nicht: im Keller steht nur, was `imKeller` mit
+            // `bestand > 0` durchgelassen hat, und der Store meldet den Rest im Klartext.
+            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                Button {
+                    Task { await store.bestandMinusEins(w) }
+                } label: {
+                    Label("−1", systemImage: "minus.circle")
+                }
+                .tint(Color(hex: "7C3AED"))
+                .accessibilityIdentifier(praefix + "-swipe-minus1-" + String(w.id))
+
+                Button {
+                    Task { await store.leeren(w) }
+                } label: {
+                    Label("Leer", systemImage: "xmark.circle")
+                }
+                .tint(Color(hex: "DC2626"))
+                .accessibilityIdentifier(praefix + "-swipe-leer-" + String(w.id))
+            }
     }
 
-    /// Die Karte selbst — mit Kontextmenue NUR an Spirituosen-Zeilen: ein `.contextMenu` mit leerem
-    /// Inhalt oeffnet beim Langdruck trotzdem eine leere Blase, das saehe nach einem Fehler aus.
-    /// Die `listRow*`-Angaben setzt bewusst erst `zeile` darueber, damit sie an BEIDEN Zweigen
-    /// haengen und die `List` sie sicher sieht.
-    @ViewBuilder
+    /// Die Karte selbst — mit Kontextmenue an JEDER Zeile, seit der Standort fuer beide Arten gilt.
+    /// Frueher hing es nur an Spirituosen, weil ein `.contextMenu` mit leerem Inhalt beim Langdruck
+    /// trotzdem eine leere Blase oeffnet und das nach einem Fehler aussaehe; das Menue hat jetzt
+    /// aber fuer jede Zeile etwas zu sagen — angebrochen und Fuellstand zeigt der Keller ohnehin
+    /// schon bei beiden Arten an (siehe `fuellstandZeile`), und der Umschalter „Im Büro parken"
+    /// braucht bei Wein dasselbe Bedienelement wie bei Spirituosen.
     private func karte(_ w: Wein, hinweis: String?, praefix: String) -> some View {
-        let inhalt = zeilenInhalt(w, hinweis: hinweis, praefix: praefix)
-        if w.art == .spirituose {
-            inhalt.contextMenu { flaschenMenu(w) }
-        } else {
-            inhalt
-        }
+        zeilenInhalt(w, hinweis: hinweis, praefix: praefix)
+            .contextMenu { flaschenMenu(w) }
     }
 
     private func zeilenInhalt(_ w: Wein, hinweis: String?, praefix: String) -> some View {
@@ -409,10 +434,11 @@ struct WeinKellerView: View {
     ]
 
     /// Kontextmenue der Zeile: Flasche oeffnen bzw. wieder als ungeoeffnet markieren, ins Buero
-    /// parken und den Fuellstand in Stufen setzen. Wird NUR fuer Spirituosen angehaengt
-    /// (Entscheidung sitzt in `zeile`) — dort steht die Flasche monatelang offen und der Fuellstand
-    /// aendert sich staendig, und geparkt wird ebenfalls dort, weil zu Hause der Platz fehlt;
-    /// eine Weinflasche ist am selben Abend leer, ein Menue an jeder Weinzeile waere nur Ballast.
+    /// parken und den Fuellstand in Stufen setzen. Haengt an JEDER Zeile (Entscheidung sitzt in
+    /// `karte`), nicht mehr nur an Spirituosen: der Standort gilt fuer beide Arten, und wer eine
+    /// Kiste Wein im Buero abstellt, braucht denselben Umschalter. Angebrochen und Fuellstand
+    /// bleiben in der Praxis Spirituosen-Themen — eine Weinflasche ist am selben Abend leer —,
+    /// stehen aber schon immer fuer beide Arten in der Zeile und schaden hier nicht.
     /// Die Zaehl-Knoepfe der Zeile bleiben der Weg fuer alles, was Flaschenzahlen betrifft.
     @ViewBuilder private func flaschenMenu(_ w: Wein) -> some View {
         if w.istAngebrochen {

@@ -475,6 +475,58 @@ final class FamilienplanerUITests: XCTestCase {
         XCTAssertTrue(waitUntil(tileEl.isHittable), "Zurück aus dem Wein-Bereich fehlgeschlagen")
     }
 
+    /// Der Schnell-Erfassungsknopf im Kopf des Wein-Bereichs (Serienerfassung).
+    ///
+    /// Im Simulator gibt es keine Kamera. Genau das macht den Fall hier testbar: der Knopf fällt
+    /// dann bewusst auf die normale Erfassung zurück, statt einen leeren Sucher zu zeigen — also
+    /// muss danach die Erfassungsmaske stehen. Zusätzlich wird geprüft, dass der Knopf NEBEN dem
+    /// Kopf-Menü existiert und dieses nicht verdrängt hat: beide liegen in einem gemeinsamen HStack,
+    /// und ein Identifier an diesem Container würde beide Kind-IDs überschreiben (die Alarmo-Falle,
+    /// die diese Suite schon einmal rot gemacht hat).
+    ///
+    /// Ebenfalls geprüft: das Queue-Segment darf OHNE Warteschlange gar nicht erscheinen. Ohne
+    /// Backend ist die Warteschlange leer, ein sichtbares „Queue" wäre also ein Fehler in der
+    /// Bedingung `store.queueGesamt > 0`.
+    func testWeinSchnellErfassungUndQueueSegment() {
+        openBereiche()
+        let tileEl = tile("wein")
+        XCTAssertTrue(tileEl.waitForExistence(timeout: 10), "Wein-Kachel fehlt")
+        tileEl.tap()
+
+        // Wie im Segment-Test: die zuletzt gewählte Art überlebt den App-Start, deshalb definiert
+        // auf Wein stellen.
+        let artWein = app.buttons["wein-art-wein"]
+        if artWein.waitForExistence(timeout: 12) { artWein.tap() }
+        XCTAssertTrue(app.buttons["wein-filter-alle"].waitForExistence(timeout: 12),
+                      "Wein-Bereich öffnet nicht")
+
+        // Beide Kopf-Aktionen nebeneinander — der Container darf keine der IDs geschluckt haben.
+        let schnellFoto = app.descendants(matching: .any)["wein-schnell-foto"]
+        XCTAssertTrue(schnellFoto.waitForExistence(timeout: 8),
+                      "Schnell-Erfassungsknopf fehlt im Kopf des Wein-Bereichs")
+        XCTAssertTrue(app.descendants(matching: .any)["wein-menu"].exists,
+                      "Das Kopf-Menü ist neben dem neuen Knopf verschwunden")
+
+        // Ohne Warteschlange kein Queue-Segment (SegmentBar vergibt „segment-<Beschriftung>").
+        XCTAssertFalse(app.descendants(matching: .any)["segment-Queue"].exists,
+                       "Queue-Segment erscheint, obwohl die Warteschlange leer ist")
+
+        // Tippen: ohne Kamera fällt der Knopf auf die Erfassungsmaske zurück. Der Art-Umschalter
+        // dort ist der eindeutige Anker (die Maske trägt ihn nur im Erfassen-Fluss).
+        schnellFoto.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["wein-erfassen-art"].waitForExistence(timeout: 12),
+                      "Der Schnell-Erfassungsknopf öffnet ohne Kamera nicht die Erfassungsmaske")
+
+        // Maske wieder schließen, damit der Bereich für die nächste Testmethode sauber dasteht.
+        let abbrechen = app.buttons["wein-erfassen-abbrechen"]
+        if abbrechen.waitForExistence(timeout: 6) { abbrechen.tap() }
+        XCTAssertTrue(waitUntil(self.app.buttons["wein-filter-alle"].exists),
+                      "Erfassungsmaske ließ sich nicht schließen")
+
+        goBack()
+        XCTAssertTrue(waitUntil(tileEl.isHittable), "Zurück aus dem Wein-Bereich fehlgeschlagen")
+    }
+
     // MARK: - Termin-Widgets / Push-Quittierung (das in XCUITest Testbare)
     //
     // Widgets, Live Activities und die Sperrbildschirm-Aktionen selbst laufen in eigenen Prozessen

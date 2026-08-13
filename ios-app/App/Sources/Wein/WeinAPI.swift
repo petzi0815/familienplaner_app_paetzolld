@@ -2,7 +2,7 @@ import Foundation
 
 /// Anbindung des Wein-Bereichs an die generischen v1-Ressourcen (`weine`, `wein-bewertungen`,
 /// `wein-preise`) und die Sonderrouten (`wein-scan`, `wein-lookup`, `wein-bewertung`,
-/// `wein-preischeck`, `wein-einstellungen`).
+/// `wein-preischeck`, `wein-einstellungen`, `wein-erfassen`, `wein-anreicherung`).
 /// Alle Routen tragen BEIDE Getraenkearten (Wein und Spirituose) — Tabelle, Pfade und Namen bleiben
 /// deshalb unveraendert, unterschieden wird ueber die Spalte `art` (siehe Kopf von WeinModels.swift).
 /// WICHTIG: v1-Listen liefern einen ENVELOPE `{data:[…],total}` (kein bares Array);
@@ -81,6 +81,76 @@ final class WeinAPI {
             "data_base64": jpeg.base64EncodedString(),
         ]
         return try await c.send("/v1/media/upload", method: "POST", body: payload)["storage_key"] as? String
+    }
+
+    // MARK: - Schnellerfassung und Warteschlange
+
+    /// Serienmodus: Etikettenfoto ODER EAN rein — die Flasche steht danach SOFORT im Inventar
+    /// (`ki_status='offen'`), die Erkennung laeuft im Hintergrund weiter.
+    ///
+    /// Anders als `scan` laeuft dieser Aufruf ueber das NORMALE 25-s-Budget und NICHT ueber den
+    /// Langsam-Pfad: die Route legt nur das Bild ab und schreibt eine Zeile (`maxDuration = 30`),
+    /// die KI-Kette stoesst sie danach als fire-and-forget an. Genau das macht den Serienmodus
+    /// moeglich — wer im Keller steht und zehn Flaschen hintereinander fotografiert, darf zwischen
+    /// zwei Ausloesungen nicht auf eine Recherche warten. Wuerde hier `slow: true` stehen, haenge
+    /// ein misslungener Upload bis zu fuenf Minuten, statt schnell zu scheitern und gemeldet zu werden.
+    ///
+    /// `art` ist wie bei `scan` nur ein HINWEIS (welche Maske gerade offen ist); erkennt die Kette
+    /// am Etikett etwas anderes, gewinnt die Erkennung. Zurueck kommt deshalb die Art, mit der die
+    /// Zeile ANGELEGT wurde — die App zeigt ihre Liste danach ohne eigenes Nachhalten richtig an.
+    /// `bestand`/`standort` bleiben leer, wenn die Aufrufstelle nichts vorgibt: der Server setzt
+    /// dann Bestand 1 (wer inventarisiert, hat die Flasche in der Hand) und Standort 'zuhause'.
+    @discardableResult
+    func erfassen(image: Data? = nil, ean: String? = nil, art: GetraenkeArt = .wein,
+                  bestand: Int? = nil, standort: WeinStandort? = nil,
+                  lagerort: String? = nil) async throws -> (id: Int, art: String) {
+        var body: [String: Any] = ["art": art.rawValue]
+        if let image { body["image"] = "data:image/jpeg;base64," + image.base64EncodedString() }
+        if let ean, !ean.isEmpty { body["ean"] = ean }
+        if let bestand { body["bestand"] = bestand }
+        if let standort { body["standort"] = standort.rawValue }
+        // Regal/Fach schon beim Einreihen: wer ein ganzes Regal abarbeitet, hat den Lagerort im Kopf
+        // und muesste ihn sonst hinterher an jeder Flasche einzeln nachtragen. Die Route nimmt das
+        // Feld bereits entgegen.
+        if let lagerort, !lagerort.trimmingCharacters(in: .whitespaces).isEmpty {
+            body["lagerort"] = lagerort.trimmingCharacters(in: .whitespaces)
+        }
+        let o = try await c.send("/v1/wein-erfassen", method: "POST", body: body)
+        // Ohne verwertbare ID ist nichts eingereiht — das MUSS ein Fehler sein, sonst zaehlt der
+        // Serienmodus eine Flasche mit, die es nirgends gibt (und niemand vermisst sie spaeter).
+        guard let id = Coerce.int(o["id"]), id > 0 else {
+            throw APIError(status: 0, message: "Die Flasche wurde nicht eingereiht (keine ID in der Antwort).")
+        }
+        return (id, Coerce.str(o["art"]) ?? art.rawValue)
+    }
+
+    /// Warteschlange abarbeiten. Ohne `id` alle faelligen Zeilen der Reihe nach; mit `id` genau
+    /// diese eine — auch wenn sie ihre drei automatischen Anlaeufe schon verbraucht hat. Das ist
+    /// der Unterschied zwischen dem Nachtjob und den Knoepfen "Erneut versuchen" bzw. "Erneut
+    /// erkennen lassen": von Hand ausgeloest bekommt ein hartnaeckiges Etikett noch einen Versuch.
+    ///
+    /// Langlaufend: der Sammellauf schickt bis zu zehn Flaschen durch die volle Kette
+    /// (`maxDuration = 300`) → Langsam-Pfad, sonst bricht der Client mitten im bezahlten Lauf ab.
+    /// Wirft APIError 501, wenn `OPENAI_API_KEY` fehlt.
+    @discardableResult
+    func anreicherungStarten(id: Int? = nil) async throws -> (verarbeitet: Int, fertig: Int, fehler: Int) {
+        var body: [String: Any] = [:]
+        if let id { body["id"] = id }
+        let o = try await langlaufend("Die Erkennung") {
+            try await c.send("/v1/wein-anreicherung", method: "POST", body: body, slow: true)
+        }
+        return (Coerce.int(o["verarbeitet"]) ?? 0, Coerce.int(o["fertig"]) ?? 0, Coerce.int(o["fehler"]) ?? 0)
+    }
+
+    /// Zaehlerstand der Warteschlange fuer EINE Getraenkeart — Grundlage des Segments "Queue (n)".
+    /// Die Route liefert bewusst nur Zahlen und keine Eintraege: die App fragt sie alle zehn
+    /// Sekunden ab, solange etwas aussteht, und eine ganze Liste je Abruf waere reine Verschwendung.
+    /// Bewusst OHNE Langsam-Pfad — ein Zaehler, der 25 s haengt, ist ohnehin wertlos.
+    func queueZaehler(art: GetraenkeArt) async throws -> (offen: Int, laeuft: Int, fehler: Int) {
+        let o = try await c.getObject("/v1/wein-anreicherung", query: [
+            URLQueryItem(name: "art", value: art.rawValue),
+        ])
+        return (Coerce.int(o["offen"]) ?? 0, Coerce.int(o["laeuft"]) ?? 0, Coerce.int(o["fehler"]) ?? 0)
     }
 
     // MARK: - Sonderrouten (langlaufend)

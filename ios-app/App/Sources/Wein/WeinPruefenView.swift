@@ -1,6 +1,15 @@
 import SwiftUI
 import UIKit
 
+/// Wofür die Maske gerade offen ist. Steuert nur, was WEGFÄLLT bzw. hinzukommt — die Feldgruppen
+/// selbst sind in beiden Modi dieselben, sonst driftet das Bearbeiten vom Anlegen weg.
+enum WeinMaskeModus {
+    /// Schritt 2 der Erfassung: Dubletten-Karte, KI-Analyse-Kopf, Anlegen und danach bewerten.
+    case anlegen
+    /// Vorhandener Eintrag: PATCH auf die ID, Etikett ersetzen, neu erkennen lassen.
+    case bearbeiten
+}
+
 /// Schritt 2 der Erfassung: alles, was die KI ermittelt hat, wird sichtbar und ist editierbar —
 /// gegliedert in Getränkeart / Wein bzw. Spirituose / Herkunft / Geschmack / Hintergrund / Preis /
 /// Keller. Vertrauensgrad, Hinweise und die Quellen-Links stehen oben. Erst der Speichern-Knopf legt
@@ -18,7 +27,17 @@ import UIKit
 /// zwei Wegen: vorhandene Flasche öffnen oder trotzdem als eigenen Eintrag anlegen (anderer
 /// Jahrgang bzw. andere Abfüllung).
 ///
+/// ZWEI MODI, EINE MASKE (`WeinMaskeModus`): dieselbe Maske legt an (Schritt 2 der Erfassung) und
+/// bearbeitet einen vorhandenen Eintrag (`init(bearbeiten:)`, Einstieg über den Toolbar-Knopf der
+/// Detailseite bzw. „Von Hand ausfüllen" in der Warteschlange). Bewusst KEINE zweite Maske: alle
+/// art-abhängigen Feldgruppen, die Vorbelegung aus DB-Spaltennamen und die Trennung der Spalten
+/// beider Getränkearten stehen hier bereits — eine Kopie liefe binnen einer Änderung auseinander.
+/// Im Bearbeiten-Modus entfallen Dubletten-Karte, KI-Analyse-Kopf und Bewertungsblock (bewertet
+/// wird auf der Detailseite), dafür gibt es Etikett ersetzen und „Erneut erkennen lassen".
+/// Gespeichert wird dort per PATCH auf die vorhandene ID.
+///
 /// Wird von `WeinErfassenView` gepusht und lebt in dessen NavigationStack — hier KEIN eigener Stack.
+/// Im Bearbeiten-Modus liegt sie in einem Sheet, dessen NavigationStack der Aufrufer stellt.
 struct WeinPruefenView: View {
     let vorschlag: WeinVorschlag
     /// Etikettenfoto aus Schritt 1 (wird beim Speichern hochgeladen).
@@ -28,7 +47,13 @@ struct WeinPruefenView: View {
     /// Vorhandenen Wein aus der Dubletten-Karte öffnen.
     var onDubletteOeffnen: (Int) -> Void = { _ in }
     /// Schließt den gesamten Erfassungs-Flow (nicht nur diesen Bildschirm).
+    /// Im Bearbeiten-Modus schließt es das Sheet.
     var schliessen: () -> Void = {}
+    /// Anlegen oder Bearbeiten. Wird nicht direkt gesetzt, sondern über `init(bearbeiten:)`.
+    var modus: WeinMaskeModus = .anlegen
+    /// Zeile, auf die im Bearbeiten-Modus gespeichert wird. Im Anlege-Modus nil — dort entsteht die
+    /// ID erst beim ersten Speichern.
+    var bearbeiteId: Int?
 
     @EnvironmentObject private var store: WeinStore
 
@@ -83,8 +108,8 @@ struct WeinPruefenView: View {
     // ── Keller ──
     @State private var bestand = 1
     @State private var lagerort = ""
-    /// Gebäude, in dem die Flasche steht. Bedient wird die Auswahl nur bei Spirituosen; bei Wein
-    /// bleibt sie auf dem Vorgabewert stehen und geht als solcher mit (die Spalte ist NOT NULL).
+    /// Gebäude, in dem die Flasche steht — für beide Getränkearten bedienbar (siehe `kellerSection`
+    /// und `patchFelder()`). Fehlender Wert = zu Hause, der Default der Spalte (sie ist NOT NULL).
     @State private var standort: WeinStandort = .zuhause
 
     // ── Ablauf ──
@@ -101,6 +126,16 @@ struct WeinPruefenView: View {
     @State private var sterne = 0
     @State private var kommentar = ""
     @State private var bewertet = false
+
+    // ── Nur Bearbeiten-Modus ──
+    /// Neu aufgenommenes bzw. gewähltes Etikett. Hochgeladen wird es erst beim Speichern (wie im
+    /// Anlege-Fluss) — wer abbricht, hat nichts verändert.
+    @State private var neuesFoto: UIImage?
+    @State private var fotoQuelle: ImageSource?
+    /// Wartet das neue Etikett noch auf den Upload? Ein Bild ändert `patchFelder()` NICHT — ohne
+    /// diese Merkung bliebe der Speichern-Knopf gesperrt und das Foto unspeicherbar.
+    @State private var fotoOffen = false
+    @State private var erkennungLaeuft = false
 
     /// Erlaubte Werte der Spalte `geschmacksrichtung` (CHECK) mit deutschem Etikett.
     private static let geschmacksrichtungen: [WeinGeschmacksrichtung] = [
@@ -119,6 +154,29 @@ struct WeinPruefenView: View {
     ]
 
     var body: some View {
+        // Der Abbrechen-Knopf haengt am ganzen Formular und nicht als leerer ToolbarItem-Platzhalter
+        // in beiden Modi: er sitzt vorne in der Navigationsleiste, wo im Anlege-Fluss der
+        // Zurueck-Pfeil steht — dort gar keinen Platz zu belegen ist der einzige Weg, den
+        // bestehenden Weg sicher unveraendert zu lassen. Ein eigener Ausstieg ist ohnehin nur im
+        // Bearbeiten-Modus noetig (Sheet); die Erfassung bringt ihr „Abbrechen" schon mit.
+        Group {
+            if istBearbeiten {
+                formular.toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Abbrechen") { schliessen() }
+                            .accessibilityIdentifier("wein-bearbeiten-abbrechen")
+                    }
+                }
+            } else {
+                formular
+            }
+        }
+        .navigationTitle(maskenTitel)
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear(perform: vorbefuellen)
+    }
+
+    private var formular: some View {
         Form {
             artSection
             kopf
@@ -130,9 +188,19 @@ struct WeinPruefenView: View {
             kellerSection
             abschluss
         }
-        .navigationTitle("Prüfen und speichern")
-        .navigationBarTitleDisplayMode(.inline)
-        .onAppear(perform: vorbefuellen)
+    }
+
+    /// Ein einziger Ort für die Modus-Frage. Über Mustervergleich statt `==`, damit `WeinMaskeModus`
+    /// keine Protokolle braucht.
+    private var istBearbeiten: Bool {
+        if case .bearbeiten = modus { return true }
+        return false
+    }
+
+    /// Titel der Maske. Im Bearbeiten-Modus mit der Getränkeart, damit auf einen Blick klar ist,
+    /// welche Feldgruppen unten stehen.
+    private var maskenTitel: String {
+        istBearbeiten ? art.einzahl + " bearbeiten" : "Prüfen und speichern"
     }
 
     // MARK: - Getränkeart
@@ -157,11 +225,16 @@ struct WeinPruefenView: View {
 
     // MARK: - Kopf: Dublette + Vertrauensgrad
 
+    /// Beides gehört zum frischen KI-Lauf und entfällt deshalb im Bearbeiten-Modus: eine Dublette
+    /// meldet nur der Scan, und „Vertrauen unbekannt" über einem längst gepflegten Eintrag wäre eine
+    /// Aussage über eine Analyse, die gar nicht stattgefunden hat.
     @ViewBuilder private var kopf: some View {
-        if let d = vorschlag.dublette, !dubletteWeggeklickt, gespeicherteId == nil {
-            dubletteSection(d)
+        if !istBearbeiten {
+            if let d = vorschlag.dublette, !dubletteWeggeklickt, gespeicherteId == nil {
+                dubletteSection(d)
+            }
+            vertrauenSection
         }
-        vertrauenSection
     }
 
     private func dubletteSection(_ d: WeinDublette) -> some View {
@@ -260,9 +333,19 @@ struct WeinPruefenView: View {
             TextField("EAN", text: $ean)
                 .keyboardType(.numberPad)
                 .accessibilityIdentifier("wein-pruefen-ean")
-            if let img = foto { fotoZeile(img) }
+            fotoBereich
         } header: {
             Text(art.einzahl)
+        }
+    }
+
+    /// Anlegen: das Etikett aus Schritt 1 wird nur angezeigt (aufgenommen wurde es dort).
+    /// Bearbeiten: es lässt sich ersetzen oder erstmals hinzufügen.
+    @ViewBuilder private var fotoBereich: some View {
+        if istBearbeiten {
+            fotoBearbeiten
+        } else if let img = foto {
+            fotoZeile(img)
         }
     }
 
@@ -318,6 +401,69 @@ struct WeinPruefenView: View {
                 .font(.caption).foregroundStyle(.secondary)
             Spacer(minLength: 0)
         }
+    }
+
+    /// Etikett im Bearbeiten-Modus: Zustand zeigen, neu aufnehmen oder aus der Mediathek wählen.
+    /// Aufbau wie `WeinFotoFeld` in Schritt 1, nur mit eigenen Identifiern (jenes ist dateiprivat).
+    private var fotoBearbeiten: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                fotoVorschau
+                Text(fotoHinweis).font(.caption).foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+            }
+            HStack(spacing: 16) {
+                if UIImagePickerController.isSourceTypeAvailable(.camera) {
+                    Button { fotoQuelle = ImageSource(.camera) } label: {
+                        Label(fotoVorhanden ? "Neu aufnehmen" : "Fotografieren", systemImage: "camera.fill")
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityIdentifier("wein-bearbeiten-foto")
+                }
+                Button { fotoQuelle = ImageSource(.photoLibrary) } label: {
+                    Label(fotoVorhanden ? "Anderes Bild" : "Mediathek", systemImage: "photo.on.rectangle")
+                }
+                .buttonStyle(.borderless)
+                .accessibilityIdentifier("wein-bearbeiten-mediathek")
+                Spacer(minLength: 0)
+            }
+            .font(.subheadline)
+        }
+        .padding(.vertical, 2)
+        .sheet(item: $fotoQuelle) { q in
+            ImagePicker(sourceType: q.type) { bild in
+                neuesFoto = bild
+                fotoOffen = true
+            }
+        }
+    }
+
+    /// Vorschau des NEUEN Bildes. Das bereits gespeicherte Etikett wird bewusst NICHT über
+    /// `AuthImage` gezeigt: das braucht `AppState` aus der Umgebung, und ein Sheet erbt die
+    /// EnvironmentObjects seines Aufrufers nicht verlässlich — die Maske würde je nach Einstieg
+    /// abstürzen. Dass ein Etikett hinterlegt ist, sagt stattdessen `fotoHinweis`.
+    @ViewBuilder private var fotoVorschau: some View {
+        if let img = neuesFoto {
+            Image(uiImage: img).resizable().scaledToFill()
+                .frame(width: 56, height: 56)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        } else {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(akzent.opacity(0.15))
+                .frame(width: 56, height: 56)
+                .overlay(Image(systemName: fotoVorhanden ? "photo" : "camera")
+                    .foregroundStyle(akzent))
+        }
+    }
+
+    /// Liegt schon ein Etikett vor — neu aufgenommen oder beim Datensatz gespeichert?
+    private var fotoVorhanden: Bool {
+        neuesFoto != nil || Coerce.str(vorschlag.felder["foto_key"]) != nil
+    }
+
+    private var fotoHinweis: String {
+        if neuesFoto != nil { return "Neues Etikett wird beim Speichern hochgeladen." }
+        return fotoVorhanden ? "Etikettenfoto ist gespeichert." : "Noch kein Etikettenfoto."
     }
 
     // MARK: - Herkunft
@@ -525,23 +671,20 @@ struct WeinPruefenView: View {
             .accessibilityIdentifier("wein-pruefen-bestand")
             TextField("Lagerort (z. B. Regal unten links)", text: $lagerort)
                 .accessibilityIdentifier("wein-pruefen-lagerort")
-            // Nur Spirituosen: geparkt wird in der Praxis dort, weil zu Hause der Platz fehlt.
-            // Steht direkt unter dem Lagerort, weil beides zusammen die Antwort ergibt — welches
-            // Gebäude, und darin welches Regal („im Büro, dort im Schrank links").
-            if art == .spirituose {
-                Picker("Standort", selection: $standort) {
-                    ForEach(WeinStandort.allCases) { s in
-                        Text(s.emoji + " " + s.label).tag(s)
-                    }
+            // Für BEIDE Getränkearten: geparkt wird, wo zu Hause der Platz fehlt — das trifft die
+            // Weinkiste genauso wie die Ginflasche. Steht direkt unter dem Lagerort, weil beides
+            // zusammen die Antwort ergibt: welches Gebäude, und darin welches Regal („im Büro, dort
+            // im Schrank links").
+            Picker("Standort", selection: $standort) {
+                ForEach(WeinStandort.allCases) { s in
+                    Text(s.emoji + " " + s.label).tag(s)
                 }
-                .accessibilityIdentifier("wein-pruefen-standort")
             }
+            .accessibilityIdentifier("wein-pruefen-standort")
         } header: {
             Text("Keller")
         } footer: {
-            if art == .spirituose {
-                Text("Im Büro geparkte Flaschen bleiben vollständig im Bestand — sie werden nur zusätzlich gekennzeichnet.")
-            }
+            Text("Im Büro geparkte Flaschen bleiben vollständig im Bestand — sie werden nur zusätzlich gekennzeichnet.")
         }
     }
 
@@ -552,7 +695,15 @@ struct WeinPruefenView: View {
             Section { Text(fehler).font(.footnote).foregroundStyle(.red) }
         }
         Section {
-            Button { Task { await speichern() } } label: {
+            Button {
+                Task {
+                    let angekommen = await speichern()
+                    // Bearbeiten ist mit dem Speichern erledigt — die Detailseite dahinter zeigt
+                    // den frischen Stand aus dem Store. Beim Anlegen bleibt die Maske stehen, weil
+                    // danach noch die eigene Bewertung folgt.
+                    if angekommen, istBearbeiten { schliessen() }
+                }
+            } label: {
                 HStack(spacing: 8) {
                     if speichert { ProgressView() }
                     Text(speichernTitel)
@@ -564,16 +715,73 @@ struct WeinPruefenView: View {
             // muss eine Korrektur auch noch abschickbar sein (dann als PATCH auf den Wein).
             .disabled(speichert
                       || name.trimmingCharacters(in: .whitespaces).isEmpty
-                      || (gespeicherteId != nil && !geaendert))
+                      || (gespeicherteId != nil && !offeneAenderung))
             .accessibilityIdentifier("wein-pruefen-speichern")
         } footer: {
             if gespeicherteId == nil {
                 Text("Ein Name genügt zum Speichern. Alles andere lässt sich später ergänzen.")
-            } else if geaendert {
+            } else if offeneAenderung {
                 Text("Es gibt noch nicht gespeicherte Änderungen.")
             }
         }
-        if gespeicherteId != nil { bewertungSection }
+        // Bewertet wird beim Anlegen (frisch angelegte Flasche) — beim Bearbeiten steht der
+        // Bewertungsblock schon auf der Detailseite, von der die Maske aufgerufen wurde.
+        if istBearbeiten { erkennungSection }
+        else if gespeicherteId != nil { bewertungSection }
+    }
+
+    // MARK: - Erneut erkennen lassen (nur Bearbeiten)
+
+    /// Der Weg, einen falsch erkannten Eintrag komplett neu bewerten zu lassen. Die Kette liest
+    /// Etikett und Barcode noch einmal und überschreibt AUSSCHLIESSLICH ihre eigenen Felder — was
+    /// von Hand gepflegt wurde (Bestand, Standort, Lagerort, Notizen, gekaufter Preis), bleibt
+    /// stehen; das entscheidet die Weißliste im Backend.
+    private var erkennungSection: some View {
+        Section {
+            if let grund = kiFehlerText {
+                Text("Fehler: " + grund).font(.footnote).foregroundStyle(.red)
+            }
+            Button { Task { await erneutErkennen() } } label: {
+                HStack(spacing: 8) {
+                    if erkennungLaeuft { ProgressView() }
+                    Text(erkennungLaeuft ? "Erkennung läuft …" : "Erneut erkennen lassen")
+                }
+            }
+            .disabled(speichert || erkennungLaeuft || gespeicherteId == nil)
+            .accessibilityIdentifier("wein-bearbeiten-erneut")
+        } header: {
+            Text("Erkennung")
+        } footer: {
+            Text("Das dauert einen Moment. Eigene Angaben — Bestand, Lagerort, Standort, Notizen und der bezahlte Preis — bleiben unangetastet.")
+        }
+    }
+
+    /// Klartext des letzten Fehlschlags, wenn die Hintergrund-Erkennung an dieser Flasche
+    /// gescheitert ist. Steht nur bei `fehler` da: bei einem laufenden Versuch ist der alte Grund
+    /// überholt und würde wie ein aktuelles Problem aussehen.
+    private var kiFehlerText: String? {
+        guard Coerce.str(vorschlag.felder["ki_status"]) == WeinKiStatus.fehler.rawValue else { return nil }
+        return Coerce.str(vorschlag.felder["ki_fehler"])
+    }
+
+    private func erneutErkennen() async {
+        guard let id = gespeicherteId else { return }
+        erkennungLaeuft = true
+        // Offene Korrektur ZUERST abschicken — die Erkennung liest die Zeile vom Server; ein hier
+        // korrigierter Barcode oder eine korrigierte Getränkeart käme sonst gar nicht bei ihr an.
+        // Kam der Stand nicht durch, bleibt die Maske mit der Fehlermeldung stehen.
+        if offeneAenderung {
+            let angekommen = await speichern()
+            if !angekommen {
+                erkennungLaeuft = false
+                return
+            }
+        }
+        await store.anreicherungStarten(id: id)
+        erkennungLaeuft = false
+        // Danach schliessen: die Maske hält jetzt einen veralteten Stand. Wer sie offen liesse und
+        // später speicherte, schriebe die frisch erkannten Werte mit den alten wieder zu.
+        schliessen()
     }
 
     private var bewertungSection: some View {
@@ -696,6 +904,15 @@ struct WeinPruefenView: View {
         // und dessen Parkplatz darf beim Speichern nicht still auf „zu Hause" zurückfallen.
         standort = WeinStandort(rawValue: Coerce.str(f["standort"]) ?? "") ?? .zuhause
         quelle = Coerce.str(f["quelle"]) ?? "ki"
+
+        // Bearbeiten: die Zeile gibt es schon, ab jetzt geht jedes Speichern als PATCH auf ihre ID.
+        // Der gerade eingelesene Stand IST der gespeicherte — dadurch steht der Knopf auf
+        // „Gespeichert", bis wirklich etwas geändert wurde, statt eine unveränderte Zeile noch
+        // einmal zurückzuschreiben.
+        if istBearbeiten, let id = bearbeiteId {
+            gespeicherteId = id
+            gespeicherterStand = patchFelder() as NSDictionary
+        }
     }
 
     /// Geschmacksprofil-Wert nur übernehmen, wenn er im gültigen Bereich 1 bis 5 liegt.
@@ -719,8 +936,7 @@ struct WeinPruefenView: View {
         var felder = stand
         // Foto ZUERST hochladen, damit der Wein direkt mit `foto_key` angelegt wird. Schlägt der
         // Upload fehl, wird der Wein trotzdem gespeichert (das Bild ist die Kür, nicht die Pflicht).
-        // Nur beim Anlegen: ein Korrektur-PATCH wuerde dasselbe Etikett sonst erneut ablegen.
-        if neu, let img = foto, let jpeg = img.jpegForUpload() {
+        if let img = hochzuladendesFoto, let jpeg = img.jpegForUpload() {
             if let key = try? await store.api.uploadFoto(jpeg: jpeg) {
                 felder["foto_key"] = key
             }
@@ -729,6 +945,9 @@ struct WeinPruefenView: View {
         if let id {
             gespeicherteId = id
             gespeicherterStand = stand as NSDictionary
+            // Das Etikett liegt jetzt beim Server — ein zweites Speichern soll es nicht noch einmal
+            // hochladen (jeder Upload legt eine neue Datei an).
+            fotoOffen = false
             // Nur das Anlegen ist fuer den Aufrufer neu; der PATCH hat den Store bereits aktualisiert.
             if neu { onGespeichert(id) }
         } else {
@@ -740,11 +959,24 @@ struct WeinPruefenView: View {
         return id != nil
     }
 
+    /// Bild, das dieser Speicherlauf hochladen muss — sonst nil.
+    /// Anlegen: das Etikett aus Schritt 1, aber NUR beim ersten Mal (ein Korrektur-PATCH würde
+    /// dasselbe Bild sonst erneut ablegen). Bearbeiten: das neu gewählte, solange es noch nicht
+    /// oben ist.
+    private var hochzuladendesFoto: UIImage? {
+        if gespeicherteId == nil { return foto }
+        return fotoOffen ? neuesFoto : nil
+    }
+
     /// Beschriftung des Speichern-Knopfs: anlegen → gespeichert → offene Korrektur.
     private var speichernTitel: String {
         if gespeicherteId == nil { return "Speichern" }
-        return geaendert ? "Änderungen speichern" : "Gespeichert"
+        return offeneAenderung ? "Änderungen speichern" : "Gespeichert"
     }
+
+    /// Gibt es überhaupt etwas abzuschicken? Neben den Feldern zählt das noch nicht hochgeladene
+    /// Etikett mit — es steht in keinem Feld und bliebe sonst für immer im Formular hängen.
+    private var offeneAenderung: Bool { geaendert || fotoOffen }
 
     /// Weicht das Formular vom zuletzt gespeicherten Stand ab? Vor dem ersten Speichern immer true.
     private var geaendert: Bool {
@@ -752,8 +984,9 @@ struct WeinPruefenView: View {
         return !stand.isEqual(patchFelder() as NSDictionary)
     }
 
-    /// Felder in DB-Schreibweise. Leere Eingaben werden weggelassen (NULL statt Leerstring),
-    /// Listen gehen als JSON-Text raus.
+    /// Felder in DB-Schreibweise. Listen gehen als JSON-Text raus.
+    /// LEERE EINGABEN: beim Anlegen bleiben sie weg (die Spalte bekommt ihren DB-Default), beim
+    /// Bearbeiten gehen sie als JSON-`null` mit — siehe `setzeOderLeere`.
     /// ART-ABHAENGIG: die Spalten der jeweils ANDEREN Getraenkeart bleiben komplett draussen. Sie
     /// stehen zwar noch im Formular (Umschalten wirft nichts weg), gehoeren aber nicht in die Zeile —
     /// sonst traegt ein korrigierter Whisky weiter Rebsorten und Trinkfenster mit sich herum.
@@ -777,14 +1010,14 @@ struct WeinPruefenView: View {
             "bestand": bestand,
             "quelle": quelleSicher,
         ]
-        // Der Standort haengt an der Art — dieselbe Regel wie bei `typ` oben, und aus demselben
-        // Grund: parkt man eine Flasche im Büro und korrigiert danach die Getränkeart auf Wein
-        // (den Weg bietet die Maske ausdrücklich an, sie löscht beim Umschalten nichts), bliebe
-        // sonst ein Wein mit `standort='buero'` zurück — der trüge überall das Büro-Abzeichen,
-        // während der Umschalter dafür nur bei Spirituosen existiert. Ein Zustand ohne
-        // Bedienelement ist schlimmer als ein zurückgesetzter Standort.
-        let standortWert: WeinStandort = art == .spirituose ? standort : .zuhause
-        f["standort"] = standortWert.rawValue
+        // Der Standort geht für BEIDE Getränkearten mit — anders als `typ` oben, obwohl er lange
+        // an der Art hing: solange es den Umschalter nur bei Spirituosen gab, hätte „im Büro parken
+        // → Art auf Wein korrigieren" einen Wein mit `standort='buero'` hinterlassen, der überall
+        // das Büro-Abzeichen trug, während das Bedienelement dafür bei Weinen fehlte — ein Zustand
+        // ohne Bedienelement. Genau das ist weg: Knopf, Abzeichen und Filter gibt es jetzt bei
+        // beiden Arten, also darf der Wert die Korrektur der Art überleben. Ihn weiterhin
+        // zurückzusetzen würde die Angabe beim Umschalten still wegwerfen.
+        f["standort"] = standort.rawValue
         // Gemeinsame Textspalten; die art-eigenen kommen unten dazu.
         var texte: [(String, String)] = [
             ("land", land), ("region", region),
@@ -798,28 +1031,31 @@ struct WeinPruefenView: View {
             f["rebsorten"] = jsonText(rebsorten)
             f["geschmacksrichtung"] = geschmacksrichtung
             texte.append(("lage", lage))
-            if let j = Int(jahrgang.trimmingCharacters(in: .whitespaces)) { f["jahrgang"] = j }
-            if let s = suesse { f["suesse"] = s }
-            if let s = saeure { f["saeure"] = s }
-            if let t = tannin { f["tannin"] = t }
-            if let k = koerper { f["koerper"] = k }
-            if let v = Int(trinkfensterVon.trimmingCharacters(in: .whitespaces)) { f["trinkfenster_von"] = v }
-            if let b = Int(trinkfensterBis.trimmingCharacters(in: .whitespaces)) { f["trinkfenster_bis"] = b }
+            setzeOderLeere(&f, "jahrgang", Int(jahrgang.trimmingCharacters(in: .whitespaces)))
+            setzeOderLeere(&f, "suesse", suesse)
+            setzeOderLeere(&f, "saeure", saeure)
+            setzeOderLeere(&f, "tannin", tannin)
+            setzeOderLeere(&f, "koerper", koerper)
+            setzeOderLeere(&f, "trinkfenster_von", Int(trinkfensterVon.trimmingCharacters(in: .whitespaces)))
+            setzeOderLeere(&f, "trinkfenster_bis", Int(trinkfensterBis.trimmingCharacters(in: .whitespaces)))
         case .spirituose:
             f["cocktails"] = jsonText(cocktails)
             texte.append(contentsOf: [("stil", stil), ("fass", fass),
                                       ("trinkempfehlung", trinkempfehlung)])
-            if let k = kategorie { f["kategorie"] = k.rawValue }
-            if let a = Int(alterJahre.trimmingCharacters(in: .whitespaces)), a > 0 { f["alter_jahre"] = a }
-            if let j = Int(abgefuelltJahr.trimmingCharacters(in: .whitespaces)), j > 0 { f["abgefuellt_jahr"] = j }
+            setzeOderLeere(&f, "kategorie", kategorie?.rawValue)
+            setzeOderLeere(&f, "alter_jahre", positiveZahl(alterJahre))
+            setzeOderLeere(&f, "abgefuellt_jahr", positiveZahl(abgefuelltJahr))
         }
-        if let a = Coerce.double(alkohol) { f["alkohol"] = a }
-        if let r = Coerce.double(referenzpreis) { f["referenzpreis"] = r }
-        if let b = Coerce.double(besterPreis) { f["bester_preis"] = b }
-        if let p = Coerce.double(gekauftPreis) { f["gekauft_preis"] = p }
+        setzeOderLeere(&f, "alkohol", Coerce.double(alkohol))
+        setzeOderLeere(&f, "referenzpreis", Coerce.double(referenzpreis))
+        setzeOderLeere(&f, "bester_preis", Coerce.double(besterPreis))
+        setzeOderLeere(&f, "gekauft_preis", Coerce.double(gekauftPreis))
         for (spalte, wert) in texte {
             let t = wert.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !t.isEmpty { f[spalte] = t }
+            // Explizit typisiert statt als Ternaeroperator im Aufruf: der Helfer ist generisch,
+            // und ein blankes `nil` im Argument gaebe ihm nichts, woraus er T ableiten kann.
+            let text: String? = t.isEmpty ? nil : t
+            setzeOderLeere(&f, spalte, text)
         }
         // Selbsteinschaetzung der KI mitschreiben, sonst bleibt `ki_confidence` dauerhaft NULL.
         // Bewusst aus `vorschlag.felder` und NICHT aus `vorschlag.confidence`: der manuelle Weg
@@ -830,6 +1066,42 @@ struct WeinPruefenView: View {
             f["ki_confidence"] = c
         }
         return f
+    }
+
+    /// Setzt eine NULL-bare Spalte — oder leert sie im Bearbeiten-Modus ausdruecklich.
+    ///
+    /// WARUM: ein PATCH aendert nur, was im Body steht. Wer eine falsche Region, einen falschen
+    /// Jahrgang oder eine falsche Kategorie herausloescht, schickt ohne dieses `null` gar nichts —
+    /// der alte Wert bliebe stehen, und genau das Korrigieren ist der Zweck des Modus. Beim
+    /// ANLEGEN gibt es dagegen nichts zu loeschen: dort bleibt die Spalte weg und behaelt ihren
+    /// DB-Default (`quelle`, Listen, `standort` …), was fuer NOT-NULL-Spalten der einzige gangbare
+    /// Weg ist.
+    ///
+    /// Die Unterscheidung haengt bewusst am MODUS und nicht an „schon gespeichert": `istBearbeiten`
+    /// steht fuer die Lebensdauer der Maske fest, also hat das Dictionary immer dieselbe Gestalt.
+    /// Wuerde die Gestalt nach dem ersten Speichern umspringen, meldete `geaendert` sofort eine
+    /// offene Aenderung, ohne dass jemand etwas angefasst hat.
+    ///
+    /// NUR fuer NULL-bare Spalten aufrufen — bei NOT-NULL-Spalten (name, weingut, typ, art,
+    /// bestand, flaschengroesse_ml, die JSON-Listen, quelle, standort, geschmacksrichtung) waere
+    /// `null` ein Constraint-Fehler; die stehen deshalb weiterhin fest im Dictionary.
+    /// Generisch statt `Any?`, damit aus einem `Int?` kein verschachteltes Optional wird, das als
+    /// „gesetzt" durchginge.
+    private func setzeOderLeere<T>(_ f: inout [String: Any], _ spalte: String, _ wert: T?) {
+        if let wert {
+            f[spalte] = wert
+        } else if istBearbeiten {
+            // NSNull ist der Weg zu JSON-`null`: JSONSerialization schreibt dafuer `null`, und das
+            // generische CRUD setzt die Spalte damit wirklich auf NULL.
+            f[spalte] = NSNull()
+        }
+    }
+
+    /// Jahresangabe aus einem Eingabefeld. 0 und Unfug gelten als „nicht angegeben" — eine
+    /// Altersangabe von 0 Jahren oder ein Abfuelljahr 0 gibt es nicht.
+    private func positiveZahl(_ eingabe: String) -> Int? {
+        guard let i = Int(eingabe.trimmingCharacters(in: .whitespaces)), i > 0 else { return nil }
+        return i
     }
 
     private func bewerten() async {
@@ -936,6 +1208,44 @@ struct WeinPruefenView: View {
     private func jsonText(_ werte: [String]) -> String {
         (try? JSONSerialization.data(withJSONObject: werte))
             .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+    }
+}
+
+// MARK: - Einstieg „Bearbeiten"
+
+/// Der Einstieg steht BEWUSST in einer Extension und nicht im Rumpf der View: ein Initialisierer
+/// im Rumpf würde den vom Compiler erzeugten memberwise-Initialisierer verdrängen — und genau den
+/// ruft `WeinErfassenView` für den Anlege-Fluss auf.
+extension WeinPruefenView {
+    /// Vorhandenen Eintrag in derselben Maske bearbeiten.
+    /// Die Werte kommen als `WeinVorschlag` herein, weil die Maske ihre Vorbelegung ohnehin aus
+    /// DB-Spaltennamen liest (`vorbefuellen()`): so gibt es genau EINEN Vorbelegungsweg statt
+    /// zweier, die auseinanderlaufen können.
+    init(bearbeiten wein: Wein, schliessen: @escaping () -> Void = {}) {
+        let vorschlag = WeinVorschlag(felder: WeinPruefenView.bearbeitungsFelder(wein),
+                                      preise: [], quellen: [], confidence: "unbekannt",
+                                      hinweise: [], dublette: nil)
+        self.init(vorschlag: vorschlag,
+                  schliessen: schliessen,
+                  modus: .bearbeiten,
+                  bearbeiteId: wein.id)
+    }
+
+    /// Feldwerte eines vorhandenen Eintrags in DB-Schreibweise.
+    /// `patchFields` liefert fast alles, lässt aber bewusst weg, was allein der Server setzt. Drei
+    /// davon stehen in dieser Maske trotzdem als Eingabefelder und müssen deshalb vorbelegt werden:
+    /// bester Preis, Händler und Link — sonst gingen sie beim ersten Speichern verloren, weil
+    /// `patchFelder()` sie aus leeren Feldern gar nicht erst mitschickt.
+    /// `ki_status`/`ki_fehler` kommen nur zur ANZEIGE mit (Fehlergrund im Erkennungs-Abschnitt);
+    /// zurückgeschrieben werden sie nie — `patchFelder()` baut sein Dictionary von Grund auf neu.
+    static func bearbeitungsFelder(_ w: Wein) -> [String: Any] {
+        var f = w.patchFields
+        if let p = w.besterPreis { f["bester_preis"] = p }
+        if let h = w.besterPreisHaendler, !h.isEmpty { f["bester_preis_haendler"] = h }
+        if let u = w.besterPreisURL, !u.isEmpty { f["bester_preis_url"] = u }
+        f["ki_status"] = w.kiStatus.rawValue
+        if let e = w.kiFehler, !e.isEmpty { f["ki_fehler"] = e }
+        return f
     }
 }
 

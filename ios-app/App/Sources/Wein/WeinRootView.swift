@@ -1,9 +1,11 @@
 import SwiftUI
 
-/// Sheet-Ziele des Weinbereichs (`WeinErfassenView`, `WeinEinkaufsScanView`, `WeinEinstellungenView`).
-/// Alle drei bringen ihren eigenen NavigationStack mit und schliessen sich selbst.
+/// Sheet-Ziele des Weinbereichs (`WeinErfassenView`, `WeinEinkaufsScanView`, `WeinEinstellungenView`,
+/// `WeinSerienBarcodeView`). Alle bringen ihren eigenen NavigationStack mit und schliessen sich selbst.
+/// Die FOTO-Serie steht bewusst nicht hier: sie laeuft vollflaechig (`fullScreenCover`) — eine
+/// Kamera in einem halbhohen Blatt waere im Laden nicht zu bedienen.
 enum WeinSheet: Int, Identifiable {
-    case erfassen, laden, einstellungen
+    case erfassen, laden, einstellungen, serieBarcode
     var id: Int { rawValue }
 }
 
@@ -21,8 +23,23 @@ struct WeinRootView: View {
     /// bezahlte KI-Vorschlag. Gilt fuer genau eine Erfassung (siehe `onDismiss` am Sheet).
     @State private var erfassenEan = ""
     @State private var erfassenVorschlag: WeinVorschlag?
+    /// Laeuft gerade die Foto-Serie (Kamera vollflaechig)?
+    @State private var serieFoto = false
+    /// „Von Hand ausfuellen" aus der Warteschlange: die Bearbeiten-Maske haengt hier und nicht in
+    /// `WeinQueueView` — ein Sheet gehoert an die Wurzel, sonst verschwindet es mit dem Segment,
+    /// sobald der Eintrag fertig wird und die Queue leerlaeuft.
+    @State private var bearbeitenWein: Wein?
+    /// Bilanz der laufenden Reihenerfassung. Gehoert BEWUSST dem Bereich und nicht der Kamera:
+    /// beim Schliessen sind die letzten Uploads oft noch unterwegs — im Kamera-View gezaehlt waeren
+    /// sie mit ihm verschwunden und der Abschluss-Toast zu niedrig (siehe `WeinSerienErfassung`).
+    /// Angelegt wird er wie der Store im `init` — beide sind an den Hauptlauf gebunden, und dieses
+    /// Muster ist im Projekt das erprobte.
+    @StateObject private var serienLauf: WeinSerienLauf
 
-    init(settings: Settings) { _store = StateObject(wrappedValue: WeinStore(settings: settings)) }
+    init(settings: Settings) {
+        _store = StateObject(wrappedValue: WeinStore(settings: settings))
+        _serienLauf = StateObject(wrappedValue: WeinSerienLauf())
+    }
 
     private var tint: Color { Palette.colors(for: "wein").first ?? Theme.accent }
 
@@ -69,20 +86,28 @@ struct WeinRootView: View {
 
     private func zaehler(_ n: Int) -> String { n > 0 ? " (" + String(n) + ")" : "" }
 
+    /// Das Queue-Segment erscheint NUR, wenn wirklich etwas offen ist. Im Alltag sieht die Leiste
+    /// damit aus wie immer, und genau dann, wenn nach einer Reihenerfassung etwas abzuarbeiten ist,
+    /// steht es da, wo man es sucht. Ein dauerhaftes fuenftes Segment mit "(0)" waere die haeufigere
+    /// Ansicht und die nutzlosere.
     private var tabs: [(tab: WeinTab, label: String, systemImage: String?)] {
-        [
+        var out: [(tab: WeinTab, label: String, systemImage: String?)] = [
             (.alle,   "Alle" + zaehler(artWeine.count), "square.grid.2x2"),
             (.keller, "Keller" + zaehler(kellerAnzahl), "archivebox"),
             (.top,    "Top" + zaehler(topAnzahl), "star.fill"),
             (.offen,  "Offen" + zaehler(offenAnzahl), "questionmark.circle"),
         ]
+        if store.queueGesamt > 0 {
+            out.append((.queue, "Queue" + zaehler(store.queueGesamt), "tray.full"))
+        }
+        return out
     }
 
     var body: some View {
         AreaScaffold(gradientKey: "wein", systemImage: "wineglass", title: "Wein & Spirituosen",
                      subtitle: subtitle,
                      toast: $store.message, toastIsError: store.messageIsError,
-                     trailing: { menu },
+                     trailing: { kopfAktionen },
                      controls: { controls },
                      content: { content })
             .task {
@@ -101,14 +126,38 @@ struct WeinRootView: View {
                 if !store.weine.isEmpty { Task { await store.reload() } }
             }
             .environmentObject(store)
+            // Laeuft die Warteschlange leer, waehrend ihr Segment gewaehlt ist, verschwindet das
+            // Segment — die Auswahl zeigte dann auf einen Reiter, den es nicht mehr gibt, und der
+            // Bereich waere leer. Deshalb zurueck auf „Alle".
+            .onChange(of: store.queueGesamt) { _, neu in
+                if neu == 0 && store.tab == .queue { store.tab = .alle }
+            }
             .navigationDestination(item: $detailWein) { w in
                 WeinDetailView(wein: w).environmentObject(store)
+            }
+            .sheet(item: $bearbeitenWein) { w in
+                // Sheets erben die EnvironmentObjects des Aufrufers hier nicht verlaesslich —
+                // wie bei den Geschwister-Sheets deshalb explizit mitgeben.
+                WeinPruefenView(bearbeiten: w, schliessen: {
+                    bearbeitenWein = nil
+                    Task { await store.reload() }
+                })
+                .environmentObject(store)
+            }
+            // Foto-Serie: vollflaechige Kamera mit eigener Bedienebene, die nach jeder Ausloesung
+            // stehen bleibt — kein Bestaetigungsschirm dazwischen. Beendet wird sie ueber deren
+            // Fertig-Knopf; danach faellt die Bilanz an (`serieBeenden`).
+            .fullScreenCover(isPresented: $serieFoto, onDismiss: serieBeenden) {
+                WeinSerienFotoView(lauf: serienLauf, store: store)
             }
             .sheet(item: $sheet, onDismiss: {
                 // Die Vorbelegung aus dem Laden gilt nur fuer die eine Erfassung, die ihr folgt —
                 // sonst erbt sie der naechste Aufruf ueber das Menue.
                 erfassenEan = ""
                 erfassenVorschlag = nil
+                // Gilt nur der Barcode-Serie; nach jedem anderen Sheet steht die Bilanz auf 0 und
+                // `abschluss` meldet dann bewusst gar nichts.
+                serieBeenden()
             }) { ziel in
                 switch ziel {
                 case .erfassen:
@@ -131,6 +180,10 @@ struct WeinRootView: View {
                     // EnvironmentObjects des Aufrufers NICHT verlaesslich vererbt, deshalb wie bei
                     // den beiden Geschwistern oben explizit mitgeben.
                     WeinEinstellungenView().environmentObject(store)
+                case .serieBarcode:
+                    // Aus demselben Grund bekommt die Serie den Store als Parameter statt ueber die
+                    // Umgebung — sie schreibt bei jedem Code darauf.
+                    WeinSerienBarcodeView(lauf: serienLauf, store: store)
                 }
             }
     }
@@ -194,7 +247,61 @@ struct WeinRootView: View {
         }
     }
 
-    // ── Kopf-Menue ──
+    // ── Kopf: Schnellaufnahme + Menue ──
+
+    /// Kopfzeile rechts: der Kamera-Knopf als Hauptaktion, daneben das gewohnte Menue.
+    /// Der HStack traegt BEWUSST keinen eigenen Identifier — eine Container-ID gewinnt gegen die
+    /// IDs ihrer Kinder und wuerde `wein-schnell-foto` und `wein-menu` unbedienbar machen (die
+    /// Alarmo-Falle, siehe `artSwitch`).
+    private var kopfAktionen: some View {
+        HStack(spacing: 10) {
+            schnellFoto
+            menu
+        }
+    }
+
+    /// Der kuerzeste Weg vom Regal ins Inventar: tippen, fotografieren, weiter. Deshalb ein
+    /// gefuellter Knopf im Bereichsverlauf neben dem unauffaelligen Menue — er ist die Hauptaktion
+    /// des Bereichs, nicht einer von vier gleichwertigen Menuepunkten.
+    private var schnellFoto: some View {
+        Button { serieFotoStarten() } label: {
+            Image(systemName: "camera.fill")
+                .font(.headline)
+                .foregroundStyle(.white)
+                // Mindestens 44x44 pt: die Trefferflaeche muss auch mit einer Flasche in der
+                // anderen Hand sicher zu treffen sein.
+                .frame(width: 44, height: 44)
+                .background(Palette.gradient(for: "wein"), in: Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("wein-schnell-foto")
+        .accessibilityLabel("Flasche fotografieren")
+    }
+
+    /// Foto-Serie starten. Ohne Kamera (Simulator, gesperrte Hardware) waere ein leerer Sucher die
+    /// schlechteste Antwort — dann oeffnet stattdessen die normale Erfassung, die auch die
+    /// Mediathek anbietet, mit einem Satz dazu, warum.
+    private func serieFotoStarten() {
+        guard WeinSerienFotoView.kameraVerfuegbar else {
+            store.notify("Keine Kamera verfügbar — Erfassung geöffnet", error: true)
+            sheet = .erfassen
+            return
+        }
+        serienLauf.neu()
+        serieFoto = true
+    }
+
+    /// Barcode-Serie starten (Menuepunkt). Der Scanner selbst meldet, wenn das Geraet ihn nicht kann.
+    private func serieBarcodeStarten() {
+        serienLauf.neu()
+        sheet = .serieBarcode
+    }
+
+    /// Nach dem Schliessen einer Serie: auf die noch laufenden Uploads warten, Liste nachziehen,
+    /// Bilanz melden. Wurde nichts ausgeloest, passiert nichts (siehe `WeinSerienLauf.abschluss`).
+    private func serieBeenden() {
+        Task { await serienLauf.abschluss(store: store) }
+    }
 
     /// Menue statt drei Knoepfen: der Kopf soll auch bei langer Kennzahlenzeile schmal bleiben.
     private var menu: some View {
@@ -206,6 +313,12 @@ struct WeinRootView: View {
                 Label(store.art.einzahl + " erfassen", systemImage: "camera.viewfinder")
             }
             Button { sheet = .laden } label: { Label("Im Laden scannen", systemImage: "barcode.viewfinder") }
+            // Gegenstueck zur Foto-Serie am Knopf daneben: hat die Flasche einen lesbaren Barcode,
+            // ist das der schnellste Weg. Steht im Menue und nicht im Kopf, weil das Etikett-Foto
+            // immer geht — der Barcode nicht.
+            Button { serieBarcodeStarten() } label: {
+                Label("Barcodes scannen (Serie)", systemImage: "barcode")
+            }
             Divider()
             Button { sheet = .einstellungen } label: { Label("Einstellungen", systemImage: "gearshape") }
         } label: {
@@ -312,12 +425,12 @@ struct WeinRootView: View {
     private var dropdowns: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 10) {
-                if store.art == .wein {
-                    rebsorteMenu
-                } else {
-                    stilMenu
-                    standortMenu
-                }
+                if store.art == .wein { rebsorteMenu } else { stilMenu }
+                // Der Standort gilt seit dem Bearbeiten-Umbau fuer BEIDE Arten — auch eine Kiste
+                // Barolo kann im Buero stehen. Der Filter muss deshalb bei beiden erreichbar sein:
+                // stuende er nur bei Spirituosen, waere ein bei Wein gesetzter Filter unsichtbar
+                // und nicht mehr loesbar (`store.gefiltert` wendet ihn art-uebergreifend an).
+                standortMenu
                 landMenu
                 sterneMenu
                 sortierungMenu
@@ -427,10 +540,13 @@ struct WeinRootView: View {
         .foregroundStyle(aktiv ? tint : Color.primary)
     }
 
-    /// Keller = Bestandssicht nach Lagerort (`WeinKellerView`), alle uebrigen Segmente = Katalogliste.
+    /// Keller = Bestandssicht nach Lagerort (`WeinKellerView`), Queue = Warteschlange der
+    /// Hintergrund-Erkennung (`WeinQueueView`), alle uebrigen Segmente = Katalogliste.
     @ViewBuilder private var content: some View {
         if store.loading && store.weine.isEmpty {
             ProgressView("Lädt …").frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if store.tab == .queue {
+            WeinQueueView(onBearbeiten: { w in bearbeitenWein = w })
         } else if store.tab == .keller {
             WeinKellerView()
         } else {

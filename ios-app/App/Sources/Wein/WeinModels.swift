@@ -226,10 +226,58 @@ enum WeinStandort: String, CaseIterable, Identifiable {
     }
 }
 
+// MARK: - Zustand der Hintergrund-Erkennung (CHECK ki_status IN ('offen','laeuft','fertig','fehler'))
+
+/// Die Schnellerfassung legt die Flasche SOFORT an und laesst die KI danach im Hintergrund laufen —
+/// `ki_status` ist der Fortschritt dieses Laufs. Bestand, von Hand angelegte Flaschen und die alte
+/// App gelten als 'fertig' (Default der Migration 0024); nur die drei uebrigen Werte bedeuten Arbeit.
+enum WeinKiStatus: String, CaseIterable, Identifiable {
+    case offen, laeuft, fertig, fehler
+
+    var id: String { rawValue }
+
+    /// Klartext fuer Abzeichen und Warteschlangen-Zeile. 'offen' und 'laeuft' lesen sich BEWUSST
+    /// gleich: fuer den Nutzer ist "eingereiht" und "gerade dran" derselbe Zustand ("es passiert
+    /// etwas, warte kurz"), und ein Unterschied waere nur eine Erklaerung, die niemand braucht.
+    /// 'fertig' hat trotzdem einen Text — er erscheint nirgends als Abzeichen, aber eine leere
+    /// Beschriftung waere eine Falle fuer jede spaetere Aufrufstelle.
+    var label: String {
+        switch self {
+        case .offen, .laeuft: return "Wird erkannt …"
+        case .fertig:         return "Erkannt"
+        case .fehler:         return "Erkennung fehlgeschlagen"
+        }
+    }
+
+    /// Badge-Farbe, gleiche Regel wie `WeinTyp.farbe`: `Color.onFill` waehlt die Schrift anhand der
+    /// Helligkeit, hier stehen deshalb nur Toene, die damit mindestens 4,5:1 erreichen.
+    /// Laufende Erkennung ist NEUTRAL (kein Warnton) — sie ist der Normalfall der Schnellerfassung
+    /// und kein Problem, das Aufmerksamkeit verlangt.
+    var farbe: Color {
+        switch self {
+        case .offen, .laeuft: return Color(hex: "6B7280")   // 4,8:1 — neutral, kein Alarm
+        case .fertig:         return Color(hex: "15803D")   // 5,0:1
+        case .fehler:         return Color(hex: "B91C1C")   // 6,5:1
+        }
+    }
+
+    /// SF Symbol fuer Abzeichen und Warteschlangen-Zeile.
+    var symbol: String {
+        switch self {
+        case .offen, .laeuft: return "sparkles"
+        case .fertig:         return "checkmark.circle"
+        case .fehler:         return "exclamationmark.triangle"
+        }
+    }
+}
+
 // MARK: - Tabs, Sortierung
 
-/// .alle = alles · .keller = bestand > 0 · .top = Schnitt >= 4 · .offen = von mir noch nicht bewertet.
-enum WeinTab: Hashable { case alle, keller, top, offen }
+/// .alle = alles · .keller = bestand > 0 · .top = Schnitt >= 4 · .offen = von mir noch nicht bewertet ·
+/// .queue = Flaschen, deren Hintergrund-Erkennung noch laeuft oder fehlgeschlagen ist.
+/// Das Queue-Segment erscheint nur, solange es dort etwas zu tun gibt (siehe WeinRootView) — im
+/// Alltag bleibt die Segmentleiste dadurch unveraendert.
+enum WeinTab: Hashable { case alle, keller, top, offen, queue }
 
 enum WeinSort: String, CaseIterable {
     case neueste, bewertung, name, jahrgang, preis
@@ -308,6 +356,12 @@ struct Wein: Identifiable, Hashable {
     var fotoKey: String?                // Etikettenfoto (media area "wein")
     var quelle: String                  // manuell | foto | ean | ki
     var notizen: String?
+    // Hintergrund-Erkennung (Migration 0024). Diese Spalten gehoeren ALLEIN dem Server — die App
+    // liest sie, schreibt sie aber nie (siehe `patchFields`).
+    var kiStatus: WeinKiStatus          // offen | laeuft | fertig | fehler
+    var kiFehler: String?               // Klartext des letzten Fehlschlags
+    var kiVersuche: Int                 // Zahl der Anlaeufe (ab 3 nur noch von Hand)
+    var dubletteVon: Int?               // vermuteter vorhandener Eintrag; NIE automatisch zusammengefuehrt
 
     init(fields f: [String: Any]) {
         id = Coerce.int(f["id"]) ?? 0
@@ -367,12 +421,28 @@ struct Wein: Identifiable, Hashable {
         fotoKey = Coerce.str(f["foto_key"])
         quelle = Coerce.str(f["quelle"]) ?? "manuell"
         notizen = Coerce.str(f["notizen"])
+        // FEHLENDES Feld = fertig, nicht offen. Antworten ohne `ki_status` kommen von einem Backend
+        // vor Migration 0024 bzw. aus Teilobjekten (Lookup-Vorschlag, Fixtures) — wuerde daraus
+        // 'offen', zeigte die App schlagartig den GANZEN Bestand als "wird erkannt" und die
+        // Warteschlange waere unbrauchbar. Derselbe Default steht in der Migration.
+        kiStatus = WeinKiStatus(rawValue: Coerce.str(f["ki_status"]) ?? "") ?? .fertig
+        kiFehler = Coerce.str(f["ki_fehler"])
+        kiVersuche = Coerce.int(f["ki_versuche"]) ?? 0
+        // 0 gilt als "keine Dublette": das generische CRUD liefert NULL, aber ein 0-Wert waere als
+        // Fremdschluessel ohnehin sinnlos und wuerde sonst zu einem Verweis ins Leere.
+        dubletteVon = Coerce.int(f["dublette_von"]).flatMap { $0 > 0 ? $0 : nil }
     }
 
     /// Body fuer POST/PATCH: DB-Spaltennamen, Arrays als JSON-String, nil als NSNull (damit
     /// Felder im Formular auch geleert werden koennen).
-    /// BEWUSST NICHT enthalten: bester_preis*, preis_geprueft_at (setzt der Preischeck-Job) und
+    /// BEWUSST NICHT enthalten: bester_preis*, preis_geprueft_at (setzt der Preischeck-Job),
+    /// ki_status/ki_versuche/ki_fehler/ki_queued_at/dublette_von (setzt allein die Anreicherung) und
     /// id/created_at/updated_at.
+    /// Der Warteschlangen-Zustand darf NICHT mitgeschickt werden: waehrend der Nutzer eine Flasche
+    /// von Hand ausfuellt, kann der Hintergrundlauf sie gerade auf 'laeuft' bzw. 'fertig' gesetzt
+    /// haben — ein PATCH mit dem alten Wert wuerde die Zeile zurueck in die Warteschlange werfen
+    /// und die Erkennung ein zweites Mal bezahlen lassen. Wer neu erkennen lassen will, nimmt
+    /// `POST /wein-anreicherung` mit `id`.
     /// ART-ABHAENGIG: die Spalten der jeweils ANDEREN Getraenkeart werden gar nicht geschickt —
     /// weder mit Wert noch als NSNull. Wuerden sie als NSNull mitgehen, wuerde jedes Speichern nach
     /// einem Umschalten die Angaben der Gegenart in der Zeile loeschen (ein falsch als Wein
@@ -443,7 +513,12 @@ struct Wein: Identifiable, Hashable {
     /// Anzeigename: Wein "Weingut Name Jahrgang", Spirituose "Destillerie Name · 16 Jahre"
     /// (leere Teile entfallen). Spirituosen tragen keinen Jahrgang — was zwei Abfuellungen
     /// derselben Destillerie unterscheidet, ist die Altersangabe.
+    /// Solange die Hintergrund-Erkennung laeuft und weder Name noch Weingut da sind, steht hier
+    /// "Wird erkannt …": im Serienmodus entstehen in einer Minute ein Dutzend solcher Zeilen, und
+    /// eine Liste aus lauter Eintraegen namens "Wein" waere das Erste, was der Nutzer sieht — sie
+    /// saehe nach einem Fehler aus, obwohl alles nach Plan laeuft.
     var titel: String {
+        if name.isEmpty, weingut.isEmpty, kiStatus != .fertig { return "Wird erkannt …" }
         var teile: [String] = []
         if !weingut.isEmpty { teile.append(weingut) }
         if !name.isEmpty { teile.append(name) }
@@ -476,6 +551,16 @@ struct Wein: Identifiable, Hashable {
         guard let a = angebrochenAt else { return false }
         return !a.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
+
+    /// Wartet die Flasche noch auf die Hintergrund-Erkennung (oder ist sie daran gescheitert)?
+    /// Solche Zeilen sind trotzdem vollwertiger Bestand — sie werden in Kennzahlen und Zaehlern
+    /// normal mitgezaehlt und tragen nur zusaetzlich ein Abzeichen.
+    var istUnfertig: Bool { kiStatus != .fertig }
+
+    /// Hat die Erkennung einen vorhandenen Eintrag als wahrscheinliche Dublette markiert?
+    /// Zusammengefuehrt wird NIE automatisch — zwei Flaschen desselben Weins sind der Normalfall,
+    /// und ein falsch verschmolzener Eintrag waere nicht mehr zu trennen.
+    var istDublette: Bool { dubletteVon != nil }
 
     /// Steht die Flasche im Buero? Sie bleibt dabei voll im Bestand (Keller, Suche, Bewertung,
     /// Preisbeobachtung) — sie traegt nur zusaetzlich ein Abzeichen, damit zu Hause niemand danach
