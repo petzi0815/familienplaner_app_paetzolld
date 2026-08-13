@@ -44,11 +44,38 @@
 - **Verifiziert:** Migration **28/28** gegen Prod-Nachbildung · `tsc` + `next build` · Swift-Scan über
   201 Dateien · Signaturen der Naht einzeln · neuer XCUITest (Erfassungsknopf + Queue-Segment nur
   bei Inhalt). 10 Prüf-Agenten → 7 eigenständige Befunde (2 Blocker), alle behoben.
-- **OFFEN / von Lars zu prüfen:** (1) **Serienmodus am Gerät** — löst der Auslöser sauber aus, kommt
-  der Sucher sofort zurück, sitzt die Bedienebene richtig? Das ist der einzige Teil, der echte
-  Kamera-Hardware braucht. (2) Ohne Standardsteuerung gibt es **keinen Blitz-Umschalter** mehr.
-  (3) Leert man ein Preisfeld beim Bearbeiten, ist der Bestpreis bis zum Nachtlauf weg.
-  (4) `BOOTSTRAP_AGENT_API_KEY` rotieren (steht seit früheren Sessions offen).
+- **OFFEN / von Lars zu prüfen:** (1) Ohne Standardsteuerung gibt es **keinen Blitz-Umschalter** mehr.
+  (2) Leert man ein Preisfeld beim Bearbeiten, ist der Bestpreis bis zum Nachtlauf weg.
+  (3) `BOOTSTRAP_AGENT_API_KEY` rotieren (steht seit früheren Sessions offen).
+
+**NACHTRAG (`87050a7`) — Serienkamera war am Gerät UNBEDIENBAR, neu mit AVFoundation.**
+Lars' Befund: „Fertig" reagierte nicht, die Vorschau füllte nur zwei Drittel, der Kopftext lag unter
+der Dynamic Island. **Alle drei Fehler hatten dieselbe Wurzel:** `UIImagePickerController` mit
+abgeschalteter Standardsteuerung. Vorschau fest 4:3 (schwarzer Rest), Bedienebene als
+`cameraOverlayView` in einem SEPARATEN `UIHostingController` außerhalb der SwiftUI-Hierarchie
+(Knöpfe ohne Wirkung), keine Kenntnis der sicheren Bereiche (Dynamic Island). Nicht flickbar.
+- **Jetzt AVFoundation** (`Wein/WeinKamera.swift` neu): eigene Sitzung + `AVCapturePhotoOutput`,
+  Vorschau über `layerClass` mit `resizeAspectFill`, Aufbau/Start auf eigener serieller Warteschlange.
+  **Der Aufbau der Ansicht IST die Korrektur:** EIN ZStack, unten Sucher mit `.ignoresSafeArea()`,
+  darüber die Bedienelemente OHNE — so weichen Zähler und Knöpfe von selbst aus. „Fertig" ruft eine
+  Closure des Aufrufers, nicht `dismiss()` aus fremder Hierarchie.
+- **⚠️ Vier Fallen, die erst die Prüfung fand:** (a) **Referenzzyklus** — die `onBild`-Closure fing
+  die Ansicht ein, die hält das Modell, das Modell die Closure ⇒ je Durchgang eine komplette
+  Kamera-Kette im Speicher. Closure fängt jetzt ausdrücklich nur `lauf`/`store`. (b) `startRunning()`
+  hat **keinen Rückgabewert** und meldet Fehlschläge nur über `AVCaptureSessionRuntimeError` — der
+  Zustand behauptete trotzdem „bereit", und `capturePhoto` auf stehender Sitzung **beendet die App**.
+  (c) **Block-basierte Notification-Beobachter räumt die Zentrale NICHT selbst ab** → Marke merken,
+  in `deinit` abmelden. (d) `AVCapturePhotoOutput` hält den Foto-Delegate **nicht** fest.
+- **Einzelerfassung** (Menü → „erfassen") wartet nicht mehr live auf die KI, sondern reiht ein und
+  schließt. Weg von Hand unverändert; **Einkaufs-Scan bleibt live** (die Antwort braucht man im Laden).
+- **Garten-Bilder repariert** (steckt ebenfalls in `87050a7`, die Commit-Nachricht nennt nur die
+  Kamera — `git add -A` hatte beides erfasst): Migration **0025** + `seed.ts`. Sechs `.jpg`-Dateien
+  enthielten eine S3-Fehlerantwort und waren **verwaist** → entfernt. `samen_7_ref.jpg` (0 Byte) hing
+  an der Thymian-Saat; die Textdatei daneben wies es als **bewusst offen gelassenes Referenzbild** mit
+  Quellenangabe aus → von Wikimedia Commons nachgeladen (Kurt Stüber, CC BY-SA 3.0, Urheber/Lizenz
+  in `samen_7_ref_source.txt`). **Non-obvious:** der Seed-Abgleich überspringt vorhandene Dateien
+  (richtig — sonst überschriebe jeder Neustart Nutzer-Uploads), deshalb wäre die 0-Byte-Datei auf Prod
+  nie ersetzt worden; jetzt werden **ausschließlich 0-Byte-Dateien** beim Boot aus dem Seed ersetzt.
 
 **NEU 2026-08-12 (9. Session) — AUS „WEIN" WIRD „WEIN & SPIRITUOSEN" 🍷🥃: gleiches Muster (EAN/Etikett/KI, Bewertung je Person, Preis-Wächter, Keller), nur ohne Wein-Charakteristik — plus Umschalter. Migrationen 0022 + 0023. Backend live `565e81c` (Vorgänger `c619111`), CI beide Male 3/3 grün (Build Check · UI Tests · TestFlight). Details: [[session-2026-08-12_spirituosen]].**
 - **Wunsch (Lars):** Spirituosen mit inventarisieren, „alles gleiches Muster über EAN erfassbar, nur
