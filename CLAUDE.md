@@ -77,6 +77,33 @@ abgeschalteter Standardsteuerung. Vorschau fest 4:3 (schwarzer Rest), Bedieneben
   (richtig — sonst überschriebe jeder Neustart Nutzer-Uploads), deshalb wäre die 0-Byte-Datei auf Prod
   nie ersetzt worden; jetzt werden **ausschließlich 0-Byte-Dateien** beim Boot aus dem Seed ersetzt.
 
+**NACHTRAG 2 (`706b709`) — BESTAND AUFGERÄUMT, direkt über die Prod-API.**
+Auftrag: Kategorisierung prüfen, Dubletten zusammenführen, Spirituosen anreichern. Lars hat dafür den
+Agent-Schlüssel übergeben — er liegt jetzt in `C:/bin/familienplaner-app/.env` (**gitignored**),
+Details in [[reference-prod-api-debug]].
+- **Ergebnis: 66 → 63 Einträge, 66 Flaschen unverändert** (nichts verloren), Lücken bei Spirituosen
+  55 → 45, Warteschlange leer. **Die Kategorisierung war sauber** — nichts zu korrigieren.
+- **3 Dubletten zusammengeführt:** Karl Pfaffmann Riesling trocken stand DREIMAL (42/45/46), Vietor y
+  Leon zweimal (58/62). Dass es echte Flaschen und keine Doppelaufnahmen waren, wurde **belegt**:
+  Foto 46 zeigt zwei Pfaffmann-Flaschen gleichzeitig, und zwischen den Vietor-Aufnahmen liegen drei
+  andere Flaschen im 8-Sekunden-Takt. Behalten wurde je die Zeile mit der längsten Preis-Historie
+  (`wein-preise` ist readonly und lässt sich nicht umhängen), Bestände addiert.
+- **id 56** (Erkennung fehlgeschlagen) aus dem Etikett repariert; **14 Spirituosen** nachrecherchiert.
+- **⚠️ NON-OBVIOUS — erneutes Anreichern kann VERSCHLECHTERN:** aus „Prinz Alte Marille" wurde
+  „Prinz Dürer Hasen" (Likör statt Obstbrand, Preis 69 €) mit `ki_confidence: hoch` — die Vision-Stufe
+  las **durch die klare Flasche hindurch das Etikett der Flasche DAHINTER**. Zurückgesetzt; bestätigt
+  dadurch, dass zwei weitere Brände derselben Prinz-„Alte"-Serie im Bestand stehen. Regel dazu:
+  [[feedback-anreicherung-kann-verschlechtern]] — nur Lücken anreichern, Vorher/Nachher diffen,
+  Alkoholfreies (Sangrita) ausnehmen.
+- **⚠️ NON-OBVIOUS — API-Antwortform ist uneinheitlich:** Liste liefert `{data:[…],total}`, die
+  **Einzelabfrage `/weine/{id}` das Objekt OHNE `data`-Hülle**. Ein blindes `.data` lässt einen
+  intakten Datensatz als leer erscheinen.
+- **Code-Fix `706b709`:** die Erkennung durfte `alkohol = 0` eintragen (stand an zwei Zeilen). 0 %
+  heißt dort „nicht gelesen", liest sich in der App aber als gesicherte Angabe → Untergrenze der
+  KI-Prüfung jetzt 0,1. Alkoholfreies trägt der Nutzer von Hand ein.
+- **OFFEN:** 24 Weine mit Datenlücken bewusst NICHT angereichert (Auftrag betraf bei Wein nur
+  Kategorisierung + Dubletten); id 30 ist aus dem vorhandenen Foto nicht sicher identifizierbar.
+
 **NEU 2026-08-12 (9. Session) — AUS „WEIN" WIRD „WEIN & SPIRITUOSEN" 🍷🥃: gleiches Muster (EAN/Etikett/KI, Bewertung je Person, Preis-Wächter, Keller), nur ohne Wein-Charakteristik — plus Umschalter. Migrationen 0022 + 0023. Backend live `565e81c` (Vorgänger `c619111`), CI beide Male 3/3 grün (Build Check · UI Tests · TestFlight). Details: [[session-2026-08-12_spirituosen]].**
 - **Wunsch (Lars):** Spirituosen mit inventarisieren, „alles gleiches Muster über EAN erfassbar, nur
   halt ohne Wein-Charakteristik, ggf. Switch zwischen Wein und Spirituosen".
