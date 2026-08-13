@@ -6,6 +6,50 @@
 
 ## ▶️ WIEDERAUFNAHME (nächste Session) — START HIER
 
+**NEU 2026-08-13 (10. Session) — INVENTARISIEREN STATT ERFASSEN 📷: Serienkamera, Hintergrund-Anreicherung mit sichtbarer Queue, Bearbeiten-Modus, Bild-Performance. Live `6453fb4` (Bilder) + `f2a903e` (Rest), CI beide Male 3/3 grün. Details: [[session-2026-08-13_inventur-queue]].**
+- **Wunsch (Lars):** Bilder laden verzögert; der Erfassungsweg über das Drei-Punkte-Menü ist zu
+  klein und zu langsam (mehrfach bestätigen + bewerten vor dem Speichern); Parameter sollen
+  nachträglich änderbar sein (falsch klassifizierte Weine); Büro-Standort auch für Wein.
+  Von ihm gewählt: Dublette **markieren statt zusammenführen**, Serienmodus **ja**, Queue **sichtbar
+  und aufrufbar**, dazu alle vier Extras (Nacharbeits-Liste, Wisch-Leeren, Foto tauschen, EAN-Serie).
+- **⚠️ Bilder — die Vermutung „zu groß" war nur die halbe Ursache:** `AuthImage` hatte **gar keinen
+  Zwischenspeicher**; jedes Erscheinen lud neu, und eine `List` recycelt ihre Zellen ⇒ dasselbe
+  Etikett beim Scrollen immer wieder. Jetzt NSCache (48 MB) + Kopie unter `.cachesDirectory`,
+  Schlüssel **inklusive Breite**. Dazu `?w=<breite>` an `/api/v1/media/…` mit drei festen Stufen
+  (160/320/640), **lazy beim ersten Abruf** erzeugt (deckt den Altbestand ohne Backfill ab).
+  An echten Dateien gemessen: **4481 KB → 269 KB (94 %)**. `sharp` nur über dynamischen Import in
+  try/catch — jeder Fehlschlag liefert still das Original; eine Vorschau darf nie ein 500er werden.
+  Nebenbefund: **6 Garten-Dateien tragen `.jpg`, sind aber XML/HTML** (vorbestehend, nie angezeigt).
+- **Queue = der Datensatz** (Migration 0024: `ki_status`/`ki_versuche`/`ki_fehler`/`ki_queued_at`/
+  `dublette_von` auf `weine`, Default `'fertig'`). **Bewusst keine zweite Tabelle:** die Flasche steht
+  ab dem Auslösen im Inventar (Foto, Bestand 1, „wird erkannt"), also kann es weder einen
+  Queue-Eintrag ohne Flasche noch umgekehrt geben. `server/wein/anreicherung.ts` +
+  `POST /wein-erfassen` (antwortet sofort, stößt fire-and-forget an) + `POST|GET /wein-anreicherung`
+  + Job `wein-anreicherung` (*/5) als Netz. **Stale-Rückholung nach 15 min** — sonst bliebe eine
+  Flasche nach Container-Neustart für immer auf „läuft". Worker schreibt NUR KI-Felder (Weißliste);
+  `bestand`/`standort`/`lagerort`/`notizen`/`foto_key`/Füllstand/Kaufpreis gehören dem Nutzer.
+- **⚠️ NON-OBVIOUS (Serienkamera):** `UIImagePickerController` schiebt nach jedem Auslösen den
+  Bestätigungsschirm davor; unterdrückt man nur das `dismiss()`, bleibt **dieser Schirm stehen** und
+  der Sucher kommt nie zurück. Lösung: `showsCameraControls = false` + eigene `cameraOverlayView`
+  (UIHostingController **stark halten**, `backgroundColor = .clear`). Der Parameter steht **vor**
+  `onPick`, sonst bände sich der nachgestellte Abschluss der 8 bestehenden Aufrufstellen an ihn.
+- **⚠️ NON-OBVIOUS (Review-Blocker, beide an der Naht paralleler Agenten):** (1) `WeinStore` übergab
+  ein Argument, das die Ziel-Signatur nicht kannte → **CI-Build wäre gekippt** (lokal unsichtbar,
+  `tsc` prüft nur das Backend). (2) **`WeinQueueView` war nirgends instanziiert** — gebaut, aber
+  nicht angeschlossen. Lehre: nach parallelen Agenten IMMER die Naht prüfen, nicht nur die Dateien.
+- **Bearbeiten:** dieselbe `WeinPruefenView` mit zweitem Modus (Init in einer **Extension**, damit der
+  memberwise-Initialisierer für den Anlege-Fluss erhalten bleibt). Geleerte Felder werden im
+  Bearbeiten-Modus als `NSNull()` gesendet — vorher ließ `patchFelder()` sie weg und der alte Wert
+  blieb stehen, womit Korrigieren unmöglich war. Standort jetzt für BEIDE Arten.
+- **Verifiziert:** Migration **28/28** gegen Prod-Nachbildung · `tsc` + `next build` · Swift-Scan über
+  201 Dateien · Signaturen der Naht einzeln · neuer XCUITest (Erfassungsknopf + Queue-Segment nur
+  bei Inhalt). 10 Prüf-Agenten → 7 eigenständige Befunde (2 Blocker), alle behoben.
+- **OFFEN / von Lars zu prüfen:** (1) **Serienmodus am Gerät** — löst der Auslöser sauber aus, kommt
+  der Sucher sofort zurück, sitzt die Bedienebene richtig? Das ist der einzige Teil, der echte
+  Kamera-Hardware braucht. (2) Ohne Standardsteuerung gibt es **keinen Blitz-Umschalter** mehr.
+  (3) Leert man ein Preisfeld beim Bearbeiten, ist der Bestpreis bis zum Nachtlauf weg.
+  (4) `BOOTSTRAP_AGENT_API_KEY` rotieren (steht seit früheren Sessions offen).
+
 **NEU 2026-08-12 (9. Session) — AUS „WEIN" WIRD „WEIN & SPIRITUOSEN" 🍷🥃: gleiches Muster (EAN/Etikett/KI, Bewertung je Person, Preis-Wächter, Keller), nur ohne Wein-Charakteristik — plus Umschalter. Migrationen 0022 + 0023. Backend live `565e81c` (Vorgänger `c619111`), CI beide Male 3/3 grün (Build Check · UI Tests · TestFlight). Details: [[session-2026-08-12_spirituosen]].**
 - **Wunsch (Lars):** Spirituosen mit inventarisieren, „alles gleiches Muster über EAN erfassbar, nur
   halt ohne Wein-Charakteristik, ggf. Switch zwischen Wein und Spirituosen".
