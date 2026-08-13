@@ -146,7 +146,13 @@ function intSpecs(): Record<string, NumSpec> {
 const REAL_SPECS: Record<string, NumSpec> = {
   // Achtung: `max` ist hier der WEIN-Wert. Für Spirituosen hebt `sanitizeFelder` die Obergrenze auf
   // ALKOHOL_MAX_SPIRITUOSE an — mit 25 % fiele sonst jeder Rum, Gin und Whisky durch die Prüfung.
-  alkohol: { min: 0, max: 25, dez: 1 },
+  //
+  // `min` liegt bewusst ÜBER null: liefert die Erkennung glatt 0 %, heißt das in der Praxis „nicht
+  // gelesen", nicht „alkoholfrei" — und eine 0 an einer Flasche Whisky ist eine falsche Behauptung,
+  // während ein leeres Feld ehrlich „unbekannt" sagt. Beim Aufräumen des Bestands am 2026-08-13
+  // standen genau so zwei Zeilen mit 0 % da. Wirklich alkoholfreie Produkte trägt der Nutzer von
+  // Hand ein; diese Grenze gilt nur für die KI-Werte.
+  alkohol: { min: 0.1, max: 25, dez: 1 },
   referenzpreis: { min: 0.5, max: 100000, dez: 2 },
   bester_preis: { min: 0.5, max: 100000, dez: 2 },
 };
